@@ -265,6 +265,30 @@ const SEED_RESULTS: TournamentResult[] = [
   { id:'res-t025-14', tournament_id:'t025', tournament_name:'M100 Urban Grand Baie', tournament_date:'2026-02-07', category:'M100', division:'men', region:'Nord', club_name:'Urban Sport Grand Baie', rank:14, team_name:'SARVISH/KUNAL',     player1_name:'Sarvish Keenoo',      player2_name:'Kunal Sewnauth',        points:5   },
 ];
 
+const RESULT_COLUMNS = [
+  'id',
+  'tournament_id',
+  'tournament_name',
+  'tournament_date',
+  'category',
+  'division',
+  'region',
+  'club_name',
+  'rank',
+  'team_name',
+  'player1_name',
+  'player2_name',
+  'points',
+].join(',');
+
+function supabaseErrorMessage(error: unknown): string {
+  if (!error) return 'Erreur inconnue';
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) return error.message;
+  const record = error as Record<string, unknown>;
+  return String(record.message ?? record.details ?? record.hint ?? JSON.stringify(record));
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -585,14 +609,20 @@ export default function Resultats() {
     const sb = getSupabaseClient();
     if (isSupabaseConnected() && sb) {
       const { data, error: err, timedOut } = await safeSupabaseQuery<TournamentResult[]>(() =>
-        sb.from('tournament_results').select('*').limit(5000)
+        sb.from('tournament_results')
+          .select(RESULT_COLUMNS)
+          .order('tournament_date', { ascending: false })
+          .order('rank', { ascending: true })
+          .limit(5000),
+        15000
       );
       if (timedOut) {
         setError('⏱ Supabase trop lent — données locales affichées');
         setAllResults(SEED_RESULTS);
         setFromSupabase(false);
       } else if (err) {
-        setError(`Erreur Supabase — données locales affichées`);
+        console.warn('[Resultats] Supabase error:', err);
+        setError(`Erreur Supabase: ${supabaseErrorMessage(err)} — données locales affichées`);
         setAllResults(SEED_RESULTS);
         setFromSupabase(false);
       } else if (data && data.length > 0) {
