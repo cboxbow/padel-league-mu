@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { getSupabaseClient, isSupabaseConnected, safeSupabaseQuery } from '@/lib/supabase';
+import { getSupabaseClient, getSupabaseRestUrl, isSupabaseConnected, safeSupabaseQuery } from '@/lib/supabase';
 import { normalizeJuniorCategory, normalizeTournamentDisplayName } from '@/lib/tournamentNames';
 import { MPL_CLUBS, MPL_TOURNAMENTS } from '@/data/mpl2026';
 // MOCK_RANKINGS_* conservés pour compatibilité (non utilisés directement)
@@ -397,7 +397,7 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
     async function load() {
       setLoading(true);
 
-      const sbUrl = (import.meta.env.VITE_SUPABASE_URL  || '').trim();
+      const sbUrl = getSupabaseRestUrl();
       const sbKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
       const hasValidKey = !!(sbUrl && sbKey && sbKey !== 'VOTRE_ANON_KEY_ICI');
       const normTarget = hookDivToNorm(division);
@@ -419,7 +419,7 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
               limit: String(PAGE),
               offset: String(detailsOffset),
             });
-            const res = await fetch(`${sbUrl}/rest/v1/official_ranking_details?${params}`, {
+            const res = await fetch(`${sbUrl}/official_ranking_details?${params}`, {
               headers: { 'apikey': sbKey, 'Authorization': `Bearer ${sbKey}`, 'Accept': 'application/json' },
             });
             if (!res.ok) break;
@@ -447,7 +447,7 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
               limit: String(PAGE),
               offset: String(metaOffset),
             });
-            const res = await fetch(`${sbUrl}/rest/v1/official_rankings?${params}`, {
+            const res = await fetch(`${sbUrl}/official_rankings?${params}`, {
               headers: { 'apikey': sbKey, 'Authorization': `Bearer ${sbKey}`, 'Accept': 'application/json' },
             });
             if (!res.ok) break;
@@ -491,7 +491,7 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
             order: 'created_at.desc,rank.asc',
             limit: '5000',
           });
-          const officialRes = await fetch(`${sbUrl}/rest/v1/official_rankings?${officialParams}`, {
+          const officialRes = await fetch(`${sbUrl}/official_rankings?${officialParams}`, {
             headers: { 'apikey': sbKey, 'Authorization': `Bearer ${sbKey}`, 'Accept': 'application/json' },
           });
           if (officialRes.ok) {
@@ -537,7 +537,7 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
               limit: String(PAGE),
               offset: String(offset),
             });
-            const res = await fetch(`${sbUrl}/rest/v1/rankings?${params}`, {
+            const res = await fetch(`${sbUrl}/rankings?${params}`, {
               signal: controller.signal,
               headers: { 'apikey': sbKey, 'Authorization': `Bearer ${sbKey}`, 'Accept': 'application/json' },
             });
@@ -589,7 +589,7 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
             const controller = new AbortController();
             const tId = setTimeout(() => controller.abort(), 10000);
             const res = await fetch(
-              `${sbUrl}/rest/v1/tournament_results?select=player1_name,player2_name,points,division&division=in.(${divVariants.join(',')})&order=points.desc&limit=1000&offset=${trOffset}`,
+              `${sbUrl}/tournament_results?select=player1_name,player2_name,points,division&division=in.(${divVariants.join(',')})&order=points.desc&limit=1000&offset=${trOffset}`,
               { signal: controller.signal, headers: { 'apikey': sbKey, 'Authorization': `Bearer ${sbKey}`, 'Accept': 'application/json' } }
             );
             clearTimeout(tId);

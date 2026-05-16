@@ -13,7 +13,12 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 // ── Lecture des clés (env uniquement) ─────────────────────────────────────────
-const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL?.trim()      ?? '';
+function normalizeSupabaseUrl(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/, '');
+  return trimmed.replace(/\/rest\/v1$/i, '');
+}
+
+const SUPABASE_URL  = normalizeSupabaseUrl(import.meta.env.VITE_SUPABASE_URL ?? '');
 const SUPABASE_KEY  = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() ?? '';
 
 // ── Client singleton ──────────────────────────────────────────────────────────
@@ -41,6 +46,10 @@ export function getSupabaseClient(): SupabaseClient | null {
 // Vrai uniquement si URL + KEY sont présentes dans l'env
 export function isSupabaseConnected(): boolean {
   return !!(SUPABASE_URL && SUPABASE_KEY);
+}
+
+export function getSupabaseRestUrl(): string {
+  return SUPABASE_URL ? `${SUPABASE_URL}/rest/v1` : '';
 }
 
 // ── Wrapper fetch robuste avec timeout ────────────────────────────────────────
