@@ -15,7 +15,7 @@ import ObsScoreboard  from '@/features/obs/ObsScoreboard';
 
 // true  → build public  (admin invisible, route supprimée, code exclu du bundle)
 // false → build complet (admin accessible via /admin)
-const IS_PUBLIC_MODE = import.meta.env.VITE_PUBLIC_MODE === 'true';
+const IS_PUBLIC_MODE = __IS_PUBLIC_BUILD__ || import.meta.env.VITE_PUBLIC_MODE === 'true';
 
 // Chargement paresseux : le code admin n'est PAS inclus dans le bundle public
 const Admin = !IS_PUBLIC_MODE ? lazy(() => import('@/pages/Admin')) : null;

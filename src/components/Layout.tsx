@@ -7,7 +7,7 @@ import type { Region, TournamentCategory, Language } from '@/lib/index';
 import { DotWaveBackground, DotDivider } from '@/components/DotWaveBackground';
 
 // Mode public : lien Admin masqué dans la navigation (VITE_PUBLIC_MODE=true au build)
-const IS_PUBLIC_MODE = import.meta.env.VITE_PUBLIC_MODE === 'true';
+const IS_PUBLIC_MODE = __IS_PUBLIC_BUILD__ || import.meta.env.VITE_PUBLIC_MODE === 'true';
 
 // ── MPL Logo (vraie image) ─────────────────────────────────────────────────────
 export function MPLLogo({ size = 40 }: { size?: number }) {
