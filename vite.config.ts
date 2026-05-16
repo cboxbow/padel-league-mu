@@ -216,7 +216,8 @@ function publicAssetPathPlugin(isAdmin: boolean): Plugin {
 export default defineConfig(({ mode }) => {
   const isAdmin = mode === 'admin';
   const isPublic = mode === 'public';
-  const base = isAdmin ? '/admin-panel/' : '/';
+  const isVercel = process.env.VERCEL === '1' || process.env.VERCEL === 'true';
+  const base = isAdmin && !isVercel ? '/admin-panel/' : '/';
 
   return {
     base,
