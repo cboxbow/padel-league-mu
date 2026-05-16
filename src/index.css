@@ -1,0 +1,572 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap");
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+==========================================================================
+【AI HANDOVER NOTE】
+1. DESIGN PHILOSOPHY:
+   - Atmosphere-First Sports Platform: Dark-exclusive design inspired by professional sports broadcasting and stadium night lighting
+   - Glassmorphism 2.0 with Athletic Energy: Frosted glass surfaces (backdrop-blur) with vibrant neon-green (#4ad569) rim-lighting to evoke padel court LED boundaries
+   - Modular Bento Layout: Card-based architecture for clubs, tournaments, rankings, and regions—each module acts as a self-contained data surface
+   - Why this style: Mauritius Padel League requires a premium, energetic, and data-dense interface that feels like a live sports dashboard. The dark theme with neon accents mirrors the excitement of night matches under floodlights.
+
+2. TYPOGRAPHY:
+   - Sans (Inter): Chosen for its exceptional legibility at small sizes (critical for rankings tables, tournament grids, and bilingual FR/EN content). Inter's geometric precision conveys professionalism and modernity, aligning with the league's official status.
+   - Mono (JetBrains Mono): Used for numerical data (points, rankings, dates, match scores). Its tabular figures ensure perfect alignment in leaderboards and statistics panels, enhancing data readability.
+
+3. COLOR SYSTEM:
+   - Brand Primary (#4ad569 → oklch(0.78 0.18 145)): Vibrant padel-green derived from the MPL logo's dot pattern. This hue (145°) sits in the fresh, energetic green spectrum—perfect for CTAs, active states, and tournament category badges.
+   - --brand maps to --primary (buttons, links), --accent (hover states, badges), and --ring (focus outlines)
+   - Semantic Colors:
+     * success (oklch(0.72 0.17 152)): Slightly cooler green for match wins, confirmed registrations
+     * warning (oklch(0.75 0.16 55)): Amber for pending tournaments, schedule conflicts
+     * destructive (oklch(0.62 0.22 25)): Red-orange for cancellations, errors
+   - Tournament Categories: Each M-tier (M25→M1000) uses distinct hues mapped to chart tokens (chart_1 through chart_5) for visual hierarchy in calendars and filters.
+
+4. USAGE GUIDE:
+   - Layout: Full-width dashboard with sticky navigation (rgba(10,10,10,0.92) + backdrop-blur). Hero section uses 100vh with animated SVG logo.
+   - Glass Card Pattern: All content cards use `background: rgba(255,255,255,0.03)`, `backdrop-filter: blur(10px)`, `border: 1px solid rgba(74,213,105,0.15)`. On hover: `translateY(-5px)`, border becomes solid --primary, and box-shadow glows green.
+   - Special Effects:
+     * Rim-light: Subtle top border (1px solid rgba(74,213,105,0.4)) on cards to simulate stadium lighting
+     * Region Pills: Colored accent borders (Nord=blue, Ouest=green, Centre=violet, Est=amber) using chart tokens
+     * Admin Sidebar: Uses sidebar tokens with higher opacity (rgba(255,255,255,0.05)) to distinguish from main content
+   - Accessibility: All text maintains WCAG AA contrast (white on near-black). Focus rings use --ring (green) at 2px width.
+   - Bilingual Toggle: Positioned top-right, uses --muted for inactive language, --primary for active.
+==========================================================================
+*/
+
+:root {
+  /* Typography */
+  --font-sans: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: JetBrains Mono, 'Courier New', monospace;
+  
+  /* Radius */
+  --radius: 0.75rem;
+
+  /* Core UI Tokens */
+  --background: oklch(0.98 0.002 145);
+  --foreground: oklch(0.15 0.01 145);
+  --card: oklch(0.99 0.001 145);
+  --card-foreground: oklch(0.15 0.01 145);
+  --popover: oklch(0.99 0.001 145);
+  --popover-foreground: oklch(0.15 0.01 145);
+  --primary: oklch(0.78 0.18 145);
+  --primary-foreground: oklch(0.12 0.01 145);
+  --secondary: oklch(0.92 0.01 145);
+  --secondary-foreground: oklch(0.18 0.01 145);
+  --muted: oklch(0.94 0.005 145);
+  --muted-foreground: oklch(0.48 0.01 145);
+  --accent: oklch(0.75 0.16 145);
+  --accent-foreground: oklch(0.12 0.01 145);
+  --destructive: oklch(0.62 0.22 25);
+  --destructive-foreground: oklch(0.98 0.002 25);
+  --border: oklch(0.88 0.01 145);
+  --input: oklch(0.88 0.01 145);
+  --ring: oklch(0.78 0.18 145);
+  
+  /* Chart Tokens */
+  --chart-1: oklch(0.72 0.17 152);
+  --chart-2: oklch(0.65 0.19 240);
+  --chart-3: oklch(0.75 0.16 55);
+  --chart-4: oklch(0.62 0.22 25);
+  --chart-5: oklch(0.68 0.20 285);
+  
+  /* Sidebar Tokens */
+  --sidebar: oklch(0.96 0.002 145);
+  --sidebar-foreground: oklch(0.18 0.01 145);
+  --sidebar-primary: oklch(0.78 0.18 145);
+  --sidebar-primary-foreground: oklch(0.12 0.01 145);
+  --sidebar-accent: oklch(0.92 0.01 145);
+  --sidebar-accent-foreground: oklch(0.18 0.01 145);
+  --sidebar-border: oklch(0.88 0.01 145);
+  --sidebar-ring: oklch(0.78 0.18 145);
+}
+
+.dark {
+  --background: oklch(0.12 0.005 145);
+  --foreground: oklch(0.95 0.005 145);
+  --card: oklch(0.15 0.008 145);
+  --card-foreground: oklch(0.95 0.005 145);
+  --popover: oklch(0.14 0.008 145);
+  --popover-foreground: oklch(0.95 0.005 145);
+  --primary: oklch(0.78 0.18 145);
+  --primary-foreground: oklch(0.12 0.01 145);
+  --secondary: oklch(0.22 0.015 145);
+  --secondary-foreground: oklch(0.92 0.005 145);
+  --muted: oklch(0.20 0.012 145);
+  --muted-foreground: oklch(0.62 0.01 145);
+  --accent: oklch(0.82 0.20 145);
+  --accent-foreground: oklch(0.12 0.01 145);
+  --destructive: oklch(0.65 0.24 25);
+  --destructive-foreground: oklch(0.95 0.005 25);
+  --border: oklch(0.25 0.015 145);
+  --input: oklch(0.25 0.015 145);
+  --ring: oklch(0.78 0.18 145);
+  
+  /* Chart Tokens */
+  --chart-1: oklch(0.75 0.19 152);
+  --chart-2: oklch(0.68 0.21 240);
+  --chart-3: oklch(0.78 0.18 55);
+  --chart-4: oklch(0.65 0.24 25);
+  --chart-5: oklch(0.72 0.22 285);
+  
+  /* Sidebar Tokens */
+  --sidebar: oklch(0.14 0.008 145);
+  --sidebar-foreground: oklch(0.92 0.005 145);
+  --sidebar-primary: oklch(0.78 0.18 145);
+  --sidebar-primary-foreground: oklch(0.12 0.01 145);
+  --sidebar-accent: oklch(0.22 0.015 145);
+  --sidebar-accent-foreground: oklch(0.92 0.005 145);
+  --sidebar-border: oklch(0.25 0.015 145);
+  --sidebar-ring: oklch(0.78 0.18 145);
+}
+
+@theme inline {
+  /* Shadcn Core Mapping */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Charts Mapping */
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  /* Sidebar Mapping */
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Typography */
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  /* Radius */
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    @apply scroll-smooth antialiased;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans min-h-screen;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+  }
+
+  code, pre {
+    @apply font-mono;
+  }
+
+  ::selection {
+    @apply bg-primary/20 text-primary;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/20 rounded-full hover:bg-muted-foreground/40;
+  }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+/* ── Selects sombres (évite le fond blanc du navigateur) ── */
+select {
+  color-scheme: dark;
+  background-color: #1a1a1a !important;
+  color: white;
+}
+select option {
+  background-color: #1a1a1a !important;
+  color: white;
+}
+select option:hover,
+select option:checked {
+  background-color: #2a2a2a !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   MPL PREMIUM DESIGN SYSTEM — Dot-Wave Visual Identity
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Design tokens ─────────────────────────────────────────────────────────── */
+:root {
+  --mpl-green:        #4ad569;
+  --mpl-green-dim:    rgba(74,213,105,0.15);
+  --mpl-green-glow:   rgba(74,213,105,0.25);
+  --mpl-gold:         #c9a84c;
+  --mpl-gold-dim:     rgba(201,168,76,0.15);
+  --mpl-surface:      rgba(255,255,255,0.03);
+  --mpl-border:       rgba(74,213,105,0.15);
+  --mpl-border-hover: rgba(74,213,105,0.7);
+  --mpl-shadow-card:  0 2px 20px rgba(0,0,0,0.4);
+  --mpl-shadow-hover: 0 16px 48px rgba(74,213,105,0.18), 0 4px 16px rgba(0,0,0,0.4);
+  --mpl-shadow-glow:  0 0 32px rgba(74,213,105,0.35);
+  --mpl-transition:   all 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Animations ─────────────────────────────────────────────────────────────── */
+
+/* Slow float for dot particles */
+@keyframes float-particle {
+  0%, 100% { transform: translateY(0) scale(1);     opacity: 0.12; }
+  33%       { transform: translateY(-18px) scale(1.2); opacity: 0.22; }
+  66%       { transform: translateY(-8px) scale(0.9);  opacity: 0.08; }
+}
+
+/* Dot-wave float — applied to SVG circles */
+@keyframes dot-wave-float {
+  0%, 100% { transform: translateY(0);    }
+  50%       { transform: translateY(-4px); }
+}
+.dot-float {
+  animation: dot-wave-float 6s ease-in-out infinite;
+}
+
+/* Gradient shimmer for premium cards */
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+/* Green glow pulse on active elements */
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 12px rgba(74,213,105,0.3); }
+  50%       { box-shadow: 0 0 28px rgba(74,213,105,0.6), 0 0 48px rgba(74,213,105,0.2); }
+}
+
+/* Gentle scale breathe */
+@keyframes breathe {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.015); }
+}
+
+/* Slide up entrance */
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Fade in */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Dot orbit (decorative) */
+@keyframes orbit {
+  from { transform: rotate(0deg)   translateX(40px) rotate(0deg);   }
+  to   { transform: rotate(360deg) translateX(40px) rotate(-360deg); }
+}
+
+/* Horizontal scroll marquee for sponsor band */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+/* ── Utility classes ──────────────────────────────────────────────────────────*/
+
+/* Premium glass card */
+.mpl-card {
+  background:     var(--mpl-surface);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border:          1px solid var(--mpl-border);
+  border-radius:   16px;
+  box-shadow:      var(--mpl-shadow-card);
+  transition:      var(--mpl-transition);
+  position:        relative;
+  overflow:        hidden;
+}
+.mpl-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(74,213,105,0.4), transparent);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.mpl-card:hover {
+  border-color:    var(--mpl-border-hover);
+  box-shadow:      var(--mpl-shadow-hover);
+  transform:       translateY(-4px);
+}
+.mpl-card:hover::before {
+  opacity: 1;
+}
+
+/* Premium button — green gradient */
+.mpl-btn-primary {
+  background:      linear-gradient(135deg, #4ad569 0%, #3bc257 50%, #2db048 100%);
+  color:           #0a0a0a;
+  border:          none;
+  border-radius:   10px;
+  font-weight:     700;
+  cursor:          pointer;
+  position:        relative;
+  overflow:        hidden;
+  transition:      var(--mpl-transition);
+  box-shadow:      0 4px 20px rgba(74,213,105,0.25);
+}
+.mpl-btn-primary::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.15) 0%, transparent 60%);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.mpl-btn-primary:hover {
+  transform:   translateY(-2px) scale(1.02);
+  box-shadow:  0 8px 28px rgba(74,213,105,0.4);
+}
+.mpl-btn-primary:hover::after {
+  opacity: 1;
+}
+.mpl-btn-primary:active {
+  transform: translateY(0) scale(0.99);
+}
+
+/* Outline button */
+.mpl-btn-outline {
+  background:   transparent;
+  color:        white;
+  border:       1px solid rgba(255,255,255,0.22);
+  border-radius: 10px;
+  font-weight:  600;
+  cursor:       pointer;
+  transition:   var(--mpl-transition);
+}
+.mpl-btn-outline:hover {
+  background:   rgba(255,255,255,0.07);
+  border-color: rgba(74,213,105,0.5);
+  color:        #4ad569;
+  transform:    translateY(-2px);
+}
+
+/* Green glow text */
+.mpl-text-glow {
+  text-shadow: 0 0 24px rgba(74,213,105,0.5), 0 0 48px rgba(74,213,105,0.2);
+}
+
+/* Gold accent text */
+.mpl-text-gold {
+  background: linear-gradient(135deg, #e8c96a 0%, #c9a84c 50%, #a8873a 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Green gradient text */
+.mpl-text-green {
+  background: linear-gradient(135deg, #6fe688 0%, #4ad569 50%, #2db048 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Section label badge */
+.mpl-badge {
+  display:       inline-flex;
+  align-items:   center;
+  gap:           6px;
+  background:    rgba(74,213,105,0.1);
+  color:         #4ad569;
+  border:        1px solid rgba(74,213,105,0.25);
+  border-radius: 20px;
+  padding:       5px 14px;
+  font-size:     12px;
+  font-weight:   700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+/* Stat number display */
+.mpl-stat-num {
+  font-size:   clamp(32px, 5vw, 52px);
+  font-weight: 900;
+  line-height: 1;
+  color:       var(--mpl-green);
+  font-feature-settings: "tnum";
+}
+
+/* Horizontal rule with dot texture */
+.mpl-divider {
+  border:     none;
+  height:     1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(74,213,105,0.3) 30%, rgba(74,213,105,0.5) 50%, rgba(74,213,105,0.3) 70%, transparent 100%);
+  margin:     40px 0;
+}
+
+/* Scrolling sponsors band */
+.mpl-sponsors-track {
+  display:   flex;
+  gap:       48px;
+  animation: marquee 28s linear infinite;
+  width:     max-content;
+}
+.mpl-sponsors-track:hover {
+  animation-play-state: paused;
+}
+
+/* Section entrance animation */
+.mpl-section-enter {
+  animation: slide-up 0.6s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* Dot texture background pattern (CSS only) */
+.mpl-dot-texture {
+  background-image: radial-gradient(rgba(74,213,105,0.12) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* Glowing border on focus */
+.mpl-focus-ring:focus-visible {
+  outline:     none;
+  box-shadow:  0 0 0 2px #4ad569;
+}
+
+/* ── Navbar enhancements ─────────────────────────────────────────────────────── */
+.mpl-nav-link {
+  position:   relative;
+  transition: var(--mpl-transition);
+}
+.mpl-nav-link::after {
+  content:    '';
+  position:   absolute;
+  bottom:     -2px;
+  left:       50%;
+  right:      50%;
+  height:     2px;
+  background: var(--mpl-green);
+  border-radius: 2px;
+  transition: left 0.25s ease, right 0.25s ease;
+}
+.mpl-nav-link:hover::after,
+.mpl-nav-link.active::after {
+  left:  8px;
+  right: 8px;
+}
+
+/* ── Ranking table row ───────────────────────────────────────────────────────── */
+.mpl-table-row {
+  transition: background 0.2s ease, transform 0.2s ease;
+  border-radius: 8px;
+}
+.mpl-table-row:hover {
+  background:  rgba(74,213,105,0.06) !important;
+  transform:   translateX(2px);
+}
+.mpl-table-row:nth-child(1) { background: rgba(201,168,76,0.06); }
+.mpl-table-row:nth-child(2) { background: rgba(180,180,180,0.05); }
+.mpl-table-row:nth-child(3) { background: rgba(180,120,60,0.05); }
+
+/* ── Tournament card category glow ──────────────────────────────────────────── */
+.cat-glow-m25   { box-shadow: 0 0 0 1px rgba(74,213,105,0.2), 0 4px 24px rgba(74,213,105,0.08); }
+.cat-glow-m250  { box-shadow: 0 0 0 1px rgba(234,179,8,0.2),   0 4px 24px rgba(234,179,8,0.08); }
+.cat-glow-m1000 { box-shadow: 0 0 0 1px rgba(239,68,68,0.2),   0 4px 24px rgba(239,68,68,0.08); }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   MOBILE — approche scroll horizontal : le design desktop est préservé.
+   Sur mobile, le contenu peut dépasser en largeur et scroller horizontalement.
+   Pas de compression, pas de reflow agressif.
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* 1. box-sizing global safe (n'affecte pas les dimensions existantes) */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* 2. Le body ne cache PAS le scroll horizontal — il le laisse passer */
+html {
+  overflow-x: auto;   /* scroll horizontal dispo partout si besoin */
+}
+body {
+  overflow-x: auto;
+  min-width: 360px;   /* largeur minimale : en dessous, scroll horizontal naturel */
+}
+
+/* 3. Médias : hauteur auto uniquement, pas de max-width forcé */
+img, video, canvas, iframe {
+  height: auto;
+}
+
+/* 4. Wrapper utilitaire pour sections qui doivent scroller horizontalement sur mobile
+      ex: <div className="mpl-hscroll"> ... </div>  */
+.mpl-hscroll {
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(74,213,105,0.2) transparent;
+}
+.mpl-hscroll::-webkit-scrollbar { height: 4px; }
+.mpl-hscroll::-webkit-scrollbar-track { background: transparent; }
+.mpl-hscroll::-webkit-scrollbar-thumb { background: rgba(74,213,105,0.25); border-radius: 4px; }
+
+/* ── Responsive — prefers-reduced-motion ──────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .dot-float,
+  .mpl-sponsors-track,
+  .mpl-section-enter {
+    animation: none !important;
+  }
+  .mpl-card:hover,
+  .mpl-btn-primary:hover,
+  .mpl-btn-outline:hover {
+    transform: none !important;
+  }
+}
