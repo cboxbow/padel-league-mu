@@ -617,13 +617,13 @@ export default function Resultats() {
         15000
       );
       if (timedOut) {
-        setError('⏱ Supabase trop lent — données locales affichées');
-        setAllResults(SEED_RESULTS);
+        setError('Connexion live temporairement indisponible. Réessayez dans quelques instants.');
+        setAllResults([]);
         setFromSupabase(false);
       } else if (err) {
         console.warn('[Resultats] Supabase error:', err);
-        setError(`Erreur Supabase: ${supabaseErrorMessage(err)} — données locales affichées`);
-        setAllResults(SEED_RESULTS);
+        setError(`Connexion live temporairement indisponible: ${supabaseErrorMessage(err)}`);
+        setAllResults([]);
         setFromSupabase(false);
       } else if (data && data.length > 0) {
         // ── Normalisation division depuis Supabase ──────────────────────────
@@ -661,11 +661,12 @@ export default function Resultats() {
         setAllResults(normalized);
         setFromSupabase(true);
       } else {
-        setAllResults(SEED_RESULTS);
+        setAllResults([]);
         setFromSupabase(false);
       }
     } else {
-      setAllResults(SEED_RESULTS);
+      setError('Connexion live indisponible. Les résultats seront affichés dès que Supabase sera joignable.');
+      setAllResults([]);
       setFromSupabase(false);
     }
     setLoading(false);
@@ -711,6 +712,7 @@ export default function Resultats() {
 
   const cats    = useMemo(() => [...new Set(allResults.map(r => r.category))].sort(), [allResults]);
   const regions = useMemo(() => [...new Set(allResults.map(r => r.region).filter(Boolean))].sort(), [allResults]);
+  const unavailable = !!error && !loading && allResults.length === 0;
 
   const selStyle: React.CSSProperties = {
     background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.15)',
@@ -735,12 +737,12 @@ export default function Resultats() {
                   Résultats
                 </h1>
                 <span style={{
-                  background: fromSupabase ? 'rgba(74,213,105,0.15)' : 'rgba(245,158,11,0.15)',
-                  color: fromSupabase ? '#4ad569' : '#f59e0b',
-                  border: `1px solid ${fromSupabase ? 'rgba(74,213,105,0.3)' : 'rgba(245,158,11,0.3)'}`,
+                  background: fromSupabase ? 'rgba(74,213,105,0.15)' : 'rgba(239,68,68,0.1)',
+                  color: fromSupabase ? '#4ad569' : '#ef4444',
+                  border: `1px solid ${fromSupabase ? 'rgba(74,213,105,0.3)' : 'rgba(239,68,68,0.25)'}`,
                   borderRadius: '20px', padding: '3px 12px', fontSize: '12px', fontWeight: 600,
                 }}>
-                  {fromSupabase ? '● Supabase' : '● Données locales'}
+                  {fromSupabase ? '● Supabase' : '● Live indisponible'}
                 </span>
               </div>
               <p style={{ color: '#888', fontSize: '15px', margin: 0 }}>
@@ -761,7 +763,7 @@ export default function Resultats() {
           </div>
 
           {/* ── Stats chips ── */}
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '28px' }}>
+          {!unavailable && <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '28px' }}>
             {[
               { label: 'Tournois',  value: stats.tournaments, color: '#4ad569',  sub: 'saison 2026' },
               { label: 'Hommes',    value: stats.men,          color: '#60a5fa',  sub: 'divisions H' },
@@ -787,7 +789,7 @@ export default function Resultats() {
               <div style={{ color: '#888', fontSize: '12px', marginTop: '2px', fontWeight: 600 }}>Entrées</div>
               <div style={{ color: '#444', fontSize: '10px', marginTop: '2px' }}>résultats total</div>
             </div>
-          </div>
+          </div>}
 
           {/* ── Erreur ── */}
           {error && (
@@ -797,7 +799,7 @@ export default function Resultats() {
           )}
 
           {/* ── Filtres ── */}
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '24px', alignItems: 'center' }}>
+          {!unavailable && <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '24px', alignItems: 'center' }}>
             {/* Recherche */}
             <div style={{ position: 'relative', flex: '1 1 260px', minWidth: '200px' }}>
               <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#666' }} />
@@ -826,7 +828,7 @@ export default function Resultats() {
               <option value="all">Toutes régions</option>
               {regions.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
-          </div>
+          </div>}
 
           {/* ── Contenu ── */}
           {loading ? (
@@ -834,6 +836,27 @@ export default function Resultats() {
               <RefreshCw size={28} style={{ animation: 'spin 1s linear infinite', marginBottom: '12px' }} />
               <p style={{ margin: 0 }}>Chargement des résultats...</p>
             </div>
+          ) : unavailable ? (
+            <GlassCard style={{ padding: '60px', textAlign: 'center' }}>
+              <Trophy size={40} color="#333" style={{ marginBottom: '12px' }} />
+              <p style={{ color: '#d0d0d0', margin: '0 0 8px', fontWeight: 700 }}>
+                Résultats temporairement indisponibles
+              </p>
+              <p style={{ color: '#666', margin: '0 0 20px', fontSize: '14px', lineHeight: 1.6 }}>
+                Les données live ne sont pas accessibles pour le moment. Aucune donnée fictive n'est affichée.
+              </p>
+              <button
+                onClick={load}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '6px',
+                  background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '10px', padding: '10px 16px', color: '#a0a0a0',
+                  cursor: 'pointer', fontSize: '13px',
+                }}
+              >
+                <RefreshCw size={14} /> Réessayer
+              </button>
+            </GlassCard>
           ) : groups.length === 0 ? (
             <GlassCard style={{ padding: '60px', textAlign: 'center' }}>
               <Trophy size={40} color="#333" style={{ marginBottom: '12px' }} />
