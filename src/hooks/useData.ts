@@ -355,16 +355,18 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
   // • BroadcastChannel = onglets différents (admin dans tab A, public dans tab B)
   // • storage event = fallback universel cross-tab
   useEffect(() => {
-    const handleUpdate = (div?: string) => {
-      if (!div || div === division) {
+    const handleUpdate = (payload?: { division?: string; divisions?: string[] }) => {
+      const updatedDivision = payload?.division;
+      const updatedDivisions = payload?.divisions ?? [];
+      if ((!updatedDivision && updatedDivisions.length === 0) || updatedDivision === division || updatedDivisions.includes(division)) {
         setRefreshTick(t => t + 1);
       }
     };
 
     // Same-tab event
     const localHandler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { division?: string };
-      handleUpdate(detail?.division);
+      const detail = (e as CustomEvent).detail as { division?: string; divisions?: string[] };
+      handleUpdate(detail);
     };
     window.addEventListener('mpl:rankings:updated', localHandler);
 
@@ -372,8 +374,8 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
     let bc: BroadcastChannel | null = null;
     try {
       bc = new BroadcastChannel('mpl_rankings_update');
-      bc.onmessage = (e: MessageEvent<{ division?: string }>) => {
-        handleUpdate(e.data?.division);
+      bc.onmessage = (e: MessageEvent<{ division?: string; divisions?: string[] }>) => {
+        handleUpdate(e.data);
       };
     } catch {
       // BroadcastChannel non supporté (très vieux navigateurs)
@@ -383,8 +385,8 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
     const storageHandler = (e: StorageEvent) => {
       if (e.key === 'mpl_rankings_updated') {
         try {
-          const data = JSON.parse(e.newValue ?? '{}') as { division?: string };
-          handleUpdate(data.division);
+          const data = JSON.parse(e.newValue ?? '{}') as { division?: string; divisions?: string[] };
+          handleUpdate(data);
         } catch { /* ignore */ }
       }
     };
@@ -396,6 +398,14 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
       bc?.close();
     };
   }, [division]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (!document.hidden) setRefreshTick(t => t + 1);
+    }, 30000);
+
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     async function load() {

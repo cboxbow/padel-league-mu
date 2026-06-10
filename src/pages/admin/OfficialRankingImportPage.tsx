@@ -141,6 +141,30 @@ function trendFromRankMovement(rank: number, rankBefore: number): Trend {
   return 'same';
 }
 
+function notifyRankingUpdate(divisions: Division[]) {
+  const payload = {
+    divisions: divisions.map(divToDb),
+    ts: Date.now(),
+  };
+
+  window.dispatchEvent(new CustomEvent('mpl:rankings:updated', { detail: payload }));
+
+  try {
+    const bc = new BroadcastChannel('mpl_rankings_update');
+    bc.postMessage(payload);
+    bc.close();
+  } catch {
+    // BroadcastChannel is optional.
+  }
+
+  try {
+    localStorage.setItem('mpl_rankings_updated', JSON.stringify(payload));
+    setTimeout(() => localStorage.removeItem('mpl_rankings_updated'), 500);
+  } catch {
+    // localStorage can be disabled in some browsers.
+  }
+}
+
 function inferDivisionFromSheet(sheetName: string, fallback: Division): Division {
   const name = sheetName.toUpperCase();
   if (name.includes('WOMEN') || name.includes('DAMES')) return 'WOMEN';
@@ -646,6 +670,11 @@ async function saveOfficialImport(
 
   onProgress?.(`Insertion details tournoi (${totalDetails} lignes)...`);
   await insertOfficialRankingDetails(importId, rows, batchId);
+
+  if (publish) {
+    onProgress?.('Publication vers la page Classements...');
+    await replaceRankingsTable(rows, onProgress);
+  }
 }
 
 export default function OfficialRankingImportPage() {
@@ -705,7 +734,7 @@ export default function OfficialRankingImportPage() {
       setMessage(publish
         ? 'Classements officiels publies.'
         : 'Classements officiels enregistres.');
-      window.dispatchEvent(new CustomEvent('mpl:rankings:updated', { detail: {} }));
+      notifyRankingUpdate([...new Set(rows.map(row => row.division))]);
     } catch (error) {
       setStatus('error');
       setMessage(error instanceof Error ? error.message : String(error));
