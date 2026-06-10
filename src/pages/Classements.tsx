@@ -44,7 +44,7 @@ interface PlayerRankingDetail {
 // ── Données complètes bundlées (fallback garanti) ───────────────────────────
 // Converties en PlayerRanking pour compatibilité interne
 function toLocalRanking(r: RankingEntry, div: Division): PlayerRanking {
-  return { rank: r.rank, player_name: r.player_name, points: Math.ceil(Number(r.points) || 0), division: div };
+  return { rank: r.rank, player_name: r.player_name, points: roundUpPoints(r.points), division: div };
 }
 
 const DATA_MAP: Record<Division, PlayerRanking[]> = {
@@ -107,6 +107,10 @@ function divToDb(div: Division): string {
   return DIV_MAP[div] ?? 'men';
 }
 
+function roundUpPoints(value: unknown): number {
+  return Math.ceil(Number(value) || 0);
+}
+
 // Convertit un objet SimpleRanking (useData) en PlayerRanking (local)
 function toPlayerRanking(r: {
   rank: number;
@@ -122,7 +126,7 @@ function toPlayerRanking(r: {
     rank: r.rank,
     rank_before: r.rank_before,
     player_name: r.name,
-    points: r.points,
+    points: roundUpPoints(r.points),
     division: 'MEN',
     tournaments_played: r.tournaments_played,
     trend: r.trend,
@@ -138,7 +142,7 @@ const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 function formatPoints(value: number): string {
-  return Math.ceil(Number(value) || 0).toLocaleString('fr-FR');
+  return roundUpPoints(value).toLocaleString('fr-FR');
 }
 
 function PlayerDetailModal({
@@ -323,7 +327,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
       for (const row of result.data as Record<string, unknown>[]) {
         const eventName = String(row.tournament_name ?? '').trim();
         const date = String(row.tournament_date ?? '').trim();
-        const points = Math.ceil(Number(row.points ?? 0) || 0);
+        const points = roundUpPoints(row.points);
         const rank = Number(row.rank ?? 0);
         const teamName = String(row.team_name ?? '').trim();
         const key = `${eventName}|${date}|${teamName}|${points}|${rank}`;
@@ -331,7 +335,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
         seen.add(key);
         rows.push({
           event_name: date ? `${eventName} - ${new Date(date).toLocaleDateString('fr-FR')}` : eventName,
-          points: Math.ceil(points),
+          points: roundUpPoints(points),
           season: Number(row.season ?? 2026),
           rank: Number.isFinite(rank) ? rank : undefined,
           team_name: teamName,
@@ -362,7 +366,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
       const officialDetails = !error && data
         ? (data as Record<string, unknown>[]).map(row => ({
           event_name: String(row.event_name ?? ''),
-          points: Math.ceil(Number(row.points ?? 0) || 0),
+          points: roundUpPoints(row.points),
           season: Number(row.season ?? 2026),
         })).filter(detail => detail.event_name && detail.points > 0)
         : [];
