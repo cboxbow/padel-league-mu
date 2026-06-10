@@ -529,7 +529,12 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
                   updated_at:         r.created_at as string | undefined,
                 }))
                 .filter(r => r.name);
-              if (officialSorted.length) {
+              const hasPreviousRankData = officialSorted.some(r =>
+                Number.isFinite(Number(r.rank_before)) &&
+                Number(r.rank_before) > 0 &&
+                Number(r.rank_before) !== Number(r.rank)
+              );
+              if (officialSorted.length && hasPreviousRankData) {
                 console.log(`[useRankings] ✅ official_rankings: ${officialSorted.length} joueurs (${division})`);
                 setRankings(await enrichWithOfficialDetails(officialSorted));
                 setSource('supabase');
