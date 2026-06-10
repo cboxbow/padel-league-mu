@@ -427,7 +427,7 @@ async function replaceRankingsTable(rows: OfficialRankingRow[], onProgress?: (me
     await deleteRankingsForDivision(division, onProgress);
   }
 
-  const payload = rows.map(row => ({
+  const fullPayload = rows.map(row => ({
     id: row.id,
     player_name: row.player_name,
     rank: row.rank,
@@ -439,16 +439,38 @@ async function replaceRankingsTable(rows: OfficialRankingRow[], onProgress?: (me
     season: row.season,
     updated_at: new Date().toISOString(),
   }));
+  const leanPayload = fullPayload.map(({ rank_before, ...row }) => row);
+  const payloads = [fullPayload, leanPayload];
 
   const BATCH = 250;
-  for (let i = 0; i < payload.length; i += BATCH) {
-    onProgress?.(`Insertion rankings ${i + 1}-${Math.min(i + BATCH, payload.length)} / ${payload.length}...`);
-    const { error } = await withTimeout(
-      sb.from('rankings').insert(payload.slice(i, i + BATCH)),
-      `Insertion rankings ${i + 1}-${Math.min(i + BATCH, payload.length)}`
-    );
-    if (error) throw new Error(`Insertion rankings: ${error.message}`);
+  let lastError = '';
+  for (const payload of payloads) {
+    let inserted = 0;
+    let tryNextPayload = false;
+
+    for (let i = 0; i < payload.length; i += BATCH) {
+      onProgress?.(`Insertion rankings ${i + 1}-${Math.min(i + BATCH, payload.length)} / ${payload.length}...`);
+      const { error } = await withTimeout(
+        sb.from('rankings').insert(payload.slice(i, i + BATCH)),
+        `Insertion rankings ${i + 1}-${Math.min(i + BATCH, payload.length)}`
+      );
+
+      if (error) {
+        lastError = error.message;
+        if (inserted === 0 && isSchemaCacheError(error.message) && error.message.includes('rank_before')) {
+          tryNextPayload = true;
+          break;
+        }
+        throw new Error(`Insertion rankings: ${error.message}`);
+      }
+
+      inserted += Math.min(BATCH, payload.length - i);
+    }
+
+    if (!tryNextPayload) return;
   }
+
+  throw new Error(`Insertion rankings: ${lastError}`);
 }
 
 async function insertOfficialImportMetadata(fileName: string, rowCount: number, publish: boolean): Promise<string | null> {

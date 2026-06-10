@@ -3,6 +3,7 @@
 
 alter table if exists public.rankings
   alter column points type numeric using points::numeric,
+  add column if not exists rank_before integer,
   add column if not exists tournaments_played integer not null default 0,
   add column if not exists trend text not null default 'same',
   add column if not exists season integer not null default 2026,

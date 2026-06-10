@@ -547,11 +547,14 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
           const allRows: Record<string, unknown>[] = [];
           let offset = 0;
           const PAGE = 1000;
+          let includeRankBefore = true;
           for (;;) {
             const controller = new AbortController();
             const tId = setTimeout(() => controller.abort(), 12000);
             const params = new URLSearchParams({
-              select: 'player_name,rank,rank_before,points,division,tournaments_played,trend,season,updated_at',
+              select: includeRankBefore
+                ? 'player_name,rank,rank_before,points,division,tournaments_played,trend,season,updated_at'
+                : 'player_name,rank,points,division,tournaments_played,trend,season,updated_at',
               order: 'division,rank',
               limit: String(PAGE),
               offset: String(offset),
@@ -561,7 +564,14 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
               headers: { 'apikey': sbKey, 'Authorization': `Bearer ${sbKey}`, 'Accept': 'application/json' },
             });
             clearTimeout(tId);
-            if (!res.ok) { console.warn(`[useRankings] rankings HTTP ${res.status}`); break; }
+            if (!res.ok) {
+              if (includeRankBefore && offset === 0) {
+                includeRankBefore = false;
+                continue;
+              }
+              console.warn(`[useRankings] rankings HTTP ${res.status}`);
+              break;
+            }
             const batch = await res.json() as Record<string, unknown>[];
             if (!Array.isArray(batch) || !batch.length) break;
             allRows.push(...batch);
