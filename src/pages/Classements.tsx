@@ -145,6 +145,38 @@ function formatPoints(value: number): string {
   return roundUpPoints(value).toLocaleString('fr-FR');
 }
 
+function rankMovement(player: PlayerRanking) {
+  const current = Number(player.rank);
+  const previous = Number(player.rank_before ?? 0);
+  if (Number.isFinite(current) && Number.isFinite(previous) && current > 0 && previous > 0 && current !== previous) {
+    return {
+      trend: current < previous ? 'up' as const : 'down' as const,
+      delta: Math.abs(previous - current),
+      title: `Avant: #${previous}`,
+    };
+  }
+  return { trend: 'same' as const, delta: 0, title: 'Stable' };
+}
+
+function TrendCell({ player }: { player: PlayerRanking }) {
+  const movement = rankMovement(player);
+  const color = movement.trend === 'up' ? '#4ad569' : movement.trend === 'down' ? '#ef4444' : '#777';
+  const label = movement.trend === 'up'
+    ? `↑ ${movement.delta}`
+    : movement.trend === 'down'
+      ? `↓ ${movement.delta}`
+      : '→';
+
+  return (
+    <div
+      title={movement.title}
+      style={{ textAlign: 'center', color, fontSize: '12px', fontWeight: 700 }}
+    >
+      {label}
+    </div>
+  );
+}
+
 function PlayerDetailModal({
   player,
   details,
@@ -488,12 +520,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
               </span>
             </div>
 
-            <div
-              title={r.rank_before && r.rank_before !== r.rank ? `Avant: #${r.rank_before}` : 'Stable'}
-              style={{ textAlign: 'center', color: r.trend === 'up' ? '#4ad569' : r.trend === 'down' ? '#ef4444' : '#777', fontSize: '12px', fontWeight: 700 }}
-            >
-              {r.trend === 'up' ? `↑ ${r.rank_before ? r.rank_before - r.rank : ''}` : r.trend === 'down' ? `↓ ${r.rank_before ? r.rank - r.rank_before : ''}` : '→'}
-            </div>
+            <TrendCell player={r} />
 
             <div style={{ textAlign: 'center', color: '#666', fontSize: '12px', fontFamily: 'JetBrains Mono, monospace' }}>
               {r.season ?? 2026}

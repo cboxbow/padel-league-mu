@@ -36,6 +36,24 @@ interface RankingPointDetail {
 }
 
 const DIVISIONS: Division[] = ['MEN', 'WOMEN', 'JUNIOR', 'MIXTE'];
+const RANK_ALIASES = ['rank_now', 'current_rank', 'new_rank', 'rank', 'rang', 'classement', 'position'];
+const RANK_BEFORE_ALIASES = [
+  'rank_before',
+  'previous_rank',
+  'prev_rank',
+  'old_rank',
+  'old_ranking',
+  'last_rank',
+  'rank_last',
+  'ranking_before',
+  'rang_before',
+  'ancien_rang',
+  'ancien_classement',
+  'ancien_ranking',
+  'previous',
+  'ancien',
+  'old',
+];
 const DIV_LABELS: Record<Division, { label: string; color: string }> = {
   MEN: { label: 'Hommes', color: '#3b82f6' },
   WOMEN: { label: 'Dames', color: '#ec4899' },
@@ -116,6 +134,13 @@ function normTrend(raw: unknown): Trend {
   return 'same';
 }
 
+function trendFromRankMovement(rank: number, rankBefore: number): Trend {
+  if (!Number.isFinite(rank) || !Number.isFinite(rankBefore) || rank <= 0 || rankBefore <= 0) return 'same';
+  if (rank < rankBefore) return 'up';
+  if (rank > rankBefore) return 'down';
+  return 'same';
+}
+
 function inferDivisionFromSheet(sheetName: string, fallback: Division): Division {
   const name = sheetName.toUpperCase();
   if (name.includes('WOMEN') || name.includes('DAMES')) return 'WOMEN';
@@ -177,15 +202,44 @@ function findIndex(headers: string[], aliases: string[]): number {
   return headers.findIndex(header => aliases.some(alias => header === alias || header.includes(alias)));
 }
 
+function isPreviousRankHeader(header: string): boolean {
+  return RANK_BEFORE_ALIASES.some(alias => header === alias || header.includes(alias));
+}
+
+function findRankIndex(headers: string[]): number {
+  return headers.findIndex(header =>
+    !isPreviousRankHeader(header) &&
+    RANK_ALIASES.some(alias => header === alias || header.includes(alias))
+  );
+}
+
+function findRankBeforeIndex(headers: string[], matrix: unknown[][], headerRow: number, rankIdx: number, nameIdx: number): number {
+  const explicitIdx = headers.findIndex(isPreviousRankHeader);
+  if (explicitIdx >= 0 && explicitIdx !== rankIdx) return explicitIdx;
+
+  const start = rankIdx >= 0 ? rankIdx + 1 : 0;
+  const end = nameIdx >= 0 ? nameIdx : headers.length;
+  for (let index = start; index < end; index += 1) {
+    const sample = matrix.slice(headerRow + 1, headerRow + 10);
+    const numericCount = sample.filter(row => {
+      const value = parseNumber(row[index], NaN);
+      return Number.isFinite(value) && value > 0;
+    }).length;
+    if (numericCount >= Math.min(3, sample.length || 3)) return index;
+  }
+
+  return -1;
+}
+
 function parseRankingSheet(sheetName: string, sheet: XLSX.WorkSheet, fallbackDivision: Division): OfficialRankingRow[] {
   const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '', blankrows: false, raw: true });
   const headerRow = findHeaderRow(matrix);
   if (headerRow < 0) return [];
 
   const headers = matrix[headerRow].map(cell => normalizeHeader(String(cell ?? '')));
-  const rankIdx = findIndex(headers, ['rank_now', 'rank', 'rang', 'classement']);
-  const rankBeforeIdx = findIndex(headers, ['rank_before', 'previous_rank', 'rang_before']);
+  const rankIdx = findRankIndex(headers);
   const nameIdx = findIndex(headers, ['players', 'player_name', 'player', 'joueur', 'name', 'nom']);
+  const rankBeforeIdx = findRankBeforeIndex(headers, matrix, headerRow, rankIdx, nameIdx);
   const pointsIdx = findIndex(headers, ['total_points', 'points', 'pts']);
   const divisionIdx = findIndex(headers, ['division', 'category', 'categorie']);
   const division = inferDivisionFromSheet(sheetName, fallbackDivision);
@@ -219,7 +273,7 @@ function parseRankingSheet(sheetName: string, sheet: XLSX.WorkSheet, fallbackDiv
         points,
         division: rowDivision,
         tournaments_played: details.length,
-        trend: rank < rankBefore ? 'up' : rank > rankBefore ? 'down' : 'same',
+        trend: trendFromRankMovement(rank, rankBefore),
         season: 2026,
         details,
       };
@@ -249,7 +303,9 @@ async function parseRankingFile(file: File, fallbackDivision: Division): Promise
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
   return rows
     .map((row) => {
-      const rank = parseNumber(pick(row, ['rank_now', 'rank', 'rang', 'position', 'classement']), NaN);
+      const rank = parseNumber(pick(row, RANK_ALIASES), NaN);
+      const rankBeforeValue = pick(row, RANK_BEFORE_ALIASES);
+      const rankBefore = parseNumber(rankBeforeValue, rank);
       const playerName = String(pick(row, ['players', 'player_name', 'player', 'joueur', 'name', 'nom']) ?? '').trim();
       const points = roundUpPoints(pick(row, ['total_points', 'points', 'pts']));
       const division = normDiv(pick(row, ['division', 'category', 'categorie']), fallbackDivision);
@@ -259,12 +315,12 @@ async function parseRankingFile(file: File, fallbackDivision: Division): Promise
       return {
         id: newId(),
         rank,
-        rank_before: rank,
+        rank_before: rankBefore,
         player_name: playerName,
         points,
         division,
         tournaments_played: parseNumber(pick(row, ['tournaments_played', 'tournois', 'tournois_joues']), 0),
-        trend: normTrend(pick(row, ['trend', 'tendance'])),
+        trend: rankBeforeValue !== undefined ? trendFromRankMovement(rank, rankBefore) : normTrend(pick(row, ['trend', 'tendance'])),
         season: parseNumber(pick(row, ['season', 'saison']), 2026),
         details: [],
       };
