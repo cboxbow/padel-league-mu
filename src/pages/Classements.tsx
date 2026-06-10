@@ -44,7 +44,7 @@ interface PlayerRankingDetail {
 // ── Données complètes bundlées (fallback garanti) ───────────────────────────
 // Converties en PlayerRanking pour compatibilité interne
 function toLocalRanking(r: RankingEntry, div: Division): PlayerRanking {
-  return { rank: r.rank, player_name: r.player_name, points: r.points, division: div };
+  return { rank: r.rank, player_name: r.player_name, points: Math.ceil(Number(r.points) || 0), division: div };
 }
 
 const DATA_MAP: Record<Division, PlayerRanking[]> = {
@@ -323,7 +323,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
       for (const row of result.data as Record<string, unknown>[]) {
         const eventName = String(row.tournament_name ?? '').trim();
         const date = String(row.tournament_date ?? '').trim();
-        const points = Number(row.points ?? 0);
+        const points = Math.ceil(Number(row.points ?? 0) || 0);
         const rank = Number(row.rank ?? 0);
         const teamName = String(row.team_name ?? '').trim();
         const key = `${eventName}|${date}|${teamName}|${points}|${rank}`;
@@ -331,7 +331,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
         seen.add(key);
         rows.push({
           event_name: date ? `${eventName} - ${new Date(date).toLocaleDateString('fr-FR')}` : eventName,
-          points,
+          points: Math.ceil(points),
           season: Number(row.season ?? 2026),
           rank: Number.isFinite(rank) ? rank : undefined,
           team_name: teamName,
@@ -362,7 +362,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
       const officialDetails = !error && data
         ? (data as Record<string, unknown>[]).map(row => ({
           event_name: String(row.event_name ?? ''),
-          points: Number(row.points ?? 0),
+          points: Math.ceil(Number(row.points ?? 0) || 0),
           season: Number(row.season ?? 2026),
         })).filter(detail => detail.event_name && detail.points > 0)
         : [];

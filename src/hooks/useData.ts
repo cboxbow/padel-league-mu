@@ -14,6 +14,10 @@ import {
 // Type interne pour les données CSV parsées
 interface CsvRow { rank: number; name: string; points: number; }
 
+function roundUpPoints(value: unknown): number {
+  return Math.ceil(Number(value) || 0);
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 export interface ClubData {
   id: string; name: string; slug: string; region: string; city: string;
@@ -64,7 +68,7 @@ async function fetchPublicCsv(division: 'men' | 'women' | 'junior' | 'mixed'): P
         return {
           rank:   parseInt(cols[0] ?? '0', 10),
           name:   (cols[1] ?? '').trim().replace(/^"|"$/g, ''),
-          points: parseInt(cols[2] ?? '0', 10),
+          points: roundUpPoints(cols[2] ?? '0'),
         };
       }).filter(r => r.name && !isNaN(r.rank));
       if (parsed.length > 5) {
@@ -508,7 +512,7 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
                   rank:               Number(r.rank ?? 0),
                   rank_before:        Number(r.rank_before ?? r.rank ?? 0),
                   name:               String(r.player_name ?? '').trim(),
-                  points:             Number(r.points ?? 0),
+                  points:             roundUpPoints(r.points),
                   tournaments_played: Number(r.tournaments_played ?? 0),
                   trend:              trendFromRanks(r.rank, r.rank_before, r.trend),
                   season:             Number(r.season ?? 2026),
@@ -560,7 +564,7 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
                   rank:               Number(r.rank ?? 0),
                   rank_before:        Number(r.rank_before ?? r.rank ?? 0),
                   name:               String(r.player_name ?? '').trim(),
-                  points:             Number(r.points ?? 0),
+                  points:             roundUpPoints(r.points),
                   tournaments_played: Number(r.tournaments_played ?? 0),
                   trend:              trendFromRanks(r.rank, r.rank_before, r.trend),
                   season:             Number(r.season ?? 2026),
@@ -603,7 +607,7 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
           if (trRows.length) {
             const pts: Record<string, number> = {};
             for (const r of trRows) {
-              const p = Number(r.points ?? 0);
+              const p = roundUpPoints(r.points);
               for (const k of ['player1_name', 'player2_name'] as const) {
                 const n = String(r[k] ?? '').trim();
                 if (n) pts[n] = (pts[n] ?? 0) + p;
@@ -644,7 +648,7 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
         mixed:  FULL_RANKINGS_MIXED,
       };
       const full = (fullMap[division] ?? []).map(r => ({
-        rank: r.rank, name: r.player_name, points: r.points,
+        rank: r.rank, name: r.player_name, points: roundUpPoints(r.points),
       }));
       setRankings(full);
       setSource('local');

@@ -158,6 +158,11 @@ function parseNumber(value: unknown, fallback = 0): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function roundUpPoints(value: unknown): number {
+  const parsed = parseNumber(value, 0);
+  return Math.ceil(Number.isFinite(parsed) ? parsed : 0);
+}
+
 function findHeaderRow(rows: unknown[][]): number {
   return rows.findIndex(row => {
     const headers = row.map(cell => normalizeHeader(String(cell ?? '')));
@@ -191,7 +196,7 @@ function parseRankingSheet(sheetName: string, sheet: XLSX.WorkSheet, fallbackDiv
     .map((row) => {
       const rank = parseNumber(row[rankIdx], NaN);
       const playerName = String(row[nameIdx] ?? '').trim();
-      const points = parseNumber(row[pointsIdx], 0);
+      const points = roundUpPoints(row[pointsIdx]);
       const rowDivision = divisionIdx >= 0 ? normDiv(row[divisionIdx], division) : division;
 
       if (!Number.isFinite(rank) || !playerName) return null;
@@ -202,7 +207,7 @@ function parseRankingSheet(sheetName: string, sheet: XLSX.WorkSheet, fallbackDiv
       const details = eventCells
         .map((value, index) => ({
           event_name: String(eventHeaders[index] ?? '').trim(),
-          points: parseNumber(value, 0),
+          points: roundUpPoints(value),
         }))
         .filter(detail => detail.event_name && detail.points > 0);
 
@@ -246,7 +251,7 @@ async function parseRankingFile(file: File, fallbackDivision: Division): Promise
     .map((row) => {
       const rank = parseNumber(pick(row, ['rank_now', 'rank', 'rang', 'position', 'classement']), NaN);
       const playerName = String(pick(row, ['players', 'player_name', 'player', 'joueur', 'name', 'nom']) ?? '').trim();
-      const points = parseNumber(pick(row, ['total_points', 'points', 'pts']), 0);
+      const points = roundUpPoints(pick(row, ['total_points', 'points', 'pts']));
       const division = normDiv(pick(row, ['division', 'category', 'categorie']), fallbackDivision);
 
       if (!Number.isFinite(rank) || !playerName) return null;
@@ -279,16 +284,23 @@ function validateRows(rows: OfficialRankingRow[]) {
   });
 
   for (const [division, divRows] of byDivision) {
-    const seenRanks = new Set<number>();
+    const rowsByRank = new Map<number, OfficialRankingRow[]>();
     const seenNames = new Set<string>();
 
     for (const row of divRows) {
-      if (seenRanks.has(row.rank)) warnings.push(`${DIV_LABELS[division].label}: rang ${row.rank} en doublon.`);
-      seenRanks.add(row.rank);
+      rowsByRank.set(row.rank, [...(rowsByRank.get(row.rank) ?? []), row]);
 
       const key = row.player_name.trim().toLowerCase();
       if (seenNames.has(key)) warnings.push(`${DIV_LABELS[division].label}: joueur en doublon (${row.player_name}).`);
       seenNames.add(key);
+    }
+
+    for (const [rank, rankRows] of rowsByRank) {
+      if (rankRows.length <= 1) continue;
+      const uniquePoints = new Set(rankRows.map(row => row.points));
+      if (uniquePoints.size > 1) {
+        warnings.push(`${DIV_LABELS[division].label}: rang ${rank} en doublon avec points differents.`);
+      }
     }
   }
 
