@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { getSupabaseClient, getSupabaseRestUrl, isSupabaseConnected, safeSupabaseQuery } from '@/lib/supabase';
 import { normalizeJuniorCategory, normalizeTournamentDisplayName } from '@/lib/tournamentNames';
 import { MPL_CLUBS, MPL_TOURNAMENTS } from '@/data/mpl2026';
@@ -347,6 +347,7 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
   const [rankings, setRankings] = useState<SimpleRanking[]>([]);
   const [loading, setLoading]   = useState(true);
   const [source, setSource]     = useState<DataSource>('local');
+  const lastGoodSupabaseRef = useRef<SimpleRanking[] | null>(null);
   // refreshTick monte chaque fois que l'admin modifie un classement
   const [refreshTick, setRefreshTick] = useState(0);
 
@@ -409,7 +410,14 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
 
   useEffect(() => {
     async function load() {
-      setLoading(true);
+      if (!lastGoodSupabaseRef.current?.length) setLoading(true);
+
+      const applySupabaseRankings = (rows: SimpleRanking[]) => {
+        lastGoodSupabaseRef.current = rows;
+        setRankings(rows);
+        setSource('supabase');
+        setLoading(false);
+      };
 
       const sbUrl = getSupabaseRestUrl();
       const sbKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
@@ -536,9 +544,7 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
               );
               if (officialSorted.length && hasPreviousRankData) {
                 console.log(`[useRankings] ✅ official_rankings: ${officialSorted.length} joueurs (${division})`);
-                setRankings(await enrichWithOfficialDetails(officialSorted));
-                setSource('supabase');
-                setLoading(false);
+                applySupabaseRankings(await enrichWithOfficialDetails(officialSorted));
                 return;
               }
             }
@@ -599,9 +605,7 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
               if (sorted.length) {
                 const enriched = await enrichWithOfficialDetails(sorted);
                 console.log(`[useRankings] ✅ Supabase rankings: ${sorted.length} joueurs (${division})`);
-                setRankings(enriched);
-                setSource('supabase');
-                setLoading(false);
+                applySupabaseRankings(enriched);
                 return;
               }
             }
@@ -642,9 +646,7 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
               .map(([name, points], i) => ({ rank: i+1, name, points }));
             if (sorted2.length) {
               console.log(`[useRankings] ✅ Supabase tournament_results fallback: ${sorted2.length} joueurs (${division})`);
-              setRankings(sorted2);
-              setSource('supabase');
-              setLoading(false);
+              applySupabaseRankings(sorted2);
               return;
             }
           }
@@ -657,6 +659,13 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
       }
 
       // 2️⃣ CSV public (fichiers /public/rankings_2026_*.csv)
+      if (lastGoodSupabaseRef.current?.length) {
+        setRankings(lastGoodSupabaseRef.current);
+        setSource('supabase');
+        setLoading(false);
+        return;
+      }
+
       const csvData = await fetchPublicCsv(division);
       if (csvData && csvData.length > 0) {
         setRankings(csvData);
