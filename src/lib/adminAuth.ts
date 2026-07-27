@@ -39,14 +39,30 @@ export async function fetchUserProfile(
   userId: string,
   email: string
 ): Promise<UserProfile | null> {
-  const { data, error } = await client
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const byId = await client
     .from('profiles')
     .select('id, email, full_name, role')
     .eq('id', userId)
-    .single();
+    .maybeSingle();
+
+  let data = byId.data;
+  let error = byId.error;
+
+  if (!data && normalizedEmail) {
+    const byEmail = await client
+      .from('profiles')
+      .select('id, email, full_name, role')
+      .ilike('email', normalizedEmail)
+      .maybeSingle();
+
+    data = byEmail.data;
+    error = byEmail.error ?? error;
+  }
 
   if (error || !data) {
-    console.warn('[adminAuth] Profil introuvable:', userId, error?.message);
+    console.warn('[adminAuth] Profil introuvable:', { userId, email: normalizedEmail, error: error?.message });
     return null;
   }
 
