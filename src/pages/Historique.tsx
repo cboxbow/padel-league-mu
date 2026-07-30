@@ -152,7 +152,7 @@ function normalizeClubName(value: unknown): string {
   const name = cleanText(value);
   if (!name) return '';
   return name
-    .replace(/Ca\?a|CaÃ±a|CANA/gi, 'Caña')
+    .replace(/Ca\?a|CaÃ±a|CANA/gi, 'Ca\u00f1a')
     .replace(/Isla Padel de Beau Plan/gi, 'Isla Padel Beau Plan')
     .replace(/Labourdonnais Sports Club|LAB SPORTS CLUB/gi, 'Labourdonnais Mapou')
     .replace(/RM\s*Forbach|RM Club Grand Baie\s*\(Forbach\)|Grand Baie\s*\(Forbach\)/gi, 'RM Club Grand Baie')
@@ -430,7 +430,7 @@ function tournamentProfile(map: Map<string, number>): { label: string; value: nu
   const junior = (map.get('U11') || 0) + (map.get('U13') || 0) + (map.get('U15') || 0);
   return [
     { label: 'Majeurs', value: major, color: '#a78bfa', detail: 'M1000 + M500' },
-    { label: 'Challengers', value: challenger, color: '#3b82f6', detail: 'M250 a M25' },
+    { label: 'Challengers', value: challenger, color: '#3b82f6', detail: 'M250 / M100 / M50 / M25' },
     { label: 'Juniors', value: junior, color: '#f59e0b', detail: 'U11 a U15' },
   ];
 }
@@ -717,7 +717,7 @@ function ClubDetailModal({ clubName, rows, onClose }: { clubName: string; rows: 
             <div style={{ color: '#a78bfa', fontWeight: 900, fontSize: '13px', textTransform: 'uppercase', marginBottom: '8px' }}>Club organisateur</div>
             <h2 style={{ color: 'white', fontSize: '30px', margin: 0, fontWeight: 950, lineHeight: 1.1 }}>{clubName}</h2>
             <div style={{ color: '#777', fontSize: '13px', marginTop: '8px' }}>
-              {seasonsLabel(summary?.seasons ?? new Set())} · {events.length} tournoi{events.length > 1 ? 's' : ''} · {compactList(Array.from(summary?.divisions ?? []).map(divisionLabel))}
+              {seasonsLabel(summary?.seasons ?? new Set())} · {events.length} evenement{events.length > 1 ? 's' : ''} organise{events.length > 1 ? 's' : ''} · {compactList(Array.from(summary?.divisions ?? []).map(divisionLabel))}
             </div>
           </div>
           <button
@@ -742,10 +742,10 @@ function ClubDetailModal({ clubName, rows, onClose }: { clubName: string; rows: 
 
         <div style={{ overflow: 'auto', padding: '18px 24px 24px', display: 'grid', gap: '18px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: '12px' }}>
-            <StatTile label="Tournois" value={events.length} sub="epreuves physiques" color="#3b82f6" />
-            <StatTile label="Titres" value={summary?.wins ?? 0} sub="paires gagnantes" color="#f59e0b" />
-            <StatTile label="Podiums" value={summary?.podiums ?? 0} sub="paires top 3" color="#4ad569" />
-            <StatTile label="Joueurs" value={players.length} sub="top carriere club" color="#a78bfa" />
+            <StatTile label="Evenements" value={events.length} sub="dates tournoi" color="#3b82f6" />
+            <StatTile label="Titres attribues" value={summary?.wins ?? 0} sub="paires gagnantes" color="#f59e0b" />
+            <StatTile label="Podiums attribues" value={summary?.podiums ?? 0} sub="paires top 3" color="#4ad569" />
+            <StatTile label="Joueurs marquants" value={players.length} sub="meilleurs profils ici" color="#a78bfa" />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px,0.8fr) minmax(360px,1.2fr)', gap: '14px' }}>
@@ -779,11 +779,21 @@ function ClubDetailModal({ clubName, rows, onClose }: { clubName: string; rows: 
           </div>
 
           <GlassCard style={{ padding: 0, overflowX: 'auto' }}>
+            <div style={{ padding: '14px 14px 0', display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center' }}>
+              <h3 style={{ color: 'white', fontSize: '15px', margin: 0, fontWeight: 900 }}>Evenements organises</h3>
+              <span style={{ color: '#777', fontSize: '12px' }}>{events.length} evenement{events.length > 1 ? 's' : ''}</span>
+            </div>
             <div style={{ minWidth: '980px', padding: '12px 14px', display: 'grid', gridTemplateColumns: '120px 90px minmax(230px,1fr) 180px minmax(260px,1.1fr)', gap: '12px', color: '#666', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
               <span>Date</span><span>Cat</span><span>Tournoi</span><span>Divisions</span><span>Vainqueurs</span>
             </div>
             {events.slice(0, 80).map(event => {
               const color = CATEGORY_COLORS[event.category] ?? '#4ad569';
+              const winnerBlocks = event.divisions
+                .map(division => ({
+                  division,
+                  winners: event.winners.filter(winner => winner.division === division),
+                }))
+                .filter(block => block.winners.length > 0);
               return (
                 <div key={event.key} style={{ minWidth: '980px', padding: '12px 14px', display: 'grid', gridTemplateColumns: '120px 90px minmax(230px,1fr) 180px minmax(260px,1.1fr)', gap: '12px', alignItems: 'start', borderBottom: '1px solid rgba(255,255,255,0.045)' }}>
                   <span style={{ color: '#777', fontFamily: 'JetBrains Mono, monospace', fontSize: '12px' }}>{formatDate(event.date)}</span>
@@ -794,9 +804,16 @@ function ClubDetailModal({ clubName, rows, onClose }: { clubName: string; rows: 
                   </div>
                   <span style={{ color: '#9ca3af', fontSize: '12px' }}>{compactList(event.divisions.map(divisionLabel))}</span>
                   <div style={{ display: 'grid', gap: '5px' }}>
-                    {event.winners.length ? event.winners.map(winner => (
-                      <div key={winner.id} style={{ color: '#f59e0b', fontSize: '12px', fontWeight: 850, lineHeight: 1.25, overflowWrap: 'anywhere' }}>
-                        {normalizeName(winner.player1_name)} / {normalizeName(winner.player2_name)}
+                    {winnerBlocks.length ? winnerBlocks.map(block => (
+                      <div key={block.division} style={{ display: 'grid', gap: '2px' }}>
+                        <div style={{ color: DIVISION_CONFIG[block.division]?.color ?? '#f59e0b', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}>
+                          {divisionLabel(block.division)}
+                        </div>
+                        {block.winners.map(winner => (
+                          <div key={winner.id} style={{ color: '#f59e0b', fontSize: '12px', fontWeight: 850, lineHeight: 1.25, overflowWrap: 'anywhere' }}>
+                            {normalizeName(winner.player1_name)} / {normalizeName(winner.player2_name)}
+                          </div>
+                        ))}
                       </div>
                     )) : <span style={{ color: '#777', fontSize: '12px' }}>-</span>}
                   </div>
@@ -1771,3 +1788,4 @@ export default function Historique() {
     </Layout>
   );
 }
+
