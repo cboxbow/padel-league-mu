@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Award,
   CalendarDays,
@@ -1361,13 +1362,16 @@ export default function Historique() {
     canonical: 'https://padelleague.mu/#/historique',
   });
 
+  const location = useLocation();
+  const initialSearch = useMemo(() => new URLSearchParams(location.search).get('q') ?? '', [location.search]);
+
   const [rows, setRows] = useState<HistoricalResult[]>([]);
   const [currentRankings, setCurrentRankings] = useState<CurrentRankingMap>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [fromSupabase, setFromSupabase] = useState(false);
   const [view, setView] = useState<ViewKey>('tournois');
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialSearch);
   const [year, setYear] = useState('all');
   const [division, setDivision] = useState('all');
   const [category, setCategory] = useState('all');
@@ -1436,6 +1440,14 @@ export default function Historique() {
   };
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    const query = new URLSearchParams(location.search).get('q') ?? '';
+    if (query) {
+      setSearch(query);
+      setView('joueurs');
+    }
+  }, [location.search]);
 
   const years = useMemo(() => unique(rows.map(row => String(row.event_year))).sort((a, b) => Number(b) - Number(a)), [rows]);
   const categories = useMemo(() => unique(rows.map(row => row.category).filter(Boolean)).sort(), [rows]);
