@@ -251,6 +251,8 @@ function manualCalendarFallback(sheetName, meta) {
     [/\bM500\b.*URBAN.*OCT.*23/, '2023-10-13', 'Urban Sport Grand Baie', 'NORD'],
     [/\bM1000\b.*RM.*OCT.*23/, '2023-10-16', 'RM Club Grand Baie', 'NORD'],
     [/\bM500\b.*RM.*NOV.*23/, '2023-11-11', 'RM Club Grand Baie', 'NORD'],
+    [/\bM500\b.*AZURI.*SEP.*23/, '2023-09-19', 'Oxygen', 'EST'],
+    [/\bM500\b.*ISLA.*DEC.*23/, '2023-12-01', 'Isla Padel Beau Plan', 'NORD'],
     [/\bM500\b.*AZURI.*JAN.*24/, '2024-01-12', 'Oxygen', 'EST'],
     [/\bM500\b.*AZURI.*FEB.*24.*MIXED/, '2024-02-24', 'Oxygen', 'EST'],
     [/\bM100\b.*AZURI.*FEB.*24/, '2024-02-23', 'Oxygen', 'EST'],
