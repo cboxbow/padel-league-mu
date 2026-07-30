@@ -152,7 +152,7 @@ function normalizeClubName(value: unknown): string {
   const name = cleanText(value);
   if (!name) return '';
   return name
-    .replace(/Ca\?a|CaÃ±a|CANA/gi, 'Ca\u00f1a')
+    .replace(/Ca\?a|Ca\u00f1a|CANA/gi, 'Ca\u00f1a')
     .replace(/Isla Padel de Beau Plan/gi, 'Isla Padel Beau Plan')
     .replace(/Labourdonnais Sports Club|LAB SPORTS CLUB/gi, 'Labourdonnais Mapou')
     .replace(/RM\s*Forbach|RM Club Grand Baie\s*\(Forbach\)|Grand Baie\s*\(Forbach\)/gi, 'RM Club Grand Baie')
@@ -778,7 +778,7 @@ function ClubDetailModal({ clubName, rows, onClose }: { clubName: string; rows: 
             </GlassCard>
           </div>
 
-          <GlassCard style={{ padding: 0, overflowX: 'auto' }}>
+          <GlassCard style={{ padding: 0, overflow: 'auto', maxHeight: '360px', overscrollBehavior: 'contain' }}>
             <div style={{ padding: '14px 14px 0', display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center' }}>
               <h3 style={{ color: 'white', fontSize: '15px', margin: 0, fontWeight: 900 }}>Evenements organises</h3>
               <span style={{ color: '#777', fontSize: '12px' }}>{events.length} evenement{events.length > 1 ? 's' : ''}</span>
@@ -1788,4 +1788,3 @@ export default function Historique() {
     </Layout>
   );
 }
-
