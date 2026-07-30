@@ -482,7 +482,7 @@ function TournamentCard({ group, filterDiv = 'all', initialOpen = false }: { gro
                               <button type="button" onClick={() => navigate(playerHistoryPath(r.player1_name))} title="Voir le profil historique" style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', textAlign: 'left' }}>
                                 <PremiumName name={r.player1_name} podium={isPodium} />
                               </button>
-                              <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '11px', fontWeight: 300 }}>?</span>
+                              <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', fontWeight: 700 }}>/</span>
                               <button type="button" onClick={() => navigate(playerHistoryPath(r.player2_name))} title="Voir le profil historique" style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', textAlign: 'left' }}>
                                 <PremiumName name={r.player2_name} podium={isPodium} />
                               </button>
