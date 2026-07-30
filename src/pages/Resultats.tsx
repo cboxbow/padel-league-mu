@@ -27,6 +27,27 @@ interface TournamentResult {
   points: number;
 }
 
+interface HistoricalTournamentResult {
+  id: string;
+  event_key: string;
+  event_name: string;
+  event_year: number;
+  season: number;
+  category: string;
+  division: string;
+  junior_category?: string | null;
+  club_name: string;
+  event_date?: string | null;
+  region?: string | null;
+  rank_label?: string | null;
+  rank_min?: number | null;
+  rank_max?: number | null;
+  team_name?: string | null;
+  player1_name: string;
+  player2_name: string;
+  points: number;
+}
+
 interface TournamentGroup {
   key: string;
   tournament_id: string;
@@ -52,6 +73,27 @@ const RESULT_COLUMNS = [
   'region',
   'club_name',
   'rank',
+  'team_name',
+  'player1_name',
+  'player2_name',
+  'points',
+].join(',');
+
+const HISTORICAL_RESULT_COLUMNS = [
+  'id',
+  'event_key',
+  'event_name',
+  'event_year',
+  'season',
+  'category',
+  'division',
+  'junior_category',
+  'club_name',
+  'event_date',
+  'region',
+  'rank_label',
+  'rank_min',
+  'rank_max',
   'team_name',
   'player1_name',
   'player2_name',
@@ -102,8 +144,107 @@ function searchText(value: unknown): string {
     .toLowerCase();
 }
 
+function cleanText(value: unknown): string {
+  return String(value ?? '').trim();
+}
+
+function normalizeClubName(value: unknown): string {
+  const name = cleanText(value);
+  if (!name) return '';
+  return name
+    .replace(/Ca\?a|Ca\u00f1a|CANA/gi, 'Ca\u00f1a')
+    .replace(/Isla Padel de Beau Plan/gi, 'Isla Padel Beau Plan')
+    .replace(/Labourdonnais Sports Club|LAB SPORTS CLUB/gi, 'Labourdonnais Mapou')
+    .replace(/RM\s*Forbach|RM Club Grand Baie\s*\(Forbach\)|Grand Baie\s*\(Forbach\)/gi, 'RM Club Grand Baie')
+    .replace(/I Padel RM/gi, 'I Padel by RM')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeDivision(value: unknown, category?: unknown): string {
+  const raw = cleanText(value).toLowerCase();
+  if (['men', 'hommes', 'h', 'mens'].includes(raw)) return 'men';
+  if (['women', 'dames', 'femmes', 'w'].includes(raw)) return 'women';
+  if (['mixed', 'mixte'].includes(raw)) return 'mixed';
+  if (['junior', 'juniors'].includes(raw)) return 'junior';
+
+  const cat = cleanText(category).toUpperCase();
+  if (['U11', 'U13', 'U15', 'U10', 'U12', 'U14'].includes(cat)) return 'junior';
+  if (cat === 'MIXED') return 'mixed';
+  return raw || 'men';
+}
+
+function rankNumberFromHistorical(row: HistoricalTournamentResult): number {
+  const direct = Number(row.rank_min ?? row.rank_max);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const match = cleanText(row.rank_label).match(/\d+/);
+  return match ? Number(match[0]) : 999;
+}
+
+function roundPoints(value: unknown): number {
+  return Math.ceil(Number(value) || 0);
+}
+
 function playerHistoryPath(name: string): string {
   return `${ROUTE_PATHS.HISTORY}?q=${encodeURIComponent(formatName(name))}`;
+}
+
+function mapHistoricalResult(row: HistoricalTournamentResult): TournamentResult {
+  const category = normalizeJuniorCategory(row.category || row.junior_category || '');
+  const clubName = normalizeClubName(row.club_name);
+  const player1 = formatName(row.player1_name ?? '');
+  const player2 = formatName(row.player2_name ?? '');
+
+  return {
+    id: `historical-${row.id}`,
+    tournament_id: row.event_key || `historical-${row.event_year}-${row.event_name}-${clubName}`,
+    tournament_name: normalizeTournamentDisplayName(row.event_name || row.event_key || 'Tournoi MPL', clubName),
+    tournament_date: row.event_date || `${row.event_year || row.season || 2026}-01-01`,
+    category,
+    division: normalizeDivision(row.division, category),
+    region: cleanText(row.region),
+    club_name: clubName,
+    rank: rankNumberFromHistorical(row),
+    team_name: row.team_name || `${player1} / ${player2}`,
+    player1_name: player1,
+    player2_name: player2,
+    points: roundPoints(row.points),
+  };
+}
+
+async function fetchHistoricalResults2026(sb: ReturnType<typeof getSupabaseClient>): Promise<TournamentResult[]> {
+  if (!sb) return [];
+  const pageSize = 1000;
+  const allRows: HistoricalTournamentResult[] = [];
+
+  for (let from = 0; from < 6000; from += pageSize) {
+    const { data, error } = await sb
+      .from('historical_tournament_results')
+      .select(HISTORICAL_RESULT_COLUMNS)
+      .eq('event_year', 2026)
+      .order('event_date', { ascending: false, nullsFirst: false })
+      .order('rank_min', { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (error) throw error;
+    const batch = (data ?? []) as HistoricalTournamentResult[];
+    allRows.push(...batch);
+    if (batch.length < pageSize) break;
+  }
+
+  return allRows.map(mapHistoricalResult).filter(row => row.player1_name || row.player2_name);
+}
+
+async function fetchLegacyResults2026(sb: ReturnType<typeof getSupabaseClient>): Promise<TournamentResult[]> {
+  if (!sb) return [];
+  const { data, error } = await sb.from('tournament_results')
+    .select(RESULT_COLUMNS)
+    .order('tournament_date', { ascending: false })
+    .order('rank', { ascending: true })
+    .limit(5000);
+
+  if (error) throw error;
+  return (data ?? []) as TournamentResult[];
 }
 
 /** Convertit un nom en format Prénom Nom (première lettre de chaque mot en majuscule)
@@ -401,14 +542,21 @@ export default function Resultats() {
     setLoading(true); setError('');
     const sb = getSupabaseClient();
     if (isSupabaseConnected() && sb) {
-      const { data, error: err, timedOut } = await safeSupabaseQuery<TournamentResult[]>(() =>
-        sb.from('tournament_results')
-          .select(RESULT_COLUMNS)
-          .order('tournament_date', { ascending: false })
-          .order('rank', { ascending: true })
-          .limit(5000),
-        15000
-      );
+      const { data, error: err, timedOut } = await safeSupabaseQuery<TournamentResult[]>(async () => {
+        try {
+          const historical = await fetchHistoricalResults2026(sb);
+          if (historical.length > 0) return { data: historical, error: null };
+        } catch (historyError) {
+          console.warn('[Resultats] Historical Supabase error, fallback legacy:', historyError);
+        }
+
+        try {
+          const legacy = await fetchLegacyResults2026(sb);
+          return { data: legacy, error: null };
+        } catch (legacyError) {
+          return { data: null, error: legacyError };
+        }
+      }, 20000);
       if (timedOut) {
         setError('Connexion live temporairement indisponible. Réessayez dans quelques instants.');
         setAllResults([]);
