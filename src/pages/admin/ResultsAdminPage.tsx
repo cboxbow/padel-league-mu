@@ -26,6 +26,31 @@ interface TResult {
   player1_name: string;
   player2_name: string;
   points: number;
+  _source?: 'legacy' | 'historical';
+  _match_key?: string;
+}
+
+interface HistoricalResultRow {
+  id: string;
+  source_file?: string | null;
+  sheet_name?: string | null;
+  event_key: string;
+  event_name: string;
+  event_year: number;
+  season: number;
+  category: string;
+  division: string;
+  junior_category?: string | null;
+  club_name: string;
+  event_date?: string | null;
+  region?: string | null;
+  rank_label?: string | null;
+  rank_min?: number | null;
+  rank_max?: number | null;
+  team_name?: string | null;
+  player1_name: string;
+  player2_name: string;
+  points: number;
 }
 
 interface TournRow {
@@ -44,10 +69,33 @@ interface TournRow {
 // ─────────────────────────────────────────────────────────────────────────────
 //  CONSTANTES
 // ─────────────────────────────────────────────────────────────────────────────
-const DIV_LABELS: Record<string, string>  = { men:'Hommes', women:'Femmes', mixed:'Mixte', junior:'Junior' };
+const DIV_LABELS: Record<string, string>  = { men:'Hommes', women:'Dames', mixed:'Mixte', junior:'Junior' };
 const DIV_COLORS: Record<string, string>  = { men:'#60a5fa', women:'#f472b6', mixed:'#a78bfa', junior:'#4ade80' };
-const CAT_COLORS: Record<string, string>  = { M25:'#6b7280', M50:'#10b981', M100:'#3b82f6', M250:'#8b5cf6', M500:'#f59e0b', M1000:'#ef4444' };
+const CAT_COLORS: Record<string, string>  = { M25:'#6b7280', M50:'#10b981', M100:'#3b82f6', M250:'#8b5cf6', M500:'#f59e0b', M1000:'#ef4444', MIXED:'#a78bfa', U11:'#4ade80', U13:'#4ade80', U15:'#4ade80' };
 const DIVS = ['men','women','mixed','junior'];
+
+const HISTORICAL_RESULT_COLUMNS = [
+  'id',
+  'source_file',
+  'sheet_name',
+  'event_key',
+  'event_name',
+  'event_year',
+  'season',
+  'category',
+  'division',
+  'junior_category',
+  'club_name',
+  'event_date',
+  'region',
+  'rank_label',
+  'rank_min',
+  'rank_max',
+  'team_name',
+  'player1_name',
+  'player2_name',
+  'points',
+].join(',');
 
 function pts(rank: number, category = 'M25', totalTeams = 8) {
   return getPoints(category, rank, totalTeams);
@@ -62,6 +110,199 @@ function fmtDate(d: string) {
   if (!d) return '—';
   try { return new Date(d).toLocaleDateString('fr-FR', { day:'2-digit', month:'long', year:'numeric' }); }
   catch { return d; }
+}
+
+function cleanText(value: unknown): string {
+  return String(value ?? '').trim();
+}
+
+function normKey(value: unknown): string {
+  return cleanText(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim();
+}
+
+function normalizeClubName(value: unknown): string {
+  const name = cleanText(value);
+  if (!name) return '';
+  return name
+    .replace(/Ca\?a|Ca\u00f1a|CANA/gi, 'Ca\u00f1a')
+    .replace(/Isla Padel de Beau Plan/gi, 'Isla Padel Beau Plan')
+    .replace(/Labourdonnais Sports Club|LAB SPORTS CLUB/gi, 'Labourdonnais Mapou')
+    .replace(/RM\s*Forbach|RM Club Grand Baie\s*\(Forbach\)|Grand Baie\s*\(Forbach\)/gi, 'RM Club Grand Baie')
+    .replace(/I Padel RM/gi, 'I Padel by RM')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeDivision(value: unknown, category?: unknown): string {
+  const raw = cleanText(value).toLowerCase();
+  if (['men', 'hommes', 'h', 'mens'].includes(raw)) return 'men';
+  if (['women', 'dames', 'femmes', 'w'].includes(raw)) return 'women';
+  if (['mixed', 'mixte'].includes(raw)) return 'mixed';
+  if (['junior', 'juniors'].includes(raw)) return 'junior';
+  const cat = cleanText(category).toUpperCase();
+  if (['U11', 'U13', 'U15', 'U10', 'U12', 'U14'].includes(cat)) return 'junior';
+  if (cat === 'MIXED') return 'mixed';
+  return raw || 'men';
+}
+
+function rankNumber(row: HistoricalResultRow): number {
+  const direct = Number(row.rank_min ?? row.rank_max);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const match = cleanText(row.rank_label).match(/\d+/);
+  return match ? Number(match[0]) : 999;
+}
+
+function tournamentDate(tourn: TournRow): string {
+  return (tourn.date ?? tourn.tournament_date ?? '').toString().slice(0, 10);
+}
+
+function resultMatchKey(parts: { date?: string; category?: string; club?: string; division?: string }): string {
+  return [
+    cleanText(parts.date).slice(0, 10),
+    cleanText(parts.category).toUpperCase(),
+    normKey(parts.club),
+    normalizeDivision(parts.division, parts.category),
+  ].join('|');
+}
+
+function tournMatchKeys(tourn: TournRow): string[] {
+  const date = tournamentDate(tourn);
+  const category = normalizeJuniorCategory(tourn.category ?? '');
+  const division = normalizeDivision(tourn.division ?? tourn.tournament_type ?? tourn.type, category);
+  const club = normalizeClubName(tourn.club_name);
+  const keys = [resultMatchKey({ date, category, club, division })];
+  if ((tourn.tournament_type ?? tourn.type ?? '').toString().toUpperCase() === 'MEN&WOMEN') {
+    keys.push(resultMatchKey({ date, category, club, division: 'men' }));
+    keys.push(resultMatchKey({ date, category, club, division: 'women' }));
+  }
+  return Array.from(new Set(keys));
+}
+
+function mapHistorical(row: HistoricalResultRow): TResult {
+  const category = normalizeJuniorCategory(row.category || row.junior_category || '');
+  const clubName = normalizeClubName(row.club_name);
+  const division = normalizeDivision(row.division, category);
+  const date = cleanText(row.event_date);
+  return {
+    id: row.id,
+    tournament_id: row.event_key,
+    tournament_name: normalizeTournamentDisplayName(row.event_name, clubName),
+    tournament_date: date,
+    category,
+    division,
+    region: cleanText(row.region),
+    club_name: clubName,
+    rank: rankNumber(row),
+    team_name: row.team_name ?? '',
+    player1_name: cleanText(row.player1_name),
+    player2_name: cleanText(row.player2_name),
+    points: Math.ceil(Number(row.points) || 0),
+    _source: 'historical',
+    _match_key: resultMatchKey({ date, category, club: clubName, division }),
+  };
+}
+
+function historicalPayload(row: Partial<TResult>) {
+  const date = cleanText(row.tournament_date);
+  const year = Number(date.slice(0, 4)) || 2026;
+  const category = normalizeJuniorCategory(row.category ?? '');
+  const division = normalizeDivision(row.division, category);
+  const clubName = normalizeClubName(row.club_name);
+  const eventName = normalizeTournamentDisplayName(row.tournament_name ?? '', clubName);
+  const rank = Number(row.rank ?? 1);
+  const id = row.id && row._source === 'historical'
+    ? row.id
+    : `admin-${row.tournament_id}-${division}-${rank}-${normKey(row.player1_name)}-${normKey(row.player2_name)}`
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '-')
+      .slice(0, 160);
+
+  return {
+    id,
+    source_file: 'admin_results',
+    sheet_name: `${eventName} - ${DIV_LABELS[division] ?? division}`,
+    event_key: row.tournament_id ?? `${date}-${eventName}-${division}`,
+    event_name: eventName,
+    event_year: year,
+    season: year,
+    category,
+    division,
+    junior_category: division === 'junior' ? category : null,
+    club_name: clubName,
+    event_date: date,
+    region: row.region ?? '',
+    rank_label: `#${rank}`,
+    rank_min: rank,
+    rank_max: rank,
+    team_name: row.team_name ?? '',
+    player1_name: row.player1_name ?? '',
+    player2_name: row.player2_name ?? '',
+    points: Math.ceil(Number(row.points) || 0),
+  };
+}
+
+async function fetchHistoricalAdminResults(sb: ReturnType<typeof getSupabaseClient>): Promise<TResult[]> {
+  if (!sb) return [];
+  const pageSize = 1000;
+  const rows: HistoricalResultRow[] = [];
+  for (let from = 0; from < 8000; from += pageSize) {
+    const { data, error } = await sb
+      .from('historical_tournament_results')
+      .select(HISTORICAL_RESULT_COLUMNS)
+      .eq('event_year', 2026)
+      .order('event_date', { ascending: false, nullsFirst: false })
+      .order('rank_min', { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const batch = (data ?? []) as HistoricalResultRow[];
+    rows.push(...batch);
+    if (batch.length < pageSize) break;
+  }
+  return rows.map(mapHistorical);
+}
+
+function mergeResults(legacyRows: TResult[], historicalRows: TResult[]): TResult[] {
+  const map = new Map<string, TResult>();
+  for (const row of legacyRows) {
+    const category = normalizeJuniorCategory(row.category);
+    const clubName = normalizeClubName(row.club_name);
+    const division = normalizeDivision(row.division, category);
+    const normalized: TResult = {
+      ...row,
+      category,
+      division,
+      club_name: clubName,
+      tournament_name: normalizeTournamentDisplayName(row.tournament_name, clubName),
+      points: Math.ceil(Number(row.points) || 0),
+      _source: 'legacy',
+      _match_key: resultMatchKey({ date: row.tournament_date, category, club: clubName, division }),
+    };
+    map.set(`legacy:${normalized.id}`, normalized);
+  }
+  for (const row of historicalRows) {
+    const dedupeKey = [
+      row._match_key,
+      row.rank,
+      normKey(row.player1_name),
+      normKey(row.player2_name),
+      row.points,
+    ].join('|');
+    if (![...map.values()].some(existing => [
+      existing._match_key,
+      existing.rank,
+      normKey(existing.player1_name),
+      normKey(existing.player2_name),
+      existing.points,
+    ].join('|') === dedupeKey)) {
+      map.set(`historical:${row.id}`, row);
+    }
+  }
+  return Array.from(map.values());
 }
 
 const inp: React.CSSProperties = {
@@ -689,21 +930,19 @@ export default function ResultsAdminPage() {
       }, 8000);
 
       try {
-        const [rd, td] = await Promise.all([
+        const [rd, hd, td] = await Promise.all([
           sb.from('tournament_results').select('*').limit(2000),
+          fetchHistoricalAdminResults(sb).then(data => ({ data, error: null })).catch(error => ({ data: [] as TResult[], error })),
           sb.from('tournaments').select('*').limit(1000),
         ]);
         if (timedOut) return; // le timeout a déjà affiché l'erreur
         clearTimeout(timeoutId);
 
-        if (rd.error) {
+        if (rd.error && hd.error) {
           setError(`❌ Résultats : ${rd.error.message ?? 'Erreur inconnue'}`);
         } else {
-          setResults(((rd.data ?? []) as TResult[]).map(result => ({
-            ...result,
-            category: normalizeJuniorCategory(result.category),
-            tournament_name: normalizeTournamentDisplayName(result.tournament_name, result.club_name),
-          })));
+          if (hd.error) console.warn('[Admin Results] historique indisponible:', hd.error);
+          setResults(mergeResults((rd.data ?? []) as TResult[], (hd.data ?? []) as TResult[]));
         }
 
         if (td.error) {
@@ -752,13 +991,16 @@ export default function ResultsAdminPage() {
     };
     const isEdit = results.some(r => r.id === row.id);
     let err: { message: string } | null = null;
-    if (isEdit) {
+    let savedId = row.id && !row.id.startsWith('res-') ? row.id : crypto.randomUUID();
+    if (isEdit && row._source !== 'historical') {
       ({ error: err } = await sb.from('tournament_results').update(payload).eq('id', row.id!));
     } else {
-      const newId = row.id && !row.id.startsWith('res-') ? row.id : crypto.randomUUID();
-      ({ error: err } = await sb.from('tournament_results').insert({ id: newId, ...payload }));
+      ({ error: err } = await sb.from('tournament_results').upsert({ id: savedId, ...payload }, { onConflict: 'id' }));
     }
     if (err) { setError(err.message); return false; }
+    const hist = historicalPayload({ id: row._source === 'historical' ? row.id : savedId, _source: row._source, ...payload });
+    const { error: histErr } = await sb.from('historical_tournament_results').upsert(hist, { onConflict: 'id' });
+    if (histErr) { setError(histErr.message); return false; }
     await load(); return true;
   };
 
@@ -778,7 +1020,12 @@ export default function ResultsAdminPage() {
         points: r.points ?? 0,
       }));
       const { error: e } = await sb.from('tournament_results').upsert(batch, { onConflict: 'id' });
-      if (e) { fail += batch.length; setError(e.message); } else ok += batch.length;
+      const historicalBatch = batch.map(row => historicalPayload(row));
+      const { error: histError } = await sb.from('historical_tournament_results').upsert(historicalBatch, { onConflict: 'id' });
+      if (e || histError) {
+        fail += batch.length;
+        setError(e?.message ?? histError?.message ?? 'Erreur import resultats');
+      } else ok += batch.length;
     }
     await load(); return { ok, fail };
   };
@@ -789,7 +1036,11 @@ export default function ResultsAdminPage() {
     if (!confirm(`Supprimer "${name}" ?`)) return;
     const sb = getSupabaseClient();
     if (!sb) return;
-    const { error: e } = await sb.from('tournament_results').delete().eq('id', id);
+    const [legacyDelete, historicalDelete] = await Promise.all([
+      sb.from('tournament_results').delete().eq('id', id),
+      sb.from('historical_tournament_results').delete().eq('id', id),
+    ]);
+    const e = legacyDelete.error ?? historicalDelete.error;
     if (e) setError(e.message); else await load();
   };
 
@@ -814,20 +1065,38 @@ export default function ResultsAdminPage() {
     for (const r of results) {
       if (!map[r.tournament_id]) map[r.tournament_id] = [];
       map[r.tournament_id].push(r);
+      if (r._match_key) {
+        if (!map[r._match_key]) map[r._match_key] = [];
+        map[r._match_key].push(r);
+      }
     }
     return map;
   }, [results]);
+
+  const resultsForTournament = useCallback((t: TournRow): TResult[] => {
+    const seen = new Set<string>();
+    const rows: TResult[] = [];
+    for (const key of [t.id, ...tournMatchKeys(t)]) {
+      for (const row of resultsByTourn[key] ?? []) {
+        const dedupe = `${row.id}|${row.rank}|${row.player1_name}|${row.player2_name}`;
+        if (seen.has(dedupe)) continue;
+        seen.add(dedupe);
+        rows.push(row);
+      }
+    }
+    return rows.sort((a, b) => normalizeDivision(a.division, a.category).localeCompare(normalizeDivision(b.division, b.category)) || a.rank - b.rank);
+  }, [resultsByTourn]);
 
   // Filtrage + recherche
   const filtered = completedTourns.filter(t => {
     const q = search.toLowerCase();
     const matchSearch = !q || t.name.toLowerCase().includes(q) || (t.club_name ?? '').toLowerCase().includes(q);
-    const hasRes = (resultsByTourn[t.id]?.length ?? 0) > 0;
+    const hasRes = resultsForTournament(t).length > 0;
     const matchStatus = filterStatus === 'all' || (filterStatus === 'done' && hasRes) || (filterStatus === 'missing' && !hasRes);
     return matchSearch && matchStatus;
   });
 
-  const totalMissing  = completedTourns.filter(t => !(resultsByTourn[t.id]?.length)).length;
+  const totalMissing  = completedTourns.filter(t => resultsForTournament(t).length === 0).length;
   const totalWithRes  = completedTourns.length - totalMissing;
   const pctComplete   = completedTourns.length > 0
     ? Math.round((totalWithRes / completedTourns.length) * 100) : 0;
@@ -915,7 +1184,7 @@ export default function ResultsAdminPage() {
           <TournamentCard
             key={t.id}
             tourn={t}
-            results={resultsByTourn[t.id] ?? []}
+            results={resultsForTournament(t)}
             onAdd={tourn => setQuickTourn(tourn)}
             onAddSingle={tourn => setEditing({ row: {}, tourn })}
             onEdit={(row, tourn) => setEditing({ row, tourn })}
