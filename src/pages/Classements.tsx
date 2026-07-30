@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+﻿import { useState, useMemo, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, TrendingUp, Medal, RefreshCw, X, CalendarDays } from 'lucide-react';
 import { Layout, GlassCard } from '@/components/Layout';
@@ -124,6 +124,21 @@ const DIV_MAP: Record<string, 'men' | 'women' | 'junior' | 'mixed'> = {
   MEN: 'men', WOMEN: 'women', JUNIOR: 'junior', MIXTE: 'mixed',
 };
 
+const DB_TO_DIV: Record<string, Division> = {
+  men: 'MEN',
+  women: 'WOMEN',
+  junior: 'JUNIOR',
+  mixed: 'MIXTE',
+};
+
+interface GlobalRankingMatch {
+  player_name: string;
+  division: Division;
+  rank: number;
+  points: number;
+  tournaments_played?: number;
+}
+
 function divToDb(div: Division): string {
   return DIV_MAP[div] ?? 'men';
 }
@@ -190,6 +205,59 @@ function inferEventDate(eventName: string, fallbackDate?: string, fallbackSeason
   return fallbackSeason ? `${fallbackSeason}-01-01` : '';
 }
 
+function isGenericMonthDate(date?: string, eventName = ''): boolean {
+  if (!date || !/^\d{4}-\d{2}-01$/.test(date)) return false;
+  return /(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\s*(\d{2}|\d{4})\b/i.test(eventName);
+}
+
+function calendarDateFromEvent(eventName: string, season?: number, divisionKey?: PlayerRankingDetail['division_key'], clubFallback?: string, categoryFallback?: string): string {
+  if (season !== 2026) return '';
+  const event = compactEventName(eventName);
+  const category = inferCategory(eventName, categoryFallback);
+  const clubName = inferClubName(eventName, clubFallback);
+  const monthMatch = event.match(/\b(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\s*(26|2026)\b/);
+  const month = monthMatch ? MONTHS[monthMatch[1]] : '';
+  let candidates = MPL_TOURNAMENTS.filter(tournament => {
+    if (!tournament.date?.startsWith('2026-')) return false;
+    if (category && compactEventName(tournament.category) !== compactEventName(category)) return false;
+    if (month && tournament.date.slice(5, 7) !== month) return false;
+    if (divisionKey && tournament.division !== divisionKey) return false;
+    return true;
+  });
+  if (clubName) {
+    const sameClub = candidates.filter(tournament => compactEventName(tournament.club_name) === compactEventName(clubName));
+    if (sameClub.length) candidates = sameClub;
+  }
+  if (!candidates.length) {
+    candidates = MPL_TOURNAMENTS.filter(tournament => {
+      const name = compactEventName(tournament.name);
+      if (!tournament.date?.startsWith('2026-')) return false;
+      if (category && !name.includes(compactEventName(category))) return false;
+      if (month && tournament.date.slice(5, 7) !== month) return false;
+      return name.split(' ').some(token => token.length > 2 && event.includes(token));
+    });
+  }
+  const dates = Array.from(new Set(candidates.map(tournament => tournament.date).filter(Boolean)));
+  return dates.length === 1 ? dates[0] : '';
+}
+
+function resolveEventDate(eventName: string, fallbackDate?: string, fallbackSeason?: number, divisionKey?: PlayerRankingDetail['division_key'], clubFallback?: string, categoryFallback?: string): string {
+  const cleanFallback = fallbackDate && /^\d{4}-\d{2}-\d{2}/.test(fallbackDate) ? fallbackDate.slice(0, 10) : '';
+  if (cleanFallback && !isGenericMonthDate(cleanFallback, eventName)) return cleanFallback;
+  const calendarDate = calendarDateFromEvent(eventName, fallbackSeason, divisionKey, clubFallback, categoryFallback);
+  if (calendarDate) return calendarDate;
+  return cleanFallback || inferEventDate(eventName, undefined, fallbackSeason);
+}
+
+function bestDetailDate(preferred: PlayerRankingDetail, other: PlayerRankingDetail): string | undefined {
+  const preferredDate = preferred.event_date || '';
+  const otherDate = other.event_date || '';
+  if (preferredDate && !isGenericMonthDate(preferredDate, preferred.event_name)) return preferredDate;
+  if (otherDate && !isGenericMonthDate(otherDate, other.event_name)) return otherDate;
+  return preferredDate || otherDate || undefined;
+}
+
+
 function inferCategory(eventName: string, fallback?: string): string {
   const match = eventName.toUpperCase().match(/\b(M25|M100|M250|M500|M1000|U11|U13|U15)\b/);
   return match?.[1] ?? fallback ?? '';
@@ -209,7 +277,7 @@ const CLUB_ALIASES: Array<[RegExp, string]> = [
   [/\bAZURI\b|STUDIO BY RM AZURI/, 'Studio by RM Azuri'],
   [/\bISLA\b|ISLA PADEL GRAND BAIE/, 'Isla Padel Grand Baie'],
   [/\bLSC\b|LABOURDONNAIS|MAPOU/, 'Labourdonnais Mapou'],
-  [/\bCANA\b|CAÑA|CANA BEAU PLAN|BEAU PLAN/, 'Caña Beau Plan'],
+  [/\bCANA\b|CAÃ‘A|CANA BEAU PLAN|BEAU PLAN/, 'CaÃ±a Beau Plan'],
   [/\bTB\b|TERRES BRUNES|TAMARIN BAY/, 'Terres Brunes Sports & Leisure'],
   [/\bCMA\b|CLUB MED|ALBION/, 'Club Med Albion'],
   [/\bMCG\b|MONT CHOISY/, 'Mont Choisy Golf'],
@@ -259,13 +327,24 @@ function inferClubName(eventName: string, fallback?: string): string {
   return text || 'MPL';
 }
 
-function normalizeDetailDivision(value: unknown, fallback?: PlayerRankingDetail['division_key']): PlayerRankingDetail['division_key'] {
-  const text = String(value ?? '').toLowerCase();
-  if (text.includes('women') || text.includes('dames')) return 'women';
-  if (text.includes('mixed') || text.includes('mixte')) return 'mixed';
+function normalizeDetailDivision(value: unknown, fallback?: PlayerRankingDetail['division_key'], eventName?: unknown, category?: unknown): PlayerRankingDetail['division_key'] {
+  const eventText = String(eventName ?? '').toLowerCase();
+  const categoryText = String(category ?? '').toLowerCase();
+  const text = `${eventText} ${categoryText} ${String(value ?? '').toLowerCase()}`;
+  if (/\b(women|woman|dames|dame|femmes|femme|wom|wome)\b/.test(text)) return 'women';
+  if (/\b(mixed|mixte|mix)\b/.test(text)) return 'mixed';
   if (text.includes('junior') || /u1[135]/.test(text)) return 'junior';
   if (text.includes('men') || text.includes('hommes')) return 'men';
   return fallback ?? 'men';
+}
+
+function explicitDetailDivision(value: unknown, eventName?: unknown, category?: unknown): PlayerRankingDetail['division_key'] | '' {
+  const text = `${String(eventName ?? '')} ${String(category ?? '')} ${String(value ?? '')}`.toLowerCase();
+  if (/\b(women|woman|dames|dame|femmes|femme|wom|wome)\b/.test(text)) return 'women';
+  if (/\b(mixed|mixte|mix)\b/.test(text)) return 'mixed';
+  if (text.includes('junior') || /u1[135]/.test(text)) return 'junior';
+  if (/\b(men|hommes|homme)\b/.test(text)) return 'men';
+  return '';
 }
 
 function normalizePersonName(value: unknown): string {
@@ -309,13 +388,119 @@ function detailMonthKey(detail: PlayerRankingDetail): string {
   return date ? date.slice(0, 7) : String(detail.season ?? '');
 }
 
+function detailRankingMonthKey(detail: PlayerRankingDetail): string {
+  const inferred = inferEventDate(detail.event_name, undefined, detail.season);
+  const date = detail.source === 'official' ? inferred : (detail.event_date || inferred);
+  return date ? date.slice(0, 7) : String(detail.season ?? '');
+}
+
+function detailClubKey(detail: PlayerRankingDetail): string {
+  const source = compactEventName(`${detail.club_name || ''} ${detail.event_name || ''}`);
+  for (const [pattern, club] of CLUB_ALIASES) {
+    if (pattern.test(source)) return compactEventName(club);
+  }
+  return compactEventName(detail.club_name || inferClubName(detail.event_name));
+}
+
 function detailDedupKey(detail: PlayerRankingDetail): string {
   return [
     detailMonthKey(detail),
-    compactEventName(detail.category || inferCategory(detail.event_name)),
-    compactEventName(detail.club_name || inferClubName(detail.event_name)),
+    detail.division_key || '',
+    detailClubKey(detail),
     roundUpPoints(detail.points),
   ].join('|');
+}
+
+function detailEventKey(detail: PlayerRankingDetail): string {
+  return [
+    detailRankingMonthKey(detail),
+    detail.division_key || '',
+    detailClubKey(detail),
+  ].join('|');
+}
+
+function detailMatchScore(official: PlayerRankingDetail, detail: PlayerRankingDetail): number {
+  let score = 0;
+  const officialMonth = detailRankingMonthKey(official);
+  const detailMonth = detailRankingMonthKey(detail);
+  const officialCategory = compactEventName(official.category || inferCategory(official.event_name));
+  const detailCategory = compactEventName(detail.category || inferCategory(detail.event_name));
+  const officialClub = detailClubKey(official);
+  const detailClub = detailClubKey(detail);
+  const officialDivision = official.division_key || '';
+  const detailDivision = detail.division_key || '';
+
+  if (officialMonth && officialMonth === detailMonth) score += 35;
+  if (officialCategory && officialCategory === detailCategory) score += 30;
+  if (officialClub && officialClub === detailClub) score += 30;
+  if (officialDivision && officialDivision === detailDivision) score += 10;
+  if (roundUpPoints(official.points) === roundUpPoints(detail.points)) score += 8;
+  if (compactEventName(detail.event_name).includes(compactEventName(official.category || ''))) score += 2;
+
+  return score;
+}
+
+function resolveOfficialMatchedDetails(officialDetails: PlayerRankingDetail[], displayDetails: PlayerRankingDetail[]): PlayerRankingDetail[] {
+  const matched: PlayerRankingDetail[] = [];
+  const used = new Set<number>();
+
+  const officialTop = [...officialDetails]
+    .sort((a, b) => b.points - a.points || detailRankingMonthKey(b).localeCompare(detailRankingMonthKey(a)))
+    .slice(0, 8);
+
+  for (const official of officialTop) {
+    let bestIndex = -1;
+    let bestScore = 0;
+    displayDetails.forEach((detail, index) => {
+      if (used.has(index)) return;
+      const score = detailMatchScore(official, detail);
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = index;
+      }
+    });
+
+    if (bestIndex >= 0 && bestScore >= 75) {
+      used.add(bestIndex);
+      matched.push(mergeDetailRows(displayDetails[bestIndex], official));
+    } else {
+      matched.push(official);
+    }
+  }
+
+  return matched;
+}
+
+function detailIsoDate(detail: PlayerRankingDetail): string {
+  return detail.event_date || inferEventDate(detail.event_name, undefined, detail.season) || '';
+}
+
+function isoDateOnly(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function addMonthsToDate(date: Date, months: number): Date {
+  const next = new Date(date);
+  const originalDay = next.getDate();
+  next.setMonth(next.getMonth() + months);
+  if (next.getDate() !== originalDay) next.setDate(0);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function rankingWindowRange() {
+  const end = new Date();
+  end.setHours(0, 0, 0, 0);
+  const start = addMonthsToDate(end, -12);
+  return {
+    start: isoDateOnly(start),
+    end: isoDateOnly(end),
+  };
+}
+
+function formatIsoDateFr(date: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+  return new Date(`${date}T00:00:00`).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 function detailQuality(detail: PlayerRankingDetail): number {
@@ -341,7 +526,7 @@ function mergeDetailRows(base: PlayerRankingDetail, incoming: PlayerRankingDetai
     category: preferred.category || other.category,
     club_name: inferClubName(preferred.event_name || other.event_name, preferred.club_name || other.club_name),
     partner_name: preferred.partner_name || other.partner_name,
-    event_date: preferred.event_date || other.event_date,
+    event_date: bestDetailDate(preferred, other),
     division_key: preferred.division_key || other.division_key,
   };
 }
@@ -351,6 +536,16 @@ function detailPartnerLabel(detail: PlayerRankingDetail, playerName: string): st
   const fromTeam = partnerFromTeamName(detail.team_name || '', playerName);
   if (fromTeam) return fromTeam;
   return detail.team_name || '-';
+}
+
+function topCountLabel(items: string[]): string {
+  const counts = new Map<string, number>();
+  for (const item of items.map(value => value.trim()).filter(Boolean)) {
+    if (item === '-') continue;
+    counts.set(item, (counts.get(item) || 0) + 1);
+  }
+  const top = Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
+  return top ? `${top[0]} (${top[1]})` : '-';
 }
 function dedupePlayerDetails(details: PlayerRankingDetail[]): PlayerRankingDetail[] {
   const byKey = new Map<string, PlayerRankingDetail>();
@@ -363,6 +558,31 @@ function dedupePlayerDetails(details: PlayerRankingDetail[]): PlayerRankingDetai
     const dateA = a.event_date || inferEventDate(a.event_name, undefined, a.season);
     const dateB = b.event_date || inferEventDate(b.event_name, undefined, b.season);
     return dateB.localeCompare(dateA) || b.points - a.points;
+  });
+}
+
+function detailCorrectionKey(detail: PlayerRankingDetail): string {
+  return [
+    detailIsoDate(detail),
+    detailClubKey(detail),
+    roundUpPoints(detail.points),
+  ].join('|');
+}
+
+function resolveDetailDivisionConflicts(details: PlayerRankingDetail[]): PlayerRankingDetail[] {
+  const corrections = new Map<string, PlayerRankingDetail['division_key']>();
+  for (const detail of details) {
+    if (detail.source !== 'historical') continue;
+    const explicit = explicitDetailDivision(detail.division_key, detail.event_name, detail.category);
+    if (explicit) corrections.set(detailCorrectionKey(detail), explicit);
+  }
+
+  return details.map(detail => {
+    if (detail.source === 'historical') return detail;
+    const corrected = corrections.get(detailCorrectionKey(detail));
+    return corrected && corrected !== detail.division_key
+      ? { ...detail, division_key: corrected }
+      : detail;
   });
 }
 function rankMovement(player: PlayerRanking) {
@@ -403,6 +623,7 @@ function PlayerDetailModal({
   careerStats,
   loading,
   color,
+  divisionKey,
   onClose,
 }: {
   player: PlayerRanking;
@@ -410,54 +631,120 @@ function PlayerDetailModal({
   careerStats: PlayerCareerStats | null;
   loading: boolean;
   color: string;
+  divisionKey: PlayerRankingDetail['division_key'];
   onClose: () => void;
 }) {
   const [activeHistoryTab, setActiveHistoryTab] = useState<'all' | 'men' | 'women' | 'mixed' | 'junior'>('all');
-  const currentDetails = details.filter(detail => detail.source !== 'historical');
-  const historicalDetails = details.filter(detail => detail.source === 'historical');
-  const countedCurrentDetails = [...currentDetails].sort((a, b) => b.points - a.points).slice(0, 8);
-  const countedCurrentSet = new Set(countedCurrentDetails);
-  const playedCount = currentDetails.length || player.tournaments_played || 0;
-  const rankingTotal = countedCurrentDetails.length > 0 ? countedCurrentDetails.reduce((sum, detail) => sum + detail.points, 0) : player.points;
+  const officialDetails = details.filter(detail => detail.source === 'official');
+  const realDetails = resolveDetailDivisionConflicts(details.filter(detail => detail.source !== 'official'));
+  const displayDetails = dedupePlayerDetails(realDetails);
+  const historicalDetails = displayDetails.filter(detail => detail.source === 'historical');
+  const playerDivisionKey = divisionKey;
+  const windowRange = rankingWindowRange();
+  const windowDetails = displayDetails.filter(detail => {
+    const date = detailIsoDate(detail);
+    if (playerDivisionKey && detail.division_key && detail.division_key !== playerDivisionKey) return false;
+    return /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= windowRange.start && date <= windowRange.end;
+  });
+  const retainedRealDetails = [...windowDetails]
+    .sort((a, b) => b.points - a.points || detailIsoDate(b).localeCompare(detailIsoDate(a)))
+    .slice(0, 8);
+  const retainedDetails = retainedRealDetails;
+  const retainedDisplayKeys = new Set(retainedDetails.map(detailDedupKey));
+  const retainedEventKeys = new Set(retainedDetails.map(detailEventKey));
+  const playedCount = windowDetails.length || officialDetails.length || player.tournaments_played || 0;
+  const calculatedTop8Total = retainedDetails.reduce((sum, detail) => sum + detail.points, 0);
+  const real12MonthTotal = windowDetails.reduce((sum, detail) => sum + detail.points, 0);
+  const outOfTop8Count = Math.max(0, windowDetails.length - retainedDetails.length);
+  const rankingTotal = player.points || calculatedTop8Total;
+  const detectedGap = Math.abs(rankingTotal - calculatedTop8Total);
+  const rankingGap = Math.max(0, real12MonthTotal - rankingTotal);
+  const bestPartner = topCountLabel(displayDetails.map(detail => detailPartnerLabel(detail, player.player_name)));
+  const bestClub = topCountLabel(displayDetails.map(detail => detail.club_name || ''));
+  const wins = displayDetails.filter(detail => Number(detail.rank) === 1).length;
+  const podiums = displayDetails.filter(detail => Number(detail.rank ?? 999) <= 3).length;
+  const rankVisibleDetail = (detail: PlayerRankingDetail) => {
+    if (!retainedDisplayKeys.has(detailDedupKey(detail)) && !retainedEventKeys.has(detailEventKey(detail))) return 999;
+    const realIndex = retainedDetails.findIndex(retained =>
+      detailDedupKey(retained) === detailDedupKey(detail) || detailEventKey(retained) === detailEventKey(detail)
+    );
+    return realIndex >= 0 ? realIndex : 0;
+  };
   const historyTabs = [
-    { key: 'all' as const, label: 'Historique', count: details.length },
-    { key: 'men' as const, label: 'Men', count: details.filter(detail => detail.division_key === 'men').length },
-    { key: 'women' as const, label: 'Women', count: details.filter(detail => detail.division_key === 'women').length },
-    { key: 'mixed' as const, label: 'Mixed', count: details.filter(detail => detail.division_key === 'mixed').length },
-    { key: 'junior' as const, label: 'Junior', count: details.filter(detail => detail.division_key === 'junior').length },
+    { key: 'all' as const, label: 'Historique', count: displayDetails.length },
+    { key: 'men' as const, label: 'Men', count: displayDetails.filter(detail => detail.division_key === 'men').length },
+    { key: 'women' as const, label: 'Women', count: displayDetails.filter(detail => detail.division_key === 'women').length },
+    { key: 'mixed' as const, label: 'Mixed', count: displayDetails.filter(detail => detail.division_key === 'mixed').length },
+    { key: 'junior' as const, label: 'Junior', count: displayDetails.filter(detail => detail.division_key === 'junior').length },
   ].filter(tab => tab.key === 'all' || tab.count > 0);
-  const visibleDetails = details
+  const combinedDetails = displayDetails;
+  const visibleDetails = combinedDetails
     .filter(detail => activeHistoryTab === 'all' || detail.division_key === activeHistoryTab)
-    .sort((a, b) => (b.event_date ?? '').localeCompare(a.event_date ?? '') || b.points - a.points);
+    .sort((a, b) => {
+      const rankA = rankVisibleDetail(a);
+      const rankB = rankVisibleDetail(b);
+      if (rankA !== rankB) return rankA - rankB;
+      if (rankA < 999) return b.points - a.points;
+      const dateA = a.event_date || inferEventDate(a.event_name, undefined, a.season) || '';
+      const dateB = b.event_date || inferEventDate(b.event_name, undefined, b.season) || '';
+      if (dateA && dateB && dateA !== dateB) return dateB.localeCompare(dateA);
+      if (dateA && !dateB) return -1;
+      if (!dateA && dateB) return 1;
+      return Number(b.season ?? 0) - Number(a.season ?? 0) || b.points - a.points;
+    });
   const top8Label = playedCount > 8 ? `8/${playedCount}` : String(playedCount);
+  const ruleText = `Ranking period: ${formatIsoDateFr(windowRange.start)} to ${formatIsoDateFr(windowRange.end)} - Best 8 scores. Les autres tournois restent visibles mais ne comptent pas dans le total ranking.`;
 
   return createPortal(
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.76)', zIndex: 2147483000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
       <div onClick={event => event.stopPropagation()} style={{ width: '100%', maxWidth: '920px', maxHeight: '88vh', overflow: 'hidden', background: '#101010', border: `1px solid ${color}40`, borderRadius: '10px', boxShadow: '0 22px 70px rgba(0,0,0,0.45)', position: 'relative', zIndex: 2147483001 }}>
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'space-between', gap: '14px', alignItems: 'center' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'space-between', gap: '14px', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-            <span style={{ color: '#f59e0b', fontSize: '20px', lineHeight: 1 }}>#</span>
+            <span style={{ color: '#f59e0b', fontSize: '20px', lineHeight: 1 }}>#{player.rank}</span>
             <div style={{ minWidth: 0 }}>
               <div style={{ color: 'white', fontSize: '16px', fontWeight: 900, textTransform: 'uppercase', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{player.player_name}</div>
-              <div style={{ color: '#777', fontSize: '12px', marginTop: '2px' }}>{formatPoints(player.points)} pts ranking - Top 8 / 12 mois: {top8Label} - {historicalDetails.length} historique</div>
+              <div style={{ color: '#777', fontSize: '12px', marginTop: '2px' }}>{formatPoints(player.points)} pts ranking Â· Top 8 / 12 mois: {top8Label} Â· {historicalDetails.length} historique</div>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{ color: '#777', fontSize: '12px' }}>{careerStats ? `${careerStats.tournaments_played} tournois carriere` : `${details.length} lignes`}</div>
+            <div style={{ color: '#777', fontSize: '12px' }}>{careerStats ? `${careerStats.tournaments_played} tournois carriere` : `${displayDetails.length} lignes`}</div>
             <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', padding: 0 }}><X size={22} /></button>
           </div>
+        </div>
+
+        <div style={{ padding: '12px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(59,130,246,0.045)' }}>
+          <div style={{ color: '#d0d0d0', fontSize: '12px', fontWeight: 800, lineHeight: 1.45 }}>{ruleText}</div>
+          {detectedGap > 0 && officialDetails.length > 0 && (
+            <div style={{ color: '#f59e0b', fontSize: '11px', fontWeight: 800, marginTop: '6px' }}>
+              Controle donnees: officiel {formatPoints(rankingTotal)} Â· details detectes {formatPoints(calculatedTop8Total)}.
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: '8px', padding: '12px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           {[
             { label: 'Ranking', value: formatPoints(player.points), c: color },
-            { label: 'Top 8 retenus', value: loading ? '...' : formatPoints(rankingTotal), c: '#4ad569' },
-            { label: 'Joues 12 mois', value: top8Label, c: '#f59e0b' },
+            { label: 'Top 8 retenus', value: loading ? '...' : formatPoints(calculatedTop8Total || rankingTotal), c: '#4ad569' },
+            { label: 'Points reels 12m', value: loading ? '...' : formatPoints(real12MonthTotal), c: '#f59e0b' },
+            { label: 'Hors calcul', value: `${outOfTop8Count} / ${formatPoints(rankingGap)}`, c: '#ef4444' },
             { label: 'Carriere pts', value: careerStats ? formatPoints(careerStats.total_points) : '-', c: '#8b5cf6' },
-            { label: 'Victoires', value: careerStats ? String(careerStats.wins) : '-', c: '#4ad569' },
           ].map(item => (
             <div key={item.label} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', padding: '9px 11px' }}>
               <div style={{ color: item.c, fontWeight: 900, fontSize: '18px', fontFamily: 'JetBrains Mono, monospace' }}>{item.value}</div>
+              <div style={{ color: '#666', fontSize: '10px', marginTop: '3px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{item.label}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: '8px', padding: '0 20px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          {[
+            { label: 'Partenaire principal', value: bestPartner, c: '#d0d0d0' },
+            { label: 'Performance par club', value: bestClub, c: '#d0d0d0' },
+            { label: 'Victoires', value: String(careerStats?.wins ?? wins), c: '#4ad569' },
+            { label: 'Podiums', value: String(careerStats?.podiums ?? podiums), c: '#f59e0b' },
+          ].map(item => (
+            <div key={item.label} style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.055)', borderRadius: '6px', padding: '9px 11px', minWidth: 0 }}>
+              <div style={{ color: item.c, fontWeight: 850, fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.value}</div>
               <div style={{ color: '#666', fontSize: '10px', marginTop: '3px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{item.label}</div>
             </div>
           ))}
@@ -480,23 +767,40 @@ function PlayerDetailModal({
             <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
               <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
                 <tr style={{ background: '#101010' }}>
-                  {[['Date','96px','left'], ['Cat','74px','left'], ['Club','1fr','left'], ['Partenaire','180px','left'], ['Rk','56px','right'], ['Pts','84px','right']].map(([label, width, align]) => (
+                  {[['Statut','86px','left'], ['Date','96px','left'], ['Cat','70px','left'], ['Club','1fr','left'], ['Partenaire','180px','left'], ['Rk','54px','right'], ['Pts','88px','right']].map(([label, width, align]) => (
                     <th key={label} style={{ width: width === '1fr' ? undefined : width, textAlign: align as 'left' | 'right', padding: '9px 8px', color: '#555', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.6px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>{label}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {visibleDetails.map((detail, index) => {
-                  const counted = detail.source !== 'historical' && countedCurrentSet.has(detail);
-                  const muted = detail.source !== 'historical' && !counted;
+                  const counted = retainedDisplayKeys.has(detailDedupKey(detail)) || retainedEventKeys.has(detailEventKey(detail));
                   return (
-                    <tr key={`${detail.event_name}-${index}`} style={{ background: counted ? 'rgba(74,213,105,0.08)' : index % 2 === 0 ? 'rgba(255,255,255,0.015)' : 'transparent', opacity: muted ? 0.52 : 1 }}>
+                    <tr key={`${detail.event_name}-${index}`} style={{ background: counted ? 'rgba(74,213,105,0.08)' : index % 2 === 0 ? 'rgba(255,255,255,0.015)' : 'transparent' }}>
+                      <td style={{ padding: '8px', borderBottom: '1px solid rgba(255,255,255,0.035)' }}>
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: counted ? '#4ad569' : '#888',
+                          background: counted ? 'rgba(74,213,105,0.12)' : 'rgba(255,255,255,0.04)',
+                          border: `1px solid ${counted ? 'rgba(74,213,105,0.28)' : 'rgba(255,255,255,0.07)'}`,
+                          borderRadius: '999px',
+                          padding: '3px 7px',
+                          fontSize: '9px',
+                          fontWeight: 950,
+                          letterSpacing: '0.4px',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          {counted ? 'RETENU' : 'HORS TOP 8'}
+                        </span>
+                      </td>
                       <td style={{ padding: '8px', color: '#666', fontSize: '11px', fontFamily: 'JetBrains Mono, monospace', borderBottom: '1px solid rgba(255,255,255,0.035)' }}>{detail.event_date || detail.season || '-'}</td>
                       <td style={{ padding: '8px', borderBottom: '1px solid rgba(255,255,255,0.035)' }}><span style={{ color: detail.category?.startsWith('M') ? '#4ad569' : '#f59e0b', fontSize: '10px', fontWeight: 900 }}>{detail.category || '-'}</span></td>
-                      <td style={{ padding: '8px', color: '#8a94a6', fontSize: '11px', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', borderBottom: '1px solid rgba(255,255,255,0.035)' }}>{detail.club_name || detail.event_name}</td>
-                      <td style={{ padding: '8px', color: 'white', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', borderBottom: '1px solid rgba(255,255,255,0.035)' }}>{detailPartnerLabel(detail, player.player_name)}</td>
+                      <td style={{ padding: '8px', color: '#8a94a6', fontSize: '11px', textTransform: 'uppercase', lineHeight: 1.25, overflowWrap: 'anywhere', borderBottom: '1px solid rgba(255,255,255,0.035)' }}>{detail.club_name || detail.event_name}</td>
+                      <td style={{ padding: '8px', color: 'white', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', lineHeight: 1.25, overflowWrap: 'anywhere', borderBottom: '1px solid rgba(255,255,255,0.035)' }}>{detailPartnerLabel(detail, player.player_name)}</td>
                       <td style={{ padding: '8px', color: Number(detail.rank) === 1 ? '#4ad569' : Number(detail.rank) <= 3 ? '#f59e0b' : '#888', fontSize: '12px', fontWeight: 900, textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', borderBottom: '1px solid rgba(255,255,255,0.035)' }}>#{detail.rank ?? '-'}</td>
-                      <td style={{ padding: '8px', color: counted ? '#4ad569' : 'white', fontSize: '12px', fontWeight: 900, textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', borderBottom: '1px solid rgba(255,255,255,0.035)' }}>{formatPoints(detail.points)}{counted ? ' OK' : ''}</td>
+                      <td style={{ padding: '8px', color: counted ? '#4ad569' : 'white', fontSize: '12px', fontWeight: 900, textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', borderBottom: '1px solid rgba(255,255,255,0.035)' }}>{formatPoints(detail.points)}</td>
                     </tr>
                   );
                 })}
@@ -555,12 +859,12 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
     const queries = await Promise.all([
       sb
         .from('tournament_results')
-        .select('tournament_name,tournament_date,team_name,player1_name,player2_name,rank,points,season,division,club_name')
+        .select('tournament_name,tournament_date,team_name,player1_name,player2_name,rank,points,season,division,category,club_name')
         .ilike('player1_name', namePattern)
         .limit(500),
       sb
         .from('tournament_results')
-        .select('tournament_name,tournament_date,team_name,player1_name,player2_name,rank,points,season,division,club_name')
+        .select('tournament_name,tournament_date,team_name,player1_name,player2_name,rank,points,season,division,category,club_name')
         .ilike('player2_name', namePattern)
         .limit(500),
     ]);
@@ -588,8 +892,8 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
           category: inferCategory(eventName),
           club_name: inferClubName(eventName, String(row.club_name ?? '')),
           partner_name: partnerForPlayer(row, player.player_name),
-          event_date: inferEventDate(eventName, date, Number(row.season ?? 2026)),
-          division_key: normalizeDetailDivision(row.division, divToDb(division) as PlayerRankingDetail['division_key']),
+          event_date: resolveEventDate(eventName, date, Number(row.season ?? 2026), normalizeDetailDivision(row.division, divToDb(division) as PlayerRankingDetail['division_key'], eventName, row.category), String(row.club_name ?? ''), inferCategory(eventName, row.category)),
+          division_key: normalizeDetailDivision(row.division, divToDb(division) as PlayerRankingDetail['division_key'], eventName, row.category),
           source: 'current',
         });
       }
@@ -606,7 +910,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
     const escapedName = name.replace(/[%_,]/g, '');
     const { data: historicalRows, error: historicalError } = await sb
       .from('historical_tournament_results')
-      .select('event_name,season,category,division,rank_min,team_name,player1_name,player2_name,points')
+      .select('event_name,season,category,division,rank_min,team_name,player1_name,player2_name,points,club_name,event_date')
       .or(`player1_name.ilike.%${escapedName}%,player2_name.ilike.%${escapedName}%`)
       .limit(2000);
 
@@ -630,10 +934,10 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
           rank: Number.isFinite(rank) && rank > 0 ? rank : undefined,
           team_name: teamName,
           category,
-          club_name: inferClubName(eventName),
+          club_name: inferClubName(eventName, String(row.club_name ?? '')),
           partner_name: partnerForPlayer(row, player.player_name),
-          event_date: inferEventDate(eventName, undefined, season),
-          division_key: normalizeDetailDivision(row.division, divToDb(division) as PlayerRankingDetail['division_key']),
+          event_date: resolveEventDate(eventName, String(row.event_date ?? ''), season, normalizeDetailDivision(row.division, divToDb(division) as PlayerRankingDetail['division_key'], eventName, category), String(row.club_name ?? ''), category),
+          division_key: normalizeDetailDivision(row.division, divToDb(division) as PlayerRankingDetail['division_key'], eventName, category),
           source: 'historical',
         });
       }
@@ -685,20 +989,31 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
     try {
       const { data, error } = await sb
         .from('official_ranking_details')
-        .select('event_name,points,season')
+        .select('event_name,points,season,batch_id,import_id,created_at')
         .ilike('player_name', player.player_name)
         .eq('division', divToDb(division))
+        .order('created_at', { ascending: false })
         .order('points', { ascending: false });
 
-      const officialDetails = !error && data
-        ? (data as Record<string, unknown>[]).map(row => ({
+      const officialRows = !error && data ? (data as Record<string, unknown>[]) : [];
+      const latestCreatedAt = String(officialRows[0]?.created_at ?? '').slice(0, 16);
+      const latestBatchId = String(officialRows.find(row => row.batch_id)?.batch_id ?? '');
+      const latestImportId = String(officialRows.find(row => row.import_id)?.import_id ?? '');
+      const currentOfficialRows = officialRows.filter(row => {
+        if (latestCreatedAt) return String(row.created_at ?? '').slice(0, 16) === latestCreatedAt;
+        if (latestBatchId) return String(row.batch_id ?? '') === latestBatchId;
+        return latestImportId ? String(row.import_id ?? '') === latestImportId : true;
+      });
+
+      const officialDetails = currentOfficialRows.length
+        ? currentOfficialRows.map(row => ({
           event_name: String(row.event_name ?? ''),
           points: roundUpPoints(row.points),
           season: inferEventSeason(String(row.event_name ?? ''), Number(row.season ?? 2026)),
           rank: undefined,
           category: inferCategory(String(row.event_name ?? '')),
           club_name: inferClubName(String(row.event_name ?? '')),
-          event_date: inferEventDate(String(row.event_name ?? ''), undefined, Number(row.season ?? 2026)),
+          event_date: resolveEventDate(String(row.event_name ?? ''), undefined, Number(row.season ?? 2026), divToDb(division) as PlayerRankingDetail['division_key'], undefined, inferCategory(String(row.event_name ?? ''))),
           division_key: divToDb(division) as PlayerRankingDetail['division_key'],
           source: 'official' as const,
         })).filter(detail => detail.event_name && detail.points > 0)
@@ -708,7 +1023,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
       setPlayerCareerStats(historical.stats);
 
       const currentDetails = await loadTournamentResultDetails(player);
-      setPlayerDetails(dedupePlayerDetails([...currentDetails, ...officialDetails, ...historical.details]));
+      setPlayerDetails([...currentDetails, ...historical.details, ...officialDetails]);
     } finally {
       setDetailsLoading(false);
     }
@@ -836,6 +1151,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
           careerStats={playerCareerStats}
           loading={detailsLoading}
           color={color}
+          divisionKey={divKey as PlayerRankingDetail['division_key']}
           onClose={() => setSelectedPlayer(null)}
         />
       )}
@@ -887,11 +1203,76 @@ export default function Classements() {
   });
   const [activeTab, setActiveTab] = useState<Division>('MEN');
   const [search, setSearch]       = useState('');
+  const [globalMatches, setGlobalMatches] = useState<GlobalRankingMatch[]>([]);
   // Count reel par division - mis a jour depuis RankingTable via callback
   const [divCounts, setDivCounts] = useState<Partial<Record<Division,number>>>({});
   const updateCount = (div: Division, n: number) => setDivCounts(prev => ({ ...prev, [div]: n }));
 
   const activeConfig = TABS.find(t => t.key === activeTab)!;
+
+  useEffect(() => {
+    const q = search.trim();
+    if (q.length < 2) {
+      setGlobalMatches([]);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      const localMatches = Object.entries(DATA_MAP)
+        .flatMap(([division, rows]) => rows
+          .filter(row => row.player_name.toLowerCase().includes(q.toLowerCase()))
+          .map(row => ({
+            player_name: row.player_name,
+            division: division as Division,
+            rank: row.rank,
+            points: row.points,
+            tournaments_played: row.tournaments_played,
+          })))
+        .slice(0, 12);
+
+      if (!isSupabaseConnected()) {
+        if (!cancelled) setGlobalMatches(localMatches);
+        return;
+      }
+
+      const sb = getSupabaseClient();
+      if (!sb) {
+        if (!cancelled) setGlobalMatches(localMatches);
+        return;
+      }
+
+      const { data, error } = await sb
+        .from('rankings')
+        .select('player_name,division,rank,points,tournaments_played')
+        .ilike('player_name', `%${q.replace(/[%_,]/g, '')}%`)
+        .order('rank', { ascending: true })
+        .limit(16);
+
+      if (cancelled) return;
+      if (error || !data) {
+        setGlobalMatches(localMatches);
+        return;
+      }
+
+      setGlobalMatches((data as Record<string, unknown>[])
+        .map(row => ({
+          player_name: String(row.player_name ?? '').trim(),
+          division: DB_TO_DIV[String(row.division ?? '').toLowerCase()] ?? 'MEN',
+          rank: Number(row.rank ?? 0),
+          points: roundUpPoints(row.points),
+          tournaments_played: Number(row.tournaments_played ?? 0),
+        }))
+        .filter(row => row.player_name)
+        .sort((a, b) => a.player_name.localeCompare(b.player_name) || a.rank - b.rank)
+        .slice(0, 12));
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [search]);
 
   const stats = [
     { label: lang === 'fr' ? 'Hommes classes' : 'Men ranked',    val: divCounts['MEN']    != null ? `${divCounts['MEN']}`    : '-', icon: 'H', color: '#3b82f6' },
@@ -975,6 +1356,52 @@ export default function Classements() {
               </span>
             </div>
           </div>
+
+          {search.trim().length >= 2 && globalMatches.length > 0 && (
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '8px',
+              alignItems: 'center',
+              margin: '-8px 0 18px',
+              color: '#777',
+              fontSize: '12px',
+            }}>
+              <span style={{ color: '#888', fontWeight: 700 }}>
+                Trouve aussi dans :
+              </span>
+              {globalMatches.map(match => {
+                const tab = TABS.find(item => item.key === match.division);
+                const isActiveDivision = match.division === activeTab;
+                return (
+                  <button
+                    key={`${match.division}-${match.player_name}`}
+                    onClick={() => setActiveTab(match.division)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '7px',
+                      maxWidth: '100%',
+                      borderRadius: '999px',
+                      border: `1px solid ${tab?.color ?? '#4ad569'}45`,
+                      background: isActiveDivision ? `${tab?.color ?? '#4ad569'}18` : 'rgba(255,255,255,0.035)',
+                      color: 'rgba(255,255,255,0.85)',
+                      padding: '6px 10px',
+                      cursor: 'pointer',
+                      fontSize: '11px',
+                      fontWeight: 800,
+                    }}
+                    title={`Voir ${match.player_name} en ${tab?.label_fr ?? match.division}`}
+                  >
+                    <span style={{ color: tab?.color ?? '#4ad569' }}>{tab?.label_fr ?? match.division}</span>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{match.player_name}</span>
+                    <span style={{ color: '#f59e0b' }}>#{match.rank}</span>
+                    <span style={{ color: '#aaa' }}>{formatPoints(match.points)} pts</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {/* Tableau */}
           <GlassCard style={{ padding: '16px 0' }}>

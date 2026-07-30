@@ -158,6 +158,7 @@ export function Navbar() {
     { to: ROUTE_PATHS.CALENDAR,  label: t.nav.calendar  },
     { to: ROUTE_PATHS.RANKINGS,  label: t.nav.rankings  },
     { to: ROUTE_PATHS.RESULTS,   label: t.nav.results   },
+    { to: ROUTE_PATHS.HISTORY,   label: t.nav.history   },
     { to: ROUTE_PATHS.GALLERY,   label: t.nav.gallery   },
   ];
 
@@ -309,6 +310,7 @@ export function Footer() {
     { to: ROUTE_PATHS.CALENDAR, label: t.nav.calendar },
     { to: ROUTE_PATHS.RANKINGS, label: t.nav.rankings },
     { to: ROUTE_PATHS.RESULTS,  label: t.nav.results  },
+    { to: ROUTE_PATHS.HISTORY,  label: t.nav.history  },
     { to: ROUTE_PATHS.GALLERY,  label: t.nav.gallery  },
   ];
   return (

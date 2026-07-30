@@ -9,6 +9,7 @@ import Clubs         from '@/pages/Clubs';
 import Calendrier    from '@/pages/Calendrier';
 import Classements   from '@/pages/Classements';
 import Resultats     from '@/pages/Resultats';
+import Historique    from '@/pages/Historique';
 import PadelMauritius from '@/pages/PadelMauritius';
 import Galerie        from '@/pages/Galerie';
 import ObsScoreboard  from '@/features/obs/ObsScoreboard';
@@ -42,6 +43,7 @@ function AppRoutes() {
       <Route path={ROUTE_PATHS.CALENDAR}        element={<Calendrier />} />
       <Route path={ROUTE_PATHS.RANKINGS}        element={<Classements />} />
       <Route path={ROUTE_PATHS.RESULTS}         element={<Resultats />} />
+      <Route path={ROUTE_PATHS.HISTORY}         element={<Historique />} />
       <Route path={ROUTE_PATHS.PADEL_MAURITIUS} element={<PadelMauritius />} />
       <Route path={ROUTE_PATHS.GALLERY}          element={<Galerie />} />
       <Route path={ROUTE_PATHS.OBS_SCOREBOARD}   element={<ObsScoreboard />} />

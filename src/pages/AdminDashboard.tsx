@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, Trophy, Settings, Zap, FileText,
   LogOut, Menu, X, Bell, Plus, Pencil, Trash2, Save,
   RefreshCw, Search, ChevronDown, GitBranch, Star, Download, Medal,
-  AlertTriangle, Copy, CheckCircle2, Play, Wifi, WifiOff, Eye, BarChart2, ShieldCheck, Shuffle, Camera,
+  AlertTriangle, Copy, CheckCircle2, Play, Wifi, WifiOff, Eye, BarChart2, ShieldCheck, Shuffle, Camera, Database,
 } from 'lucide-react';
 import RegistrationsPage from '@/features/registrations/RegistrationsPage';
 import DrawControlPage   from '@/features/draw/DrawControlPage';
@@ -15,6 +15,7 @@ import ResultsAdminPage   from '@/pages/admin/ResultsAdminPage';
 import RankingsAdminPage  from '@/pages/admin/RankingsAdminPage';
 import OfficialRankingImportPage from '@/pages/admin/OfficialRankingImportPage';
 import GalerieAdminPage  from '@/pages/admin/GalerieAdminPage';
+import HistoricalAuditPage from '@/pages/admin/HistoricalAuditPage';
 import { GlassCard, MPLLogo, CategoryBadge, RegionBadge } from '@/components/Layout';
 import { useI18n } from '@/hooks/useI18n';
 import { getSupabaseClient, isSupabaseConnected } from '@/lib/supabase';
@@ -57,7 +58,7 @@ class AdminErrorBoundary extends Component<
   }
 }
 
-type AdminPage = 'dashboard' | 'clubs' | 'players' | 'tournaments' | 'registrations' | 'results' | 'rankings' | 'official_import' | 'draw' | 'brackets' | 'live_scoring' | 'scores' | 'exports' | 'obs' | 'gallery';
+type AdminPage = 'dashboard' | 'clubs' | 'players' | 'tournaments' | 'registrations' | 'results' | 'rankings' | 'official_import' | 'historical_audit' | 'draw' | 'brackets' | 'live_scoring' | 'scores' | 'exports' | 'obs' | 'gallery';
 // ── Role context — accessible by all sub-pages ─────────────────────────
 import { createContext, useContext } from 'react';
 import type { UIRole } from '@/lib/adminAuth';
@@ -1913,6 +1914,7 @@ export default function AdminDashboard({ onLogout, role, userName }: Props) {
     { key: 'results',     label: lang === 'fr' ? 'Résultats' : 'Results',   icon: Medal       },
     { key: 'rankings',    label: lang === 'fr' ? 'Classements' : 'Rankings', icon: BarChart2   },
     { key: 'official_import', label: 'Classements officiels', icon: FileText },
+    { key: 'historical_audit', label: 'Audit historique', icon: Database },
     { key: 'brackets',    label: 'Brackets',     icon: GitBranch },
     { key: 'scores',      label: 'Scores',       icon: Star      },
     { key: 'exports',     label: 'Exports',      icon: Download  },
@@ -1998,6 +2000,7 @@ export default function AdminDashboard({ onLogout, role, userName }: Props) {
             {activePage === 'results'     && <ResultsAdminPage />}
             {activePage === 'rankings'    && <RankingsAdminPage />}
             {activePage === 'official_import' && <OfficialRankingImportPage />}
+            {activePage === 'historical_audit' && <HistoricalAuditPage />}
             {activePage === 'obs'         && <OBSPage />}
             {activePage === 'exports'     && <ExportsPage />}
             {activePage === 'gallery'     && <GalerieAdminPage />}
