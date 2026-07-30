@@ -154,6 +154,112 @@ export function computeTournamentStatus(date: string, supabaseStatus?: string): 
   return 'upcoming';                         // trop tôt pour s'inscrire
 }
 
+type ResultPresenceRow = {
+  tournament_id?: string | null;
+  tournament_date?: string | null;
+  event_date?: string | null;
+  category?: string | null;
+  division?: string | null;
+  club_name?: string | null;
+  rank?: number | string | null;
+  rank_min?: number | string | null;
+  rank_max?: number | string | null;
+};
+
+function cleanText(value: unknown): string {
+  return String(value ?? '').trim();
+}
+
+function normKey(value: unknown): string {
+  return cleanText(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim();
+}
+
+function normalizeCalendarClub(value: unknown): string {
+  return cleanText(value)
+    .replace(/Ca\?a|Ca\u00f1a|CANA/gi, 'Cana')
+    .replace(/Isla Padel de Beau Plan/gi, 'Isla Padel Beau Plan')
+    .replace(/Labourdonnais Sports Club|LAB SPORTS CLUB/gi, 'Labourdonnais Mapou')
+    .replace(/RM\s*Forbach|RM Club Grand Baie\s*\(Forbach\)|Grand Baie\s*\(Forbach\)/gi, 'RM Club Grand Baie')
+    .replace(/I Padel RM/gi, 'I Padel by RM')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeCalendarDivision(value: unknown, category?: unknown): string {
+  const raw = cleanText(value).toLowerCase();
+  if (['men', 'hommes', 'h', 'mens'].includes(raw)) return 'men';
+  if (['women', 'dames', 'femmes', 'w'].includes(raw)) return 'women';
+  if (['mixed', 'mixte'].includes(raw)) return 'mixed';
+  if (['junior', 'juniors'].includes(raw)) return 'junior';
+  const cat = normalizeJuniorCategory(cleanText(category).toUpperCase());
+  if (['U11', 'U13', 'U15'].includes(cat)) return 'junior';
+  if (cat === 'MIXED') return 'mixed';
+  return raw || 'men';
+}
+
+function resultPresenceRank(row: ResultPresenceRow): number {
+  const rank = Number(row.rank ?? row.rank_max ?? row.rank_min ?? 0);
+  return Number.isFinite(rank) && rank > 0 ? rank : 1;
+}
+
+function resultPresenceKey(parts: { date?: unknown; category?: unknown; division?: unknown; club?: unknown }): string {
+  const category = normalizeJuniorCategory(cleanText(parts.category).toUpperCase());
+  return [
+    cleanText(parts.date).slice(0, 10),
+    category,
+    normalizeCalendarDivision(parts.division, category),
+    normKey(normalizeCalendarClub(parts.club)),
+  ].join('|');
+}
+
+function tournamentPresenceKeys(tournament: TournamentData): string[] {
+  const keys = [
+    resultPresenceKey({
+      date: tournament.date,
+      category: tournament.category,
+      division: tournament.division || tournament.type,
+      club: tournament.club_name,
+    }),
+  ];
+
+  if (tournament.type === 'MEN&WOMEN') {
+    keys.push(resultPresenceKey({ date: tournament.date, category: tournament.category, division: 'men', club: tournament.club_name }));
+    keys.push(resultPresenceKey({ date: tournament.date, category: tournament.category, division: 'women', club: tournament.club_name }));
+  }
+
+  return Array.from(new Set(keys));
+}
+
+function addPresenceCount(map: Map<string, number>, key: string, count: number) {
+  if (!key.includes('|')) return;
+  const previous = map.get(key) ?? 0;
+  if (count > previous) map.set(key, count);
+}
+
+async function fetchHistoricalPresenceRows(
+  supabase: NonNullable<ReturnType<typeof getSupabaseClient>>
+): Promise<ResultPresenceRow[]> {
+  const rows: ResultPresenceRow[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .from('historical_tournament_results')
+      .select('event_date,category,division,club_name,rank_min,rank_max')
+      .range(from, from + 999);
+    if (error) {
+      console.warn('[useTournaments] historical_tournament_results unavailable:', error);
+      break;
+    }
+    rows.push(...((data ?? []) as ResultPresenceRow[]));
+    if (!data || data.length < 1000) break;
+  }
+  return rows;
+}
+
 export function useTournaments(filters?: {
   region?: string; category?: string; division?: string;
   status?: string; month?: string; club_id?: string;
@@ -197,31 +303,56 @@ export function useTournaments(filters?: {
           });
           normalized.sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''));
 
-          // ── Enrichissement automatique depuis tournament_results ──────────
-          // Compte les équipes réelles par tournament_id
-          const { data: resData } = await safeSupabaseQuery(() =>
+          // Enrichissement resultats: legacy par tournament_id + archives par date/club/cat/division.
+          const countById = new Map<string, number>();
+          const countByKey = new Map<string, number>();
+
+          const { data: legacyData } = await safeSupabaseQuery(() =>
             supabase!.from('tournament_results')
-              .select('tournament_id, rank')
+              .select('tournament_id,tournament_date,category,division,club_name,rank')
               .limit(10000)
           );
-          if (resData && (resData as unknown[]).length > 0) {
-            const resRows = resData as Record<string, unknown>[];
-            // Compter les équipes max (rang max) par tournoi
-            const countMap = new Map<string, number>();
-            for (const row of resRows) {
-              const tid = row.tournament_id as string;
-              if (!tid) continue;
-              const rank = Number(row.rank ?? 0);
-              const prev = countMap.get(tid) ?? 0;
-              if (rank > prev) countMap.set(tid, rank);
+
+          for (const row of ((legacyData ?? []) as ResultPresenceRow[])) {
+            const rank = resultPresenceRank(row);
+            if (row.tournament_id) {
+              const previous = countById.get(row.tournament_id) ?? 0;
+              if (rank > previous) countById.set(row.tournament_id, rank);
             }
-            // Injecter participants_count + has_results
-            for (const t of normalized) {
-              const count = countMap.get(t.id);
-              if (count !== undefined && count > 0) {
-                t.participants_count = count;
-                t.has_results        = true;
-              }
+            addPresenceCount(
+              countByKey,
+              resultPresenceKey({
+                date: row.tournament_date,
+                category: row.category,
+                division: row.division,
+                club: row.club_name,
+              }),
+              rank
+            );
+          }
+
+          const historicalRows = await fetchHistoricalPresenceRows(supabase);
+          for (const row of historicalRows) {
+            addPresenceCount(
+              countByKey,
+              resultPresenceKey({
+                date: row.event_date,
+                category: row.category,
+                division: row.division,
+                club: row.club_name,
+              }),
+              resultPresenceRank(row)
+            );
+          }
+
+          for (const t of normalized) {
+            const count = Math.max(
+              countById.get(t.id) ?? 0,
+              ...tournamentPresenceKeys(t).map(key => countByKey.get(key) ?? 0)
+            );
+            if (count > 0) {
+              t.participants_count = count;
+              t.has_results = true;
             }
           }
 
