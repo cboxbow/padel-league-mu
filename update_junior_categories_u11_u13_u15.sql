@@ -11,6 +11,7 @@ BEGIN
     SELECT * FROM (VALUES
       ('tournaments', 'name'),
       ('tournament_results', 'tournament_name'),
+      ('historical_tournament_results', 'event_name'),
       ('tournament_photos', 'tournament_name'),
       ('tournament_registrations', 'tournament_name'),
       ('matches', 'tournament_name')
@@ -49,6 +50,8 @@ BEGIN
       ('tournaments', 'type'),
       ('tournaments', 'tournament_type'),
       ('tournament_results', 'category'),
+      ('historical_tournament_results', 'category'),
+      ('historical_tournament_results', 'junior_category'),
       ('tournament_photos', 'category'),
       ('matches', 'category')
     ) AS t(table_name, column_name)

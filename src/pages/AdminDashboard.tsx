@@ -1708,14 +1708,14 @@ function DashboardPage() {
     M25:'#6b7280', M50:'#22c55e', M100:'#3b82f6', M250:'#8b5cf6',
     M500:'#f59e0b', M1000:'#ef4444', MIXED:'#f97316', JUNIOR:'#ec4899',
     U11:'#fb923c', U13:'#f97316', U15:'#ef4444',
-    U10:'#fb923c', U12:'#f97316', U14:'#ef4444',
   };
   const TYPE_COLORS: Record<string,string> = {
     MEN:'#3b82f6', WOMEN:'#ec4899', 'MEN&WOMEN':'#8b5cf6', MIXED:'#f59e0b', JUNIOR:'#f97316',
   };
   function colorForTournoi(t: TournRow) {
     const type = (t as any).tournament_type ?? (t as any).type ?? '';
-    return TYPE_COLORS[type] ?? CAT_COLORS[t.category] ?? '#4ad569';
+    const category = normalizeJuniorCategory(String(t.category ?? ''));
+    return TYPE_COLORS[type] ?? CAT_COLORS[category] ?? '#4ad569';
   }
   function divLabel(t: TournRow): string {
     const type = (t as any).tournament_type ?? (t as any).type ?? '';
@@ -1743,6 +1743,7 @@ function DashboardPage() {
   // ── Rendu carte tournoi ────────────────────────────────────────────────────
   function TournoiCard({ t }: { t: TournRow }) {
     const color = colorForTournoi(t);
+    const category = normalizeJuniorCategory(String(t.category ?? ''));
     return (
       <div style={{
         background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)',
@@ -1751,7 +1752,7 @@ function DashboardPage() {
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
           <span style={{ color: 'white', fontWeight: 600, fontSize: '13px', lineHeight: 1.3 }}>{t.name}</span>
-          <span style={{ background: `${CAT_COLORS[t.category] ?? color}20`, color: CAT_COLORS[t.category] ?? color, borderRadius: '5px', padding: '2px 7px', fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>{t.category}</span>
+          <span style={{ background: `${CAT_COLORS[category] ?? color}20`, color: CAT_COLORS[category] ?? color, borderRadius: '5px', padding: '2px 7px', fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>{category}</span>
         </div>
         <div style={{ color: '#666', fontSize: '11px' }}>
           🏢 {(t as any).club_name ?? (t as any).club ?? '—'}

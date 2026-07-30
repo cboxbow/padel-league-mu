@@ -71,7 +71,11 @@ interface TournRow {
 // ─────────────────────────────────────────────────────────────────────────────
 const DIV_LABELS: Record<string, string>  = { men:'Hommes', women:'Dames', mixed:'Mixte', junior:'Junior' };
 const DIV_COLORS: Record<string, string>  = { men:'#60a5fa', women:'#f472b6', mixed:'#a78bfa', junior:'#4ade80' };
-const CAT_COLORS: Record<string, string>  = { M25:'#6b7280', M50:'#10b981', M100:'#3b82f6', M250:'#8b5cf6', M500:'#f59e0b', M1000:'#ef4444', MIXED:'#a78bfa', U11:'#4ade80', U13:'#4ade80', U15:'#4ade80' };
+const CAT_COLORS: Record<string, string>  = {
+  M25:'#6b7280', M50:'#10b981', M100:'#3b82f6', M250:'#8b5cf6',
+  M500:'#f59e0b', M1000:'#ef4444', MIXED:'#a78bfa',
+  U11:'#fb923c', U13:'#f97316', U15:'#ef4444', JUNIOR:'#fb923c',
+};
 const DIVS = ['men','women','mixed','junior'];
 
 const HISTORICAL_RESULT_COLUMNS = [
