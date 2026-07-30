@@ -273,7 +273,7 @@ function manualCalendarFallback(sheetName, meta) {
     [/\bM25\b.*ISLA.*DEC.*24/, '2024-12-07', 'Isla Padel Beau Plan', 'NORD'],
     [/\bM100\b.*RM.*APR.*24/, '2024-04-06', 'RM Club Grand Baie', 'NORD'],
     [/\bM100\b.*RM.*MAY.*24/, '2024-05-04', 'RM Club Grand Baie', 'NORD'],
-    [/\bM100\b.*RM.*JUL.*24/, '', 'RM Club Grand Baie', 'NORD'],
+    [/\bM100\b.*RM.*JUL.*24/, '2024-07-06', 'RM Club Grand Baie', 'NORD'],
     [/\bM100\b.*RM.*AUG.*24/, '2024-08-31', 'RM Club Grand Baie', 'NORD'],
     [/\bM100\b.*RM.*NOV.*24/, '2024-11-30', 'RM Club Tamarin', 'OUEST'],
     [/\bM25\b.*RM.*JUL.*24/, '2024-07-06', 'RM Club Grand Baie', 'NORD'],
