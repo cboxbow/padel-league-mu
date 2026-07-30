@@ -217,6 +217,14 @@ function resultPresenceKey(parts: { date?: unknown; category?: unknown; division
   ].join('|');
 }
 
+function resultPresenceLooseKey(parts: { date?: unknown; division?: unknown; club?: unknown; category?: unknown }): string {
+  return [
+    cleanText(parts.date).slice(0, 10),
+    normalizeCalendarDivision(parts.division, parts.category),
+    normKey(normalizeCalendarClub(parts.club)),
+  ].join('|');
+}
+
 function tournamentPresenceKeys(tournament: TournamentData): string[] {
   const keys = [
     resultPresenceKey({
@@ -306,6 +314,7 @@ export function useTournaments(filters?: {
           // Enrichissement resultats: legacy par tournament_id + archives par date/club/cat/division.
           const countById = new Map<string, number>();
           const countByKey = new Map<string, number>();
+          const countByLooseKey = new Map<string, number>();
 
           const { data: legacyData } = await safeSupabaseQuery(() =>
             supabase!.from('tournament_results')
@@ -329,6 +338,16 @@ export function useTournaments(filters?: {
               }),
               rank
             );
+            addPresenceCount(
+              countByLooseKey,
+              resultPresenceLooseKey({
+                date: row.tournament_date,
+                category: row.category,
+                division: row.division,
+                club: row.club_name,
+              }),
+              rank
+            );
           }
 
           const historicalRows = await fetchHistoricalPresenceRows(supabase);
@@ -343,12 +362,30 @@ export function useTournaments(filters?: {
               }),
               resultPresenceRank(row)
             );
+            addPresenceCount(
+              countByLooseKey,
+              resultPresenceLooseKey({
+                date: row.event_date,
+                category: row.category,
+                division: row.division,
+                club: row.club_name,
+              }),
+              resultPresenceRank(row)
+            );
           }
 
           for (const t of normalized) {
+            const looseKey = resultPresenceLooseKey({
+              date: t.date,
+              category: t.category,
+              division: t.division || t.type,
+              club: t.club_name,
+            });
+            const allowLooseMatch = t.category === 'MIXED' || t.category === 'JUNIOR' || t.type === 'MIXED' || t.type === 'JUNIOR';
             const count = Math.max(
               countById.get(t.id) ?? 0,
-              ...tournamentPresenceKeys(t).map(key => countByKey.get(key) ?? 0)
+              ...tournamentPresenceKeys(t).map(key => countByKey.get(key) ?? 0),
+              allowLooseMatch ? (countByLooseKey.get(looseKey) ?? 0) : 0
             );
             if (count > 0) {
               t.participants_count = count;
