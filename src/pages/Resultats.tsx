@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Trophy, Medal, Search, Users, Calendar, MapPin, ChevronDown, ChevronUp, RefreshCw, ExternalLink } from 'lucide-react';
 import { DotWaveBackground } from '@/components/DotWaveBackground';
 import { Layout, GlassCard } from '@/components/Layout';
@@ -527,16 +527,22 @@ export default function Resultats() {
     canonical: "https://padelleague.mu/#/resultats",
   });
   const navigate = useNavigate();
+  const location = useLocation();
+  const urlParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const initialSearch = urlParams.get('q') ?? '';
+  const initialDate = urlParams.get('date') ?? '';
+  const initialDivision = urlParams.get('division') ?? 'all';
   const [allResults, setAllResults]   = useState<TournamentResult[]>([]);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState('');
   const [fromSupabase, setFromSupabase] = useState(false);
 
   // Filtres
-  const [search, setSearch]           = useState('');
-  const [filterDiv, setFilterDiv]     = useState('all');
+  const [search, setSearch]           = useState(initialSearch);
+  const [filterDiv, setFilterDiv]     = useState(['men', 'women', 'mixed', 'junior'].includes(initialDivision) ? initialDivision : 'all');
   const [filterCat, setFilterCat]     = useState('all');
   const [filterRegion, setFilterRegion] = useState('all');
+  const resultDate = initialDate;
 
   const load = async () => {
     setLoading(true); setError('');
@@ -615,6 +621,16 @@ export default function Resultats() {
 
   useEffect(() => { load(); }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const nextSearch = params.get('q') ?? '';
+    const nextDivision = params.get('division') ?? 'all';
+    setSearch(nextSearch);
+    if (['men', 'women', 'mixed', 'junior', 'all'].includes(nextDivision)) {
+      setFilterDiv(nextDivision);
+    }
+  }, [location.search]);
+
   // Grouper par tournoi
   const groups = useMemo(() => {
     let filtered = allResults;
@@ -628,11 +644,12 @@ export default function Resultats() {
         searchText(r.team_name).includes(q)
       );
     }
+    if (resultDate) filtered = filtered.filter(r => (r.tournament_date ?? '').slice(0, 10) === resultDate);
     if (filterDiv !== 'all')    filtered = filtered.filter(r => r.division === filterDiv);
     if (filterCat !== 'all')    filtered = filtered.filter(r => r.category === filterCat);
     if (filterRegion !== 'all') filtered = filtered.filter(r => r.region === filterRegion);
     return groupByTournament(filtered);
-  }, [allResults, search, filterDiv, filterCat, filterRegion]);
+  }, [allResults, search, resultDate, filterDiv, filterCat, filterRegion]);
 
   // Statistiques globales
   const stats = useMemo(() => {

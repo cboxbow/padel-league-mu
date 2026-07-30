@@ -293,6 +293,18 @@ export default function Calendrier() {
     setSearch(''); resetPage();
   };
 
+  const resultsPathForTournament = (t: { club_name: string; date: string; division?: string; type?: string }) => {
+    const rawDivision = (t.division || t.type || '').toLowerCase();
+    const division = rawDivision.includes('mixed') ? 'mixed'
+      : rawDivision.includes('junior') ? 'junior'
+      : rawDivision.includes('women') || rawDivision.includes('dames') ? 'women'
+      : rawDivision.includes('men') || rawDivision.includes('hommes') ? 'men'
+      : 'all';
+    const params = new URLSearchParams({ q: t.club_name, date: t.date });
+    if (division !== 'all') params.set('division', division);
+    return `${ROUTE_PATHS.RESULTS}?${params.toString()}`;
+  };
+
   // En-têtes de colonne du tableau
   const COLUMNS: { key: SortField; label_fr: string; label_en: string; align?: 'right' | 'center'; width?: string }[] = [
     { key: 'date',             label_fr: 'Date',        label_en: 'Date',       width: '96px'  },
@@ -629,7 +641,7 @@ export default function Calendrier() {
                             {/* Badge Résultats si résultats disponibles */}
                             {hasResults && (
                               <button
-                                onClick={() => useNav(ROUTE_PATHS.RESULTS)}
+                                onClick={() => useNav(resultsPathForTournament(t))}
                                 style={{
                                   display: 'flex', alignItems: 'center', gap: '3px',
                                   background: 'rgba(245,158,11,0.1)', color: '#f59e0b',
@@ -645,7 +657,7 @@ export default function Calendrier() {
                             {/* Lien résultats si terminé sans résultats Supabase */}
                             {!hasResults && (t.status === 'completed' || t.status === 'Terminé' || t.status === 'terminé') && (
                               <button
-                                onClick={() => useNav(ROUTE_PATHS.RESULTS)}
+                                onClick={() => useNav(resultsPathForTournament(t))}
                                 style={{
                                   display: 'flex', alignItems: 'center', gap: '3px',
                                   background: 'rgba(100,100,100,0.1)', color: '#666',
