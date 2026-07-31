@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, Component } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, Component } from 'react';
 import * as XLSX from 'xlsx';
 import {
   LayoutDashboard, Users, Trophy, Settings, Zap, FileText,
