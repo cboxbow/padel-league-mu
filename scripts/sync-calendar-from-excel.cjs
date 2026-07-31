@@ -95,8 +95,27 @@ function rowToEvents(row, eventNumber, juniorNumberRef) {
 }
 
 const workbook = XLSX.readFile(sourcePath, { cellDates: true });
+function findDateInClubSheet(row) {
+  const sheetName = String(row.CLUB).trim().toUpperCase();
+  const sheet = workbook.Sheets[sheetName];
+  if (!sheet) return '';
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+  const match = rows.find(item =>
+    String(item.CLUB).trim().toUpperCase() === String(row.CLUB).trim().toUpperCase() &&
+    String(item.ZONE).trim().toUpperCase() === String(row.ZONE).trim().toUpperCase() &&
+    String(item.CATEGORIE).trim().toUpperCase() === String(row.CATEGORIE).trim().toUpperCase() &&
+    String(item.TYPE).trim().toUpperCase() === String(row.TYPE).trim().toUpperCase() &&
+    /^\d{1,2}\/\d{1,2}\/\d{2}$/.test(String(item.DATE).trim())
+  );
+  return match ? String(match.DATE).trim() : '';
+}
+
 const database = XLSX.utils.sheet_to_json(workbook.Sheets.DATABASE, { defval: '', raw: false })
   .filter(row => row.DATE && row.CLUB && row.ZONE && row.CATEGORIE && row.TYPE)
+  .map(row => {
+    if (/^\d{1,2}\/\d{1,2}\/\d{2}$/.test(String(row.DATE).trim())) return row;
+    return { ...row, DATE: findDateInClubSheet(row) };
+  })
   .filter(row => /^\d{1,2}\/\d{1,2}\/\d{2}$/.test(String(row.DATE).trim()));
 
 let eventNumber = 1;
