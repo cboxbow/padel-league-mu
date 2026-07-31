@@ -58,9 +58,11 @@ interface CsvRow {
   player2_name: string;
   seed?: number;
   duplicate?: boolean;
+  duplicateReason?: string;
 }
 
 type FilterKey = 'all' | 'confirmed' | 'pending' | 'checked_in';
+type MsgType = 'success' | 'error' | 'warn' | 'info';
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  MOCK DATA (mode démo)
@@ -93,6 +95,51 @@ function divLabel(type: string): string {
   if (t === 'MIXED' || t === 'MIXTE') return 'Mixte';
   if (t === 'MEN&WOMEN') return 'H+D';
   return type || '—';
+}
+
+function normalizeDivision(type?: string): string {
+  const t = (type ?? '').toUpperCase().replace(/\s+/g, '');
+  if (t === 'MEN' || t === 'HOMMES') return 'MEN';
+  if (t === 'WOMEN' || t === 'DAMES' || t === 'FEMMES') return 'WOMEN';
+  if (t === 'JUNIOR' || t.startsWith('JUNIOR')) return 'JUNIOR';
+  if (t === 'MIXED' || t === 'MIXTE') return 'MIXED';
+  if (t === 'MEN&WOMEN' || t === 'MEN+WOMEN') return 'MEN&WOMEN';
+  return t || 'MEN';
+}
+
+function tournamentDivision(t?: Tournament): string {
+  return normalizeDivision(t?.tournament_type ?? t?.division);
+}
+
+function cleanNameKey(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function pairKey(p1: string, p2: string): string {
+  return [cleanNameKey(p1), cleanNameKey(p2)].sort().join('|');
+}
+
+function seedKey(seed?: number | null): string {
+  return seed == null ? '' : String(seed);
+}
+
+function pickDefaultTournament(tournaments: Tournament[]): string {
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const valid = tournaments.filter(t => uuidRe.test(t.id));
+  if (!valid.length) return '';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const withTime = valid
+    .map(t => ({ ...t, time: new Date(t.tournament_date ?? t.date ?? '').getTime() }))
+    .filter(t => Number.isFinite(t.time));
+  const future = withTime.filter(t => t.time >= today.getTime()).sort((a, b) => a.time - b.time);
+  if (future[0]) return future[0].id;
+  return withTime.sort((a, b) => b.time - a.time)[0]?.id ?? valid[0].id;
 }
 
 /** Couleur de badge pour la division */
@@ -282,7 +329,7 @@ export default function RegistrationsPage() {
   const [csvRows,    setCsvRows]    = useState<CsvRow[]>([]);
   const [csvPreview, setCsvPreview] = useState(false);
   const [csvBusy,    setCsvBusy]    = useState(false);
-  const [csvMsg,     setCsvMsg]     = useState<{ type: 'success'|'error'; text: string } | null>(null);
+  const [csvMsg,     setCsvMsg]     = useState<{ type: MsgType; text: string } | null>(null);
   const [dragOver,   setDragOver]   = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -315,11 +362,10 @@ export default function RegistrationsPage() {
       // Dédupliquer par id
       const unique = Array.from(new Map((data as Tournament[]).map(t => [t.id, t])).values());
       setTournaments(unique);
-      // Présélectionner UNIQUEMENT le premier tournoi dont l'ID est un vrai UUID
-      const firstReal = unique.find(t => isValidUUID(t.id));
-      if (firstReal) {
-        console.log('[MPL] loadTournaments → présélection UUID:', firstReal.id);
-        setSelectedTournId(firstReal.id);
+      const defaultId = pickDefaultTournament(unique);
+      if (defaultId) {
+        console.log('[MPL] loadTournaments → présélection tournoi:', defaultId);
+        setSelectedTournId(defaultId);
       } else {
         console.warn('[MPL] loadTournaments → aucun UUID valide trouvé dans', unique.map(t => t.id));
         setSelectedTournId('');
@@ -360,6 +406,13 @@ export default function RegistrationsPage() {
     () => tournaments.find(t => t.id === selectedTournId),
     [tournaments, selectedTournId]
   );
+  const selectedDivision = useMemo(() => tournamentDivision(selectedTourn), [selectedTourn]);
+  const divisionLocked = selectedDivision !== 'MEN&WOMEN';
+  const registrationDivision = divisionLocked ? selectedDivision : formDivision;
+
+  useEffect(() => {
+    if (selectedTourn && divisionLocked) setFormDivision(selectedDivision);
+  }, [selectedTourn, selectedDivision, divisionLocked]);
 
   const filtered = useMemo(() => {
     let list = registrations;
@@ -392,6 +445,24 @@ export default function RegistrationsPage() {
       setFormMsg({ type: 'error', text: 'Aucun tournoi sélectionné.' });
       return;
     }
+    if (cleanNameKey(formP1) === cleanNameKey(formP2)) {
+      setFormMsg({ type: 'error', text: 'Les deux joueurs ne peuvent pas etre identiques.' });
+      return;
+    }
+    const newPairKey = pairKey(formP1, formP2);
+    if (registrations.some(r => pairKey(r.player1_name, r.player2_name) === newPairKey)) {
+      setFormMsg({ type: 'error', text: 'Cette paire existe deja pour ce tournoi.' });
+      return;
+    }
+    const parsedSeed = formSeed ? parseInt(formSeed, 10) : null;
+    if (parsedSeed != null && (!Number.isFinite(parsedSeed) || parsedSeed < 1)) {
+      setFormMsg({ type: 'error', text: 'Le seed doit etre un nombre positif.' });
+      return;
+    }
+    if (parsedSeed != null && registrations.some(r => r.seed === parsedSeed)) {
+      setFormMsg({ type: 'error', text: `Le seed #${parsedSeed} existe deja pour ce tournoi.` });
+      return;
+    }
     // Bloquer les IDs mock non-UUID avant tout envoi Supabase
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selectedTournId)) {
       setFormMsg({ type: 'error', text: `❌ ID de tournoi invalide («${selectedTournId}»). Sélectionnez un tournoi réel.` });
@@ -404,8 +475,8 @@ export default function RegistrationsPage() {
       tournament_id: selectedTournId,
       player1_name:  formP1.trim(),
       player2_name:  formP2.trim(),
-      seed:          formSeed ? parseInt(formSeed, 10) : null,
-      division:      formDivision,
+      seed:          parsedSeed,
+      division:      registrationDivision,
       confirmed:     true,
       checked_in:    false,
     };
@@ -435,7 +506,7 @@ export default function RegistrationsPage() {
       setFormMsg({ type: 'success', text: `Paire "${(data as Registration).player1_name} / ${(data as Registration).player2_name}" ajoutée.` });
     }
     setFormBusy(false);
-  }, [formP1, formP2, formSeed, formDivision, selectedTournId, demo, supabase]);
+  }, [formP1, formP2, formSeed, selectedTournId, registrationDivision, registrations, demo, supabase]);
 
   // ── CSV parsing ───────────────────────────────────────────────────────────
   const handleFileRead = useCallback((file: File) => {
@@ -448,13 +519,30 @@ export default function RegistrationsPage() {
         setCsvMsg({ type: 'error', text: 'Aucune ligne valide trouvée dans ce fichier CSV.' });
         return;
       }
-      const existingPairs = new Set(
-        registrations.map(r => `${r.player1_name.toLowerCase()}|${r.player2_name.toLowerCase()}`)
-      );
-      const marked = rows.map(r => ({
-        ...r,
-        duplicate: existingPairs.has(`${r.player1_name.toLowerCase()}|${r.player2_name.toLowerCase()}`),
-      }));
+      const existingPairs = new Set(registrations.map(r => pairKey(r.player1_name, r.player2_name)));
+      const existingSeeds = new Set(registrations.map(r => seedKey(r.seed)).filter(Boolean));
+      const seenPairs = new Set<string>();
+      const seenSeeds = new Set<string>();
+      const marked = rows.map(r => {
+        const pk = pairKey(r.player1_name, r.player2_name);
+        const sk = seedKey(r.seed);
+        const samePlayer = cleanNameKey(r.player1_name) === cleanNameKey(r.player2_name);
+        const duplicatePair = existingPairs.has(pk) || seenPairs.has(pk);
+        const duplicateSeed = Boolean(sk && (existingSeeds.has(sk) || seenSeeds.has(sk)));
+        seenPairs.add(pk);
+        if (sk) seenSeeds.add(sk);
+        return {
+          ...r,
+          duplicate: samePlayer || duplicatePair || duplicateSeed,
+          duplicateReason: samePlayer
+            ? 'meme joueur'
+            : duplicatePair
+              ? 'paire deja presente'
+              : duplicateSeed
+                ? `seed #${r.seed} deja utilise`
+                : undefined,
+        };
+      });
       setCsvRows(marked);
       setCsvPreview(true);
     };
@@ -477,7 +565,7 @@ export default function RegistrationsPage() {
   const handleCsvImport = useCallback(async () => {
     const toInsert = csvRows.filter(r => !r.duplicate);
     if (!toInsert.length) {
-      setCsvMsg({ type: 'warn' as 'error', text: 'Toutes les lignes sont des doublons.' });
+      setCsvMsg({ type: 'warn', text: 'Toutes les lignes sont des doublons ou invalides.' });
       return;
     }
     if (!selectedTournId) {
@@ -492,7 +580,7 @@ export default function RegistrationsPage() {
       player1_name:  r.player1_name,
       player2_name:  r.player2_name,
       seed:          r.seed ?? null,
-      division:      formDivision,
+      division:      registrationDivision,
       confirmed:     true,
       checked_in:    false,
     }));
@@ -519,7 +607,7 @@ export default function RegistrationsPage() {
       setCsvRows([]); setCsvPreview(false);
     }
     setCsvBusy(false);
-  }, [csvRows, selectedTournId, formDivision, demo, supabase]);
+  }, [csvRows, selectedTournId, registrationDivision, demo, supabase]);
 
   // ── Check-in ──────────────────────────────────────────────────────────────
   const handleCheckin = useCallback(async (id: string) => {
@@ -652,11 +740,12 @@ export default function RegistrationsPage() {
                 <select
                   value={formDivision}
                   onChange={e => setFormDivision((e.target as HTMLSelectElement).value)}
+                  disabled={divisionLocked}
                   style={{
                     background: T.input, border: `1px solid ${T.inputBorder}`,
                     borderRadius: 8, padding: '8px 12px',
-                    color: T.text, fontSize: 13, width: '100%',
-                    appearance: 'none', cursor: 'pointer', outline: 'none',
+                    color: divisionLocked ? T.muted : T.text, fontSize: 13, width: '100%',
+                    appearance: 'none', cursor: divisionLocked ? 'not-allowed' : 'pointer', outline: 'none',
                   }}
                 >
                   <option value="MEN">Hommes</option>
@@ -664,6 +753,11 @@ export default function RegistrationsPage() {
                   <option value="JUNIOR">Junior</option>
                   <option value="MIXED">Mixte</option>
                 </select>
+                {divisionLocked && (
+                  <div style={{ color: T.muted, fontSize: 11, marginTop: 5 }}>
+                    Auto depuis le tournoi selectionne.
+                  </div>
+                )}
               </div>
             </div>
             {formMsg && <Notice type={formMsg.type}>{formMsg.text}</Notice>}
@@ -740,7 +834,7 @@ export default function RegistrationsPage() {
                         <td style={{ padding: '5px 10px', color: T.muted, borderBottom: `1px solid ${T.border}` }}>{r.seed ?? '—'}</td>
                         <td style={{ padding: '5px 10px', borderBottom: `1px solid ${T.border}` }}>
                           {r.duplicate
-                            ? <Badge color={T.warn} bg={T.warnBg}>doublon</Badge>
+                            ? <Badge color={T.warn} bg={T.warnBg}>{r.duplicateReason ?? 'doublon'}</Badge>
                             : <Badge color={T.accent} bg={T.accentBg}>nouveau</Badge>
                           }
                         </td>
