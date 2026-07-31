@@ -311,6 +311,25 @@ export function useTournaments(filters?: {
           });
           normalized.sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''));
 
+          const localOfficial = (MPL_TOURNAMENTS as TournamentData[]).map(t => ({
+            ...t,
+            status: computeTournamentStatus(t.date, t.status),
+          }));
+          const dbById = new Map(normalized.map(t => [t.id, t]));
+          const dbByKey = new Map<string, TournamentData>();
+          for (const t of normalized) {
+            for (const key of tournamentPresenceKeys(t)) dbByKey.set(key, t);
+          }
+          const officialCalendar = localOfficial.map(t => {
+            const dbMatch = dbById.get(t.id) || tournamentPresenceKeys(t).map(key => dbByKey.get(key)).find(Boolean);
+            return {
+              ...t,
+              teams_registered: dbMatch?.teams_registered ?? t.teams_registered ?? 0,
+              participants_count: dbMatch?.participants_count,
+              has_results: dbMatch?.has_results ?? false,
+            };
+          });
+
           // Enrichissement resultats: legacy par tournament_id + archives par date/club/cat/division.
           const countById = new Map<string, number>();
           const countByKey = new Map<string, number>();
@@ -374,7 +393,7 @@ export function useTournaments(filters?: {
             );
           }
 
-          for (const t of normalized) {
+          for (const t of officialCalendar) {
             const looseKey = resultPresenceLooseKey({
               date: t.date,
               category: t.category,
@@ -393,7 +412,7 @@ export function useTournaments(filters?: {
             }
           }
 
-          setDbData(normalized);
+          setDbData(officialCalendar);
           setSource('supabase');
           setLoading(false);
           return;
