@@ -787,7 +787,7 @@ function PlayerDetailModal({
       return Number(b.season ?? 0) - Number(a.season ?? 0) || b.points - a.points;
     });
   const top8Label = playedCount > 8 ? `8/${playedCount}` : String(playedCount);
-  const ruleText = `Ranking period: ${formatIsoDateFr(windowRange.start)} to ${formatIsoDateFr(windowRange.end)} - Best 8 scores. Les autres tournois restent visibles mais ne comptent pas dans le total ranking.`;
+  const ruleText = `Ranking period: ${formatIsoDateFr(windowRange.start)} to ${formatIsoDateFr(windowRange.end)} - Best 8 scores. Les autres tournois restent visibles mais ne comptent pas dans le Top 8 officiel.`;
 
   useEffect(() => {
     const media = window.matchMedia('(max-width: 720px)');
@@ -805,7 +805,7 @@ function PlayerDetailModal({
             <span style={{ color: '#f59e0b', fontSize: isMobile ? '18px' : '20px', lineHeight: 1.2, flex: '0 0 auto' }}>#{player.rank}</span>
             <div style={{ minWidth: 0 }}>
               <div style={{ color: 'white', fontSize: isMobile ? '17px' : '16px', fontWeight: 900, textTransform: 'uppercase', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isMobile ? 'normal' : 'nowrap', lineHeight: 1.08 }}>{player.player_name}</div>
-              <div style={{ color: '#777', fontSize: '12px', marginTop: '4px', lineHeight: 1.35 }}>{formatPoints(player.points)} pts ranking - Top 8 / 12 mois: {top8Label} - {historicalDetails.length} historique</div>
+              <div style={{ color: '#777', fontSize: '12px', marginTop: '4px', lineHeight: 1.35 }}>{formatPoints(rankingTotal)} pts Top 8 officiel - Joues 12 mois: {top8Label} - {historicalDetails.length} historique</div>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: isMobile ? '8px' : '14px', flex: '0 0 auto' }}>
@@ -818,15 +818,15 @@ function PlayerDetailModal({
           <div style={{ color: '#d0d0d0', fontSize: '12px', fontWeight: 800, lineHeight: 1.45 }}>{ruleText}</div>
           {detectedGap > 0 && officialDetails.length > 0 && (
             <div style={{ color: '#f59e0b', fontSize: '11px', fontWeight: 800, marginTop: '6px' }}>
-              Controle donnees: officiel {formatPoints(rankingTotal)} - details detectes {formatPoints(calculatedTop8Total)}.
+              Controle donnees: Top 8 officiel {formatPoints(rankingTotal)} - details detectes {formatPoints(calculatedTop8Total)}.
             </div>
           )}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,minmax(0,1fr))' : 'repeat(auto-fit,minmax(130px,1fr))', gap: '8px', padding: isMobile ? '12px 16px' : '12px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           {[
-            { label: 'Ranking', value: formatPoints(player.points), c: color },
-            { label: 'Top 8 retenus', value: loading ? '...' : formatPoints(calculatedTop8Total || rankingTotal), c: '#4ad569' },
+            { label: 'Top 8 officiel', value: formatPoints(rankingTotal), c: color },
+            { label: 'Top 8 detecte', value: loading ? '...' : formatPoints(calculatedTop8Total || rankingTotal), c: '#4ad569' },
             { label: 'Points reels 12m', value: loading ? '...' : formatPoints(real12MonthTotal), c: '#f59e0b' },
             { label: 'Hors calcul', value: `${outOfTop8Count} / ${formatPoints(rankingGap)}`, c: '#ef4444' },
             { label: 'Carriere pts', value: careerStats ? formatPoints(careerStats.total_points) : '-', c: '#8b5cf6' },
