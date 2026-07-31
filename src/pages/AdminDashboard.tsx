@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, Component } from 'react';
+import * as XLSX from 'xlsx';
 import {
   LayoutDashboard, Users, Trophy, Settings, Zap, FileText,
   LogOut, Menu, X, Bell, Plus, Pencil, Trash2, Save,
   RefreshCw, Search, ChevronDown, GitBranch, Star, Download, Medal,
-  AlertTriangle, Copy, CheckCircle2, Play, Wifi, WifiOff, Eye, BarChart2, ShieldCheck, Shuffle, Camera, Database,
+  AlertTriangle, Copy, CheckCircle2, Play, Wifi, WifiOff, Eye, BarChart2, ShieldCheck, Shuffle, Camera, Database, Upload,
 } from 'lucide-react';
 import RegistrationsPage from '@/features/registrations/RegistrationsPage';
 import DrawControlPage   from '@/features/draw/DrawControlPage';
@@ -588,6 +589,131 @@ const MPL_CLUBS_LIST = [
 
 const PLAYER_LEVELS = ['P1','P2','P3','P4','P5','P6','P7','P8','Elite'];
 
+type PlayerImportDraft = Omit<PlayerRow, 'id'> & { id?: string };
+
+function normalizePlayerImportKey(value: unknown) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function readImportValue(row: Record<string, unknown>, aliases: string[]) {
+  const entries = Object.entries(row);
+  for (const alias of aliases) {
+    const wanted = normalizePlayerImportKey(alias);
+    const found = entries.find(([key]) => normalizePlayerImportKey(key) === wanted);
+    if (found) return found[1];
+  }
+  return '';
+}
+
+function normalizeImportedClub(raw: unknown) {
+  const key = normalizePlayerImportKey(raw);
+  const aliases: Record<string, string> = {
+    'rm club grand baie': 'c08',
+    'rm club forbach': 'c08',
+    'rm forbach': 'c08',
+    'urban sport grand baie': 'c03',
+    'urban sport riviere noire': 'c04',
+    'urban sport black river': 'c04',
+    'sparc cascavelle': 'c05',
+    'rm club tamarin': 'c06',
+    'i padel by rm henessy': 'c07',
+    'i padel by rm hennessy': 'c07',
+    'i padel by rm port chambly': 'c10',
+    'studio by rm azuri': 'c11',
+    'isla padel beau plan': 'c12',
+    'isla padel grand baie': 'c12',
+    'labourdonnais sport club': 'c09',
+    'labourdonnais mapou': 'c09',
+    'cana beau plan': 'c01',
+    'oxygen moka': 'c15',
+    'club house riviere noire': 'c16',
+    'club house black river': 'c16',
+    'energia padel pte aux cannonniers': 'c17',
+    'energia pointe aux canonniers': 'c17',
+    'mont choisy golf mont choisy': 'c14',
+    'mont choisy golf': 'c14',
+    'terres brunes tamarin': 'c13',
+    'terres brunes sports leisure': 'c13',
+    'club med albion': 'c02',
+    'moka rangers moka': 'c18',
+    'moka rangers': 'c18',
+  };
+  const clubId = aliases[key] ?? MPL_CLUBS_LIST.find(c => normalizePlayerImportKey(c.name) === key)?.id ?? '';
+  const club = MPL_CLUBS_LIST.find(c => c.id === clubId);
+  return { club_id: club?.id ?? '', club_name: club?.name ?? String(raw ?? '').trim() };
+}
+
+function inferRegionFromClubId(clubId: string): Region {
+  if (['c01','c03','c08','c09','c12','c14','c17'].includes(clubId)) return 'Nord';
+  if (['c02','c04','c05','c06','c13','c16'].includes(clubId)) return 'Ouest';
+  if (['c07','c10','c15','c18'].includes(clubId)) return 'Centre';
+  if (['c11'].includes(clubId)) return 'Est';
+  return 'Nord';
+}
+
+function normalizeImportedGender(raw: unknown): 'M' | 'F' {
+  const key = normalizePlayerImportKey(raw);
+  return ['female', 'femme', 'f', 'dame', 'dames'].includes(key) ? 'F' : 'M';
+}
+
+function normalizeImportedLevel(raw: unknown) {
+  const value = String(raw ?? '').trim();
+  if (!value) return '';
+  if (/^p\d+$/i.test(value)) return value.toUpperCase();
+  if (/^\d+$/.test(value)) return `P${value}`;
+  return value;
+}
+
+function parsePlayersImportWorkbook(file: File): Promise<PlayerImportDraft[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Lecture du fichier impossible.'));
+    reader.onload = () => {
+      try {
+        const workbook = XLSX.read(reader.result, { type: 'array', cellDates: true });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
+        const rows = rawRows.map(row => {
+          const firstName = String(readImportValue(row, ['Name', 'First Name', 'Prenom', 'Prénom', 'first_name']) ?? '').trim();
+          const lastName = String(readImportValue(row, ['Surname', 'Last Name', 'Nom', 'last_name']) ?? '').trim();
+          const email = String(readImportValue(row, ['Email', 'Mail', 'E-mail']) ?? '').trim().toLowerCase();
+          const phone = String(readImportValue(row, ['Mobile', 'Phone', 'Telephone', 'Téléphone']) ?? '').trim();
+          const rawClub = readImportValue(row, ['Club', 'Club Name', 'club_name']);
+          const club = normalizeImportedClub(rawClub);
+          const gender = normalizeImportedGender(readImportValue(row, ['Gender', 'Genre', 'Sexe']));
+          const division = gender === 'F' ? 'women' : 'men';
+          const status = normalizePlayerImportKey(readImportValue(row, ['Status', 'Statut']));
+          return {
+            first_name: firstName,
+            last_name: lastName,
+            name: `${firstName} ${lastName}`.trim(),
+            email,
+            phone,
+            gender,
+            division: division as Division,
+            license_no: '',
+            club_id: club.club_id || undefined,
+            club_name: club.club_name,
+            region: inferRegionFromClubId(club.club_id),
+            level: normalizeImportedLevel(readImportValue(row, ['Level', 'Niveau'])),
+            active: status ? status !== 'pending' && status !== 'inactive' && status !== 'inactif' : true,
+          };
+        }).filter(row => row.first_name || row.last_name || row.email);
+        resolve(rows);
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
 function PlayersAdminPage() {
   const role = useAdminRole();
   const isViewer = role === 'viewer';
@@ -598,6 +724,10 @@ function PlayersAdminPage() {
   const [genderFilter, setGender] = useState<string>('all');
   const [editing,   setEditing] = useState<Partial<PlayerRow> | null>(null);
   const [saving,    setSaving]  = useState(false);
+  const [importRows, setImportRows] = useState<PlayerImportDraft[]>([]);
+  const [importFileName, setImportFileName] = useState('');
+  const [importingPlayers, setImportingPlayers] = useState(false);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   // ── Enrichissement des données Supabase (genre + division déduits si absents)
   const enriched = players.map(p => {
@@ -651,6 +781,105 @@ function PlayersAdminPage() {
     }
   };
 
+  const importSummary = useMemo(() => {
+    const keys = new Map<string, number>();
+    importRows.forEach(row => {
+      const key = row.email || normalizePlayerImportKey(`${row.first_name} ${row.last_name}`);
+      if (key) keys.set(key, (keys.get(key) || 0) + 1);
+    });
+    return {
+      total: importRows.length,
+      men: importRows.filter(row => row.gender === 'M').length,
+      women: importRows.filter(row => row.gender === 'F').length,
+      missingClub: importRows.filter(row => !row.club_id).length,
+      missingPhone: importRows.filter(row => !row.phone).length,
+      duplicates: Array.from(keys.values()).filter(count => count > 1).length,
+    };
+  }, [importRows]);
+
+  const handlePlayersFile = async (file?: File | null) => {
+    if (!file) return;
+    try {
+      const parsed = await parsePlayersImportWorkbook(file);
+      setImportFileName(file.name);
+      setImportRows(parsed);
+      setError(`Preview import prete: ${parsed.length.toLocaleString('fr-FR')} joueurs detectes.`);
+    } catch (err) {
+      setImportRows([]);
+      setImportFileName('');
+      setError(`Erreur import: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      if (importInputRef.current) importInputRef.current.value = '';
+    }
+  };
+
+  const publishPlayersImport = async () => {
+    if (isViewer || importRows.length === 0) return;
+    const sb = getSupabaseClient();
+    if (!isSupabaseConnected() || !sb) {
+      setError('Import impossible: Supabase non connecte.');
+      return;
+    }
+    setImportingPlayers(true);
+    try {
+      const { data: existingData, error: existingError } = await sb
+        .from('players')
+        .select('id,first_name,last_name,email')
+        .limit(5000);
+      if (existingError) throw new Error(existingError.message);
+
+      const byEmail = new Map<string, string>();
+      const byName = new Map<string, string>();
+      ((existingData ?? []) as Partial<PlayerRow>[]).forEach(row => {
+        if (row.email) byEmail.set(String(row.email).trim().toLowerCase(), row.id as string);
+        const key = normalizePlayerImportKey(`${row.first_name ?? ''} ${row.last_name ?? ''}`);
+        if (key) byName.set(key, row.id as string);
+      });
+
+      const deduped = new Map<string, PlayerImportDraft>();
+      importRows.forEach(row => {
+        const key = row.email || normalizePlayerImportKey(`${row.first_name} ${row.last_name}`);
+        if (key) deduped.set(key, row);
+      });
+
+      const payload = Array.from(deduped.values()).map(row => {
+        const existingId = (row.email && byEmail.get(row.email)) || byName.get(normalizePlayerImportKey(`${row.first_name} ${row.last_name}`));
+        const clean = {
+          id: existingId || crypto.randomUUID?.() || `ply-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          first_name: row.first_name,
+          last_name: row.last_name,
+          email: row.email,
+          phone: row.phone,
+          gender: row.gender,
+          region: row.region,
+          division: row.division,
+          license_no: row.license_no,
+          club_id: row.club_id,
+          club_name: row.club_name,
+          level: row.level,
+          active: row.active,
+        };
+        return Object.fromEntries(Object.entries(clean).filter(([, value]) => value !== undefined));
+      });
+
+      for (let index = 0; index < payload.length; index += 400) {
+        const batch = payload.slice(index, index + 400);
+        const { error: upsertError } = await sb.from('players').upsert(batch);
+        if (upsertError) throw new Error(upsertError.message);
+      }
+
+      setError(`${payload.length.toLocaleString('fr-FR')} joueurs importes / mis a jour.`);
+      setImportRows([]);
+      setImportFileName('');
+      await load();
+      refreshCounts();
+    } catch (err) {
+      setError(`Erreur publication joueurs: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setImportingPlayers(false);
+    }
+  };
+
   const REGIONS:   Region[]    = ['Nord', 'Ouest', 'Est', 'Centre'];
   const DIVISIONS: Division[]  = ['men', 'women', 'junior', 'mixed'];
   const DIV_LABELS: Record<string, string> = { men: 'Hommes', women: 'Femmes', junior: 'Junior', mixed: 'Mixte' };
@@ -681,6 +910,21 @@ function PlayersAdminPage() {
           <button onClick={load} style={{ background: 'rgba(255,255,255,0.05)', color: '#a0a0a0', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '9px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
             <RefreshCw size={14} /> Actualiser
           </button>
+          {!isViewer && <>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              style={{ display: 'none' }}
+              onChange={e => handlePlayersFile(e.target.files?.[0])}
+            />
+            <button
+              onClick={() => importInputRef.current?.click()}
+              style={{ background: 'rgba(59,130,246,0.12)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', padding: '9px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 700 }}
+            >
+              <Upload size={14} /> Import Excel / CSV
+            </button>
+          </>}
           {!isViewer && <button
             onClick={() => setEditing({ division: 'men', gender: 'M', active: true, region: 'Nord', club_id: 'c03', club_name: 'Urban Sport Grand Baie' })}
             style={{ background: '#4ad569', color: '#0a0a0a', border: 'none', borderRadius: '8px', padding: '9px 18px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
@@ -714,6 +958,71 @@ function PlayersAdminPage() {
         }}>
           {error}
           <button onClick={() => setError('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', fontSize: '16px', lineHeight: 1 }}>×</button>
+        </div>
+      )}
+
+      {importRows.length > 0 && (
+        <div style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.25)', borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '14px', marginBottom: '12px' }}>
+            <div>
+              <div style={{ color: 'white', fontWeight: 900, fontSize: '14px' }}>Preview import joueurs</div>
+              <div style={{ color: '#777', fontSize: '12px', marginTop: '4px' }}>{importFileName}</div>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <button onClick={() => { setImportRows([]); setImportFileName(''); }} style={{ background: 'rgba(255,255,255,0.05)', color: '#aaa', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', fontWeight: 700 }}>
+                Annuler
+              </button>
+              <button onClick={publishPlayersImport} disabled={importingPlayers} style={{ background: '#4ad569', color: '#0a0a0a', border: 'none', borderRadius: '8px', padding: '8px 14px', cursor: importingPlayers ? 'wait' : 'pointer', fontWeight: 900, opacity: importingPlayers ? 0.7 : 1 }}>
+                {importingPlayers ? 'Publication...' : 'Publier vers Supabase'}
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(120px, 1fr))', gap: '8px', marginBottom: '12px' }}>
+            {[
+              ['Total', importSummary.total, '#60a5fa'],
+              ['Hommes', importSummary.men, '#3b82f6'],
+              ['Dames', importSummary.women, '#ec4899'],
+              ['Clubs manquants', importSummary.missingClub, importSummary.missingClub ? '#f59e0b' : '#4ad569'],
+              ['Mobiles manquants', importSummary.missingPhone, importSummary.missingPhone ? '#f59e0b' : '#4ad569'],
+              ['Doublons fichier', importSummary.duplicates, importSummary.duplicates ? '#f59e0b' : '#4ad569'],
+            ].map(([label, value, color]) => (
+              <div key={String(label)} style={{ background: `${color}12`, border: `1px solid ${color}30`, borderRadius: '8px', padding: '8px 10px' }}>
+                <div style={{ color: String(color), fontFamily: 'JetBrains Mono, monospace', fontSize: '18px', fontWeight: 900 }}>{Number(value).toLocaleString('fr-FR')}</div>
+                <div style={{ color: '#aaa', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase' }}>{label}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ maxHeight: '210px', overflow: 'auto', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+              <thead style={{ position: 'sticky', top: 0, background: '#111', zIndex: 1 }}>
+                <tr>
+                  {['Joueur', 'Email', 'Mobile', 'Club', 'Genre', 'Niveau', 'Statut'].map(h => (
+                    <th key={h} style={{ color: '#777', textAlign: 'left', padding: '9px 10px', borderBottom: '1px solid rgba(255,255,255,0.08)', textTransform: 'uppercase', fontSize: '10px' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {importRows.slice(0, 80).map((row, index) => (
+                  <tr key={`${row.email}-${index}`} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                    <td style={{ color: 'white', padding: '8px 10px', fontWeight: 800 }}>{row.first_name} {row.last_name}</td>
+                    <td style={{ color: '#aaa', padding: '8px 10px' }}>{row.email}</td>
+                    <td style={{ color: '#aaa', padding: '8px 10px' }}>{row.phone || '-'}</td>
+                    <td style={{ color: row.club_id ? '#aaa' : '#f59e0b', padding: '8px 10px' }}>{row.club_name || 'Club non reconnu'}</td>
+                    <td style={{ color: row.gender === 'F' ? '#ec4899' : '#3b82f6', padding: '8px 10px', fontWeight: 900 }}>{row.gender}</td>
+                    <td style={{ color: '#a78bfa', padding: '8px 10px', fontWeight: 900 }}>{row.level || '-'}</td>
+                    <td style={{ color: row.active ? '#4ad569' : '#f59e0b', padding: '8px 10px', fontWeight: 900 }}>{row.active ? 'Actif' : 'Pending'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {importRows.length > 80 && (
+              <div style={{ padding: '8px 10px', color: '#777', fontSize: '12px', fontWeight: 800 }}>
+                + {(importRows.length - 80).toLocaleString('fr-FR')} autres lignes.
+              </div>
+            )}
+          </div>
         </div>
       )}
 
