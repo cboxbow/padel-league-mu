@@ -204,12 +204,7 @@ function dedupeRankingInputs(rows) {
       byKey.set(key, row);
       continue;
     }
-    const existingPriority = existing.source === 'current' ? 2 : 1;
-    const rowPriority = row.source === 'current' ? 2 : 1;
-    if (
-      rowPriority > existingPriority ||
-      (rowPriority === existingPriority && Math.ceil(Number(row.points) || 0) > Math.ceil(Number(existing.points) || 0))
-    ) {
+    if (Math.ceil(Number(row.points) || 0) > Math.ceil(Number(existing.points) || 0)) {
       byKey.set(key, row);
     }
   }

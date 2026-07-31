@@ -521,11 +521,7 @@ function mergeDetailRows(base: PlayerRankingDetail, incoming: PlayerRankingDetai
   const other = preferred === incoming ? base : incoming;
   const preferredPoints = roundUpPoints(preferred.points);
   const otherPoints = roundUpPoints(other.points);
-  const points = preferred.source === 'current' && other.source === 'historical'
-    ? preferredPoints
-    : preferred.source === 'historical' && other.source === 'current'
-      ? otherPoints
-      : Math.max(preferredPoints, otherPoints);
+  const points = Math.max(preferredPoints, otherPoints);
 
   return {
     ...preferred,
