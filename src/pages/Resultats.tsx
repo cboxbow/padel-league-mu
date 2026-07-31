@@ -668,6 +668,17 @@ export default function Resultats() {
   const cats    = useMemo(() => [...new Set(allResults.map(r => r.category))].sort(), [allResults]);
   const regions = useMemo(() => [...new Set(allResults.map(r => r.region).filter(Boolean))].sort(), [allResults]);
   const unavailable = !!error && !loading && allResults.length === 0;
+  const targetedMode = Boolean(resultDate || initialSearch || initialDivision !== 'all');
+  const targetDivisionLabel = filterDiv === 'men' ? 'Hommes'
+    : filterDiv === 'women' ? 'Dames'
+    : filterDiv === 'mixed' ? 'Mixte'
+    : filterDiv === 'junior' ? 'Junior'
+    : 'Toutes divisions';
+  const targetContext = [
+    resultDate ? formatDate(resultDate) : null,
+    filterDiv !== 'all' ? targetDivisionLabel : null,
+    search.trim() || null,
+  ].filter(Boolean).join(' · ');
 
   const selStyle: React.CSSProperties = {
     background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.15)',
@@ -766,6 +777,48 @@ export default function Resultats() {
             </div>
           )}
 
+          {targetedMode && !unavailable && (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px',
+              flexWrap: 'wrap', marginBottom: '20px', padding: '14px 16px',
+              background: 'linear-gradient(135deg, rgba(74,213,105,0.10), rgba(59,130,246,0.08))',
+              border: '1px solid rgba(74,213,105,0.24)', borderRadius: '14px',
+            }}>
+              <div>
+                <div style={{ color: '#4ad569', fontWeight: 900, fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Tournoi sélectionné depuis le calendrier
+                </div>
+                <div style={{ color: '#d0d0d0', fontSize: '13px', marginTop: '4px' }}>
+                  {targetContext || 'Filtre actif'} · {groups.length} résultat{groups.length > 1 ? 's' : ''} trouvé{groups.length > 1 ? 's' : ''}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => navigate(ROUTE_PATHS.CALENDAR)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                    background: 'rgba(74,213,105,0.10)', border: '1px solid rgba(74,213,105,0.24)',
+                    borderRadius: '10px', padding: '9px 12px', color: '#4ad569',
+                    cursor: 'pointer', fontSize: '12px', fontWeight: 800,
+                  }}
+                >
+                  <Calendar size={13} /> Calendrier
+                </button>
+                <button
+                  onClick={() => navigate(ROUTE_PATHS.RESULTS)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: '10px', padding: '9px 12px', color: '#d0d0d0',
+                    cursor: 'pointer', fontSize: '12px', fontWeight: 700,
+                  }}
+                >
+                  Voir tout
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* ── Filtres ── */}
           {!unavailable && <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '24px', alignItems: 'center' }}>
             {/* Recherche */}
@@ -835,7 +888,7 @@ export default function Resultats() {
               <div style={{ color: '#666', fontSize: '13px', marginBottom: '16px' }}>
                 {groups.length} tournoi{groups.length > 1 ? 's' : ''} · résultats du plus récent au plus ancien
               </div>
-              {groups.map((g, index) => <TournamentCard key={g.key} group={g} filterDiv={filterDiv} initialOpen={index === 0} />)}
+              {groups.map((g, index) => <TournamentCard key={g.key} group={g} filterDiv={filterDiv} initialOpen={targetedMode || index === 0} />)}
             </>
           )}
 

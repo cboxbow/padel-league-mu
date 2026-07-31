@@ -410,7 +410,10 @@ export function useTournaments(filters?: {
   }, []);
 
   const tournaments = useMemo<TournamentData[]>(() => {
-    let result: TournamentData[] = dbData ?? (MPL_TOURNAMENTS as TournamentData[]);
+    let result: TournamentData[] = dbData ?? (MPL_TOURNAMENTS as TournamentData[]).map(t => ({
+      ...t,
+      status: computeTournamentStatus(t.date, t.status),
+    }));
 
     if (filters?.region   && filters.region   !== 'all') result = result.filter(t => t.region   === filters.region);
     if (filters?.category && filters.category !== 'all') {
