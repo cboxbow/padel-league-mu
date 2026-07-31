@@ -554,6 +554,35 @@ function topCountLabel(items: string[]): string {
   const top = Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
   return top ? `${top[0]} (${top[1]})` : '-';
 }
+
+function detailLooseEventKey(detail: PlayerRankingDetail): string {
+  return [
+    detailIsoDate(detail) || detailMonthKey(detail),
+    detail.division_key || '',
+    compactEventName(detail.category || inferCategory(detail.event_name)),
+    detailClubKey(detail),
+    roundUpPoints(detail.points),
+  ].join('|');
+}
+
+function removeWeakDuplicateDetails(details: PlayerRankingDetail[]): PlayerRankingDetail[] {
+  const grouped = new Map<string, PlayerRankingDetail[]>();
+  for (const detail of details) {
+    const key = detailLooseEventKey(detail);
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)?.push(detail);
+  }
+
+  return details.filter(detail => {
+    const group = grouped.get(detailLooseEventKey(detail)) || [];
+    if (group.length <= 1) return true;
+    const quality = detailQuality(detail);
+    const bestQuality = Math.max(...group.map(detailQuality));
+    const hasIdentity = Boolean(detail.partner_name || detail.team_name || detail.rank);
+    return quality >= bestQuality || hasIdentity;
+  });
+}
+
 function dedupePlayerDetails(details: PlayerRankingDetail[]): PlayerRankingDetail[] {
   const byKey = new Map<string, PlayerRankingDetail>();
   for (const detail of details) {
@@ -561,7 +590,7 @@ function dedupePlayerDetails(details: PlayerRankingDetail[]): PlayerRankingDetai
     const existing = byKey.get(key);
     byKey.set(key, existing ? mergeDetailRows(existing, detail) : detail);
   }
-  return Array.from(byKey.values()).sort((a, b) => {
+  return removeWeakDuplicateDetails(Array.from(byKey.values())).sort((a, b) => {
     const dateA = a.event_date || inferEventDate(a.event_name, undefined, a.season);
     const dateB = b.event_date || inferEventDate(b.event_name, undefined, b.season);
     return dateB.localeCompare(dateA) || b.points - a.points;
