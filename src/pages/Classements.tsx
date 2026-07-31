@@ -701,6 +701,7 @@ function PlayerDetailModal({
     .sort((a, b) => b.points - a.points || detailIsoDate(b).localeCompare(detailIsoDate(a)))
     .slice(0, 8);
   const retainedDetails = officialMatchedDetails.length ? officialMatchedDetails.slice(0, 8) : retainedRealDetails;
+  const retainedDisplayDetails: PlayerRankingDetail[] = [];
   const retainedDetailRefs = new WeakSet<PlayerRankingDetail>();
   const usedDisplayIndexes = new Set<number>();
   retainedDetails.forEach(retained => {
@@ -721,9 +722,19 @@ function PlayerDetailModal({
     });
     if (bestIndex >= 0 && bestScore >= 65) {
       usedDisplayIndexes.add(bestIndex);
-      retainedDetailRefs.add(displayDetails[bestIndex]);
+      const merged = mergeDetailRows(displayDetails[bestIndex], retained);
+      retainedDisplayDetails.push(merged);
+      retainedDetailRefs.add(merged);
+    } else {
+      retainedDisplayDetails.push(retained);
+      retainedDetailRefs.add(retained);
     }
   });
+  const retainedLooseKeys = new Set(retainedDisplayDetails.map(detailLooseEventKey));
+  const nonRetainedDisplayDetails = displayDetails.filter((detail, index) =>
+    !usedDisplayIndexes.has(index) && !retainedLooseKeys.has(detailLooseEventKey(detail))
+  );
+  const combinedDetails = [...retainedDisplayDetails, ...nonRetainedDisplayDetails];
   const playedCount = windowDetails.length || officialDetails.length || player.tournaments_played || 0;
   const calculatedTop8Total = officialTopDetails.length
     ? officialTopDetails.reduce((sum, detail) => sum + detail.points, 0)
@@ -733,10 +744,10 @@ function PlayerDetailModal({
   const rankingTotal = player.points || calculatedTop8Total;
   const detectedGap = Math.abs(rankingTotal - calculatedTop8Total);
   const rankingGap = Math.max(0, real12MonthTotal - rankingTotal);
-  const bestPartner = topCountLabel(displayDetails.map(detail => detailPartnerLabel(detail, player.player_name)));
-  const bestClub = topCountLabel(displayDetails.map(detail => detail.club_name || ''));
-  const wins = displayDetails.filter(detail => Number(detail.rank) === 1).length;
-  const podiums = displayDetails.filter(detail => Number(detail.rank ?? 999) <= 3).length;
+  const bestPartner = topCountLabel(combinedDetails.map(detail => detailPartnerLabel(detail, player.player_name)));
+  const bestClub = topCountLabel(combinedDetails.map(detail => detail.club_name || ''));
+  const wins = combinedDetails.filter(detail => Number(detail.rank) === 1).length;
+  const podiums = combinedDetails.filter(detail => Number(detail.rank ?? 999) <= 3).length;
   const isRetainedDetail = (detail: PlayerRankingDetail) => retainedDetailRefs.has(detail);
   const rankVisibleDetail = (detail: PlayerRankingDetail) => {
     if (!isRetainedDetail(detail)) return 999;
@@ -746,13 +757,12 @@ function PlayerDetailModal({
     return realIndex >= 0 ? realIndex : 0;
   };
   const historyTabs = [
-    { key: 'all' as const, label: 'Historique', count: displayDetails.length },
-    { key: 'men' as const, label: 'Men', count: displayDetails.filter(detail => detail.division_key === 'men').length },
-    { key: 'women' as const, label: 'Women', count: displayDetails.filter(detail => detail.division_key === 'women').length },
-    { key: 'mixed' as const, label: 'Mixed', count: displayDetails.filter(detail => detail.division_key === 'mixed').length },
-    { key: 'junior' as const, label: 'Junior', count: displayDetails.filter(detail => detail.division_key === 'junior').length },
+    { key: 'all' as const, label: 'Historique', count: combinedDetails.length },
+    { key: 'men' as const, label: 'Men', count: combinedDetails.filter(detail => detail.division_key === 'men').length },
+    { key: 'women' as const, label: 'Women', count: combinedDetails.filter(detail => detail.division_key === 'women').length },
+    { key: 'mixed' as const, label: 'Mixed', count: combinedDetails.filter(detail => detail.division_key === 'mixed').length },
+    { key: 'junior' as const, label: 'Junior', count: combinedDetails.filter(detail => detail.division_key === 'junior').length },
   ].filter(tab => tab.key === 'all' || tab.count > 0);
-  const combinedDetails = displayDetails;
   const visibleDetails = combinedDetails
     .filter(detail => activeHistoryTab === 'all' || detail.division_key === activeHistoryTab)
     .sort((a, b) => {
