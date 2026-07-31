@@ -590,6 +590,12 @@ const MPL_CLUBS_LIST = [
 const PLAYER_LEVELS = ['P1','P2','P3','P4','P5','P6','P7','P8','Elite'];
 
 type PlayerImportDraft = Omit<PlayerRow, 'id'> & { id?: string };
+type PlayerImportStatus = 'existing' | 'new' | 'review';
+type PlayerImportAuditRow = PlayerImportDraft & {
+  importStatus: PlayerImportStatus;
+  importReason: string;
+  matchedId?: string;
+};
 
 function normalizePlayerImportKey(value: unknown) {
   return String(value ?? '')
@@ -599,6 +605,15 @@ function normalizePlayerImportKey(value: unknown) {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
+}
+
+function normalizePlayerPhone(value: unknown) {
+  return String(value ?? '').replace(/\D+/g, '');
+}
+
+function extractEmailFromText(value: unknown) {
+  const match = String(value ?? '').match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  return match ? match[0].toLowerCase() : '';
 }
 
 function readImportValue(row: Record<string, unknown>, aliases: string[]) {
@@ -752,6 +767,61 @@ function PlayersAdminPage() {
     return matchSearch && matchDiv && matchGender;
   });
 
+  const importAuditRows = useMemo<PlayerImportAuditRow[]>(() => {
+    const existingByEmail = new Map<string, PlayerRow[]>();
+    const existingByPhone = new Map<string, PlayerRow[]>();
+    const existingByName = new Map<string, PlayerRow[]>();
+
+    enriched.forEach(player => {
+      const fullName = playerFullName(player);
+      const email = String(player.email || '').trim().toLowerCase() || extractEmailFromText(fullName);
+      const phone = normalizePlayerPhone(player.phone);
+      const name = normalizePlayerImportKey(fullName);
+      if (email) existingByEmail.set(email, [...(existingByEmail.get(email) || []), player]);
+      if (phone) existingByPhone.set(phone, [...(existingByPhone.get(phone) || []), player]);
+      if (name) existingByName.set(name, [...(existingByName.get(name) || []), player]);
+    });
+
+    const importKeyCounts = new Map<string, number>();
+    importRows.forEach(row => {
+      const key = row.email || normalizePlayerImportKey(`${row.first_name} ${row.last_name}`);
+      if (key) importKeyCounts.set(key, (importKeyCounts.get(key) || 0) + 1);
+    });
+
+    return importRows.map(row => {
+      const email = String(row.email || '').trim().toLowerCase();
+      const phone = normalizePlayerPhone(row.phone);
+      const name = normalizePlayerImportKey(`${row.first_name} ${row.last_name}`);
+      const importKey = email || name;
+      const fileDuplicate = importKey ? (importKeyCounts.get(importKey) || 0) > 1 : false;
+      const emailMatches = email ? (existingByEmail.get(email) || []) : [];
+      const phoneMatches = phone ? (existingByPhone.get(phone) || []) : [];
+      const nameMatches = name ? (existingByName.get(name) || []) : [];
+      const uniqueMatches = new Map<string, PlayerRow>();
+      [...emailMatches, ...phoneMatches, ...nameMatches].forEach(match => {
+        if (match.id) uniqueMatches.set(match.id, match);
+      });
+      const matches = Array.from(uniqueMatches.values());
+
+      if (fileDuplicate) {
+        return { ...row, importStatus: 'review', importReason: 'Doublon dans le fichier import', matchedId: matches[0]?.id };
+      }
+      if (matches.length > 1) {
+        return { ...row, importStatus: 'review', importReason: 'Plusieurs joueurs Supabase possibles', matchedId: matches[0]?.id };
+      }
+      if (matches.length === 1) {
+        const match = matches[0];
+        if (emailMatches.length > 0) return { ...row, importStatus: 'existing', importReason: 'Existe deja: email identique', matchedId: match.id };
+        if (phoneMatches.length > 0) return { ...row, importStatus: 'existing', importReason: 'Existe deja: mobile identique', matchedId: match.id };
+        return { ...row, importStatus: 'existing', importReason: 'Existe deja: nom identique', matchedId: match.id };
+      }
+      if (!row.club_id) {
+        return { ...row, importStatus: 'new', importReason: 'Nouveau joueur - club a completer', matchedId: undefined };
+      }
+      return { ...row, importStatus: 'new', importReason: 'Nouveau joueur', matchedId: undefined };
+    });
+  }, [enriched, importRows]);
+
   const handleSave = async () => {
     if (!editing) return;
     setSaving(true);
@@ -794,8 +864,20 @@ function PlayersAdminPage() {
       missingClub: importRows.filter(row => !row.club_id).length,
       missingPhone: importRows.filter(row => !row.phone).length,
       duplicates: Array.from(keys.values()).filter(count => count > 1).length,
+      existing: importAuditRows.filter(row => row.importStatus === 'existing').length,
+      newRows: importAuditRows.filter(row => row.importStatus === 'new').length,
+      review: importAuditRows.filter(row => row.importStatus === 'review').length,
     };
-  }, [importRows]);
+  }, [importAuditRows, importRows]);
+
+  const sortedImportAuditRows = useMemo(() => {
+    const order: Record<PlayerImportStatus, number> = { review: 0, new: 1, existing: 2 };
+    return [...importAuditRows].sort((a, b) => {
+      const byStatus = order[a.importStatus] - order[b.importStatus];
+      if (byStatus !== 0) return byStatus;
+      return `${a.last_name} ${a.first_name}`.localeCompare(`${b.last_name} ${b.first_name}`);
+    });
+  }, [importAuditRows]);
 
   const handlePlayersFile = async (file?: File | null) => {
     if (!file) return;
@@ -815,6 +897,10 @@ function PlayersAdminPage() {
 
   const publishPlayersImport = async () => {
     if (isViewer || importRows.length === 0) return;
+    if (importSummary.review > 0) {
+      setError(`Publication bloquee: ${importSummary.review.toLocaleString('fr-FR')} ligne(s) a verifier avant import pour eviter les doublons.`);
+      return;
+    }
     const sb = getSupabaseClient();
     if (!isSupabaseConnected() || !sb) {
       setError('Import impossible: Supabase non connecte.');
@@ -836,14 +922,16 @@ function PlayersAdminPage() {
         if (key) byName.set(key, row.id as string);
       });
 
-      const deduped = new Map<string, PlayerImportDraft>();
-      importRows.forEach(row => {
+      const deduped = new Map<string, PlayerImportAuditRow>();
+      importAuditRows
+        .filter(row => row.importStatus !== 'review')
+        .forEach(row => {
         const key = row.email || normalizePlayerImportKey(`${row.first_name} ${row.last_name}`);
         if (key) deduped.set(key, row);
       });
 
       const payload = Array.from(deduped.values()).map(row => {
-        const existingId = (row.email && byEmail.get(row.email)) || byName.get(normalizePlayerImportKey(`${row.first_name} ${row.last_name}`));
+        const existingId = row.matchedId || (row.email && byEmail.get(row.email)) || byName.get(normalizePlayerImportKey(`${row.first_name} ${row.last_name}`));
         const clean = {
           id: existingId || crypto.randomUUID?.() || `ply-${Date.now()}-${Math.random().toString(36).slice(2)}`,
           first_name: row.first_name,
@@ -972,19 +1060,21 @@ function PlayersAdminPage() {
               <button onClick={() => { setImportRows([]); setImportFileName(''); }} style={{ background: 'rgba(255,255,255,0.05)', color: '#aaa', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', fontWeight: 700 }}>
                 Annuler
               </button>
-              <button onClick={publishPlayersImport} disabled={importingPlayers} style={{ background: '#4ad569', color: '#0a0a0a', border: 'none', borderRadius: '8px', padding: '8px 14px', cursor: importingPlayers ? 'wait' : 'pointer', fontWeight: 900, opacity: importingPlayers ? 0.7 : 1 }}>
+              <button onClick={publishPlayersImport} disabled={importingPlayers || importSummary.review > 0} style={{ background: importSummary.review > 0 ? '#333' : '#4ad569', color: importSummary.review > 0 ? '#888' : '#0a0a0a', border: 'none', borderRadius: '8px', padding: '8px 14px', cursor: importingPlayers ? 'wait' : importSummary.review > 0 ? 'not-allowed' : 'pointer', fontWeight: 900, opacity: importingPlayers ? 0.7 : 1 }}>
                 {importingPlayers ? 'Publication...' : 'Publier vers Supabase'}
               </button>
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(120px, 1fr))', gap: '8px', marginBottom: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))', gap: '8px', marginBottom: '12px' }}>
             {[
               ['Total', importSummary.total, '#60a5fa'],
+              ['Deja en base', importSummary.existing, '#3b82f6'],
+              ['Nouveaux', importSummary.newRows, '#4ad569'],
+              ['A verifier', importSummary.review, importSummary.review ? '#ef4444' : '#4ad569'],
               ['Hommes', importSummary.men, '#3b82f6'],
               ['Dames', importSummary.women, '#ec4899'],
               ['Clubs manquants', importSummary.missingClub, importSummary.missingClub ? '#f59e0b' : '#4ad569'],
-              ['Mobiles manquants', importSummary.missingPhone, importSummary.missingPhone ? '#f59e0b' : '#4ad569'],
               ['Doublons fichier', importSummary.duplicates, importSummary.duplicates ? '#f59e0b' : '#4ad569'],
             ].map(([label, value, color]) => (
               <div key={String(label)} style={{ background: `${color}12`, border: `1px solid ${color}30`, borderRadius: '8px', padding: '8px 10px' }}>
@@ -994,18 +1084,28 @@ function PlayersAdminPage() {
             ))}
           </div>
 
+          {importSummary.review > 0 && (
+            <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.22)', color: '#ef4444', borderRadius: '8px', padding: '9px 10px', marginBottom: '12px', fontSize: '12px', fontWeight: 800 }}>
+              Publication bloquee pour eviter les doublons: corrige ou retire les lignes marquees "A verifier".
+            </div>
+          )}
+
           <div style={{ maxHeight: '210px', overflow: 'auto', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
               <thead style={{ position: 'sticky', top: 0, background: '#111', zIndex: 1 }}>
                 <tr>
-                  {['Joueur', 'Email', 'Mobile', 'Club', 'Genre', 'Niveau', 'Statut'].map(h => (
+                  {['Controle', 'Joueur', 'Email', 'Mobile', 'Club', 'Genre', 'Niveau', 'Statut'].map(h => (
                     <th key={h} style={{ color: '#777', textAlign: 'left', padding: '9px 10px', borderBottom: '1px solid rgba(255,255,255,0.08)', textTransform: 'uppercase', fontSize: '10px' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {importRows.slice(0, 80).map((row, index) => (
+                {sortedImportAuditRows.slice(0, 80).map((row, index) => (
                   <tr key={`${row.email}-${index}`} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                    <td style={{ color: row.importStatus === 'review' ? '#ef4444' : row.importStatus === 'new' ? '#4ad569' : '#60a5fa', padding: '8px 10px', fontWeight: 900 }}>
+                      {row.importStatus === 'review' ? 'A verifier' : row.importStatus === 'new' ? 'Nouveau' : 'Deja en base'}
+                      <div style={{ color: '#777', fontWeight: 700, fontSize: '10px', marginTop: '2px' }}>{row.importReason}</div>
+                    </td>
                     <td style={{ color: 'white', padding: '8px 10px', fontWeight: 800 }}>{row.first_name} {row.last_name}</td>
                     <td style={{ color: '#aaa', padding: '8px 10px' }}>{row.email}</td>
                     <td style={{ color: '#aaa', padding: '8px 10px' }}>{row.phone || '-'}</td>
@@ -1017,9 +1117,9 @@ function PlayersAdminPage() {
                 ))}
               </tbody>
             </table>
-            {importRows.length > 80 && (
+            {sortedImportAuditRows.length > 80 && (
               <div style={{ padding: '8px 10px', color: '#777', fontSize: '12px', fontWeight: 800 }}>
-                + {(importRows.length - 80).toLocaleString('fr-FR')} autres lignes.
+                + {(sortedImportAuditRows.length - 80).toLocaleString('fr-FR')} autres lignes.
               </div>
             )}
           </div>
