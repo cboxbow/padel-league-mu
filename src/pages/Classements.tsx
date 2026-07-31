@@ -675,7 +675,8 @@ function PlayerDetailModal({
   const officialDetails = details.filter(detail => detail.source === 'official');
   const realDetails = resolveDetailDivisionConflicts(details.filter(detail => detail.source !== 'official'));
   const realDisplayDetails = dedupePlayerDetails(realDetails);
-  const officialTopDetails = [...officialDetails]
+  const officialUniqueDetails = dedupePlayerDetails(officialDetails);
+  const officialTopDetails = [...officialUniqueDetails]
     .sort((a, b) => b.points - a.points || detailRankingMonthKey(b).localeCompare(detailRankingMonthKey(a)) || a.event_name.localeCompare(b.event_name))
     .slice(0, 8);
   const officialMatchedDetails = officialTopDetails.length
@@ -704,7 +705,12 @@ function PlayerDetailModal({
   const retainedDisplayDetails: PlayerRankingDetail[] = [];
   const retainedDetailRefs = new WeakSet<PlayerRankingDetail>();
   const usedDisplayIndexes = new Set<number>();
+  const usedRetainedLooseKeys = new Set<string>();
   retainedDetails.forEach(retained => {
+    const retainedLooseKey = detailLooseEventKey(retained);
+    if (usedRetainedLooseKeys.has(retainedLooseKey)) return;
+    usedRetainedLooseKeys.add(retainedLooseKey);
+
     let bestIndex = -1;
     let bestScore = 0;
     displayDetails.forEach((detail, index) => {
@@ -735,7 +741,7 @@ function PlayerDetailModal({
     !usedDisplayIndexes.has(index) && !retainedLooseKeys.has(detailLooseEventKey(detail))
   );
   const combinedDetails = [...retainedDisplayDetails, ...nonRetainedDisplayDetails];
-  const playedCount = windowDetails.length || officialDetails.length || player.tournaments_played || 0;
+  const playedCount = windowDetails.length || officialUniqueDetails.length || player.tournaments_played || 0;
   const calculatedTop8Total = officialTopDetails.length
     ? officialTopDetails.reduce((sum, detail) => sum + detail.points, 0)
     : retainedDetails.reduce((sum, detail) => sum + detail.points, 0);
