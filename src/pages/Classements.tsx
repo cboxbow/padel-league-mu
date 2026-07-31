@@ -681,8 +681,10 @@ function PlayerDetailModal({
   const bestClub = topCountLabel(displayDetails.map(detail => detail.club_name || ''));
   const wins = displayDetails.filter(detail => Number(detail.rank) === 1).length;
   const podiums = displayDetails.filter(detail => Number(detail.rank ?? 999) <= 3).length;
+  const isRetainedDetail = (detail: PlayerRankingDetail) =>
+    retainedDisplayKeys.has(detailDedupKey(detail)) || retainedEventKeys.has(detailEventKey(detail));
   const rankVisibleDetail = (detail: PlayerRankingDetail) => {
-    if (!retainedDisplayKeys.has(detailDedupKey(detail)) && !retainedEventKeys.has(detailEventKey(detail))) return 999;
+    if (!isRetainedDetail(detail)) return 999;
     const realIndex = retainedDetails.findIndex(retained =>
       detailDedupKey(retained) === detailDedupKey(detail) || detailEventKey(retained) === detailEventKey(detail)
     );
@@ -699,15 +701,18 @@ function PlayerDetailModal({
   const visibleDetails = combinedDetails
     .filter(detail => activeHistoryTab === 'all' || detail.division_key === activeHistoryTab)
     .sort((a, b) => {
-      const rankA = rankVisibleDetail(a);
-      const rankB = rankVisibleDetail(b);
-      if (rankA !== rankB) return rankA - rankB;
-      if (rankA < 999) return b.points - a.points;
+      const retainedA = isRetainedDetail(a);
+      const retainedB = isRetainedDetail(b);
+      if (retainedA !== retainedB) return retainedA ? -1 : 1;
       const dateA = a.event_date || inferEventDate(a.event_name, undefined, a.season) || '';
       const dateB = b.event_date || inferEventDate(b.event_name, undefined, b.season) || '';
       if (dateA && dateB && dateA !== dateB) return dateB.localeCompare(dateA);
       if (dateA && !dateB) return -1;
       if (!dateA && dateB) return 1;
+      if (retainedA && retainedB) return b.points - a.points;
+      const rankA = rankVisibleDetail(a);
+      const rankB = rankVisibleDetail(b);
+      if (rankA !== rankB) return rankA - rankB;
       return Number(b.season ?? 0) - Number(a.season ?? 0) || b.points - a.points;
     });
   const top8Label = playedCount > 8 ? `8/${playedCount}` : String(playedCount);
