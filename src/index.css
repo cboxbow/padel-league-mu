@@ -532,10 +532,10 @@ select option:checked {
 
 /* 2. Le body ne cache PAS le scroll horizontal — il le laisse passer */
 html {
-  overflow-x: auto;   /* scroll horizontal dispo partout si besoin */
+  overflow-x: hidden;
 }
 body {
-  overflow-x: auto;
+  overflow-x: hidden;
   min-width: 360px;   /* largeur minimale : en dessous, scroll horizontal naturel */
 }
 

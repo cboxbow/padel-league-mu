@@ -872,6 +872,15 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
   const [playerDetails, setPlayerDetails] = useState<PlayerRankingDetail[]>([]);
   const [playerCareerStats, setPlayerCareerStats] = useState<PlayerCareerStats | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const [isCompact, setIsCompact] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 720px)');
+    const sync = () => setIsCompact(media.matches);
+    sync();
+    media.addEventListener('change', sync);
+    return () => media.removeEventListener('change', sync);
+  }, []);
 
   // Met a jour l'heure de dernier refresh chaque fois que les donnees changent
   useEffect(() => {
@@ -898,6 +907,10 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
     const q = search.toLowerCase();
     return rows.filter(r => r.player_name.toLowerCase().includes(q));
   }, [rows, search]);
+
+  const tableColumns = isCompact
+    ? '42px minmax(130px,1fr) 82px 68px'
+    : '52px minmax(220px,1fr) 110px 100px 90px 90px';
 
   async function loadTournamentResultDetails(player: PlayerRanking): Promise<PlayerRankingDetail[]> {
     const sb = getSupabaseClient();
@@ -1121,8 +1134,8 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
     <div>
       {/* Legende colonnes */}
       <div style={{
-        display: 'grid', gridTemplateColumns: '52px minmax(220px,1fr) 110px 100px 90px 90px',
-        gap: '8px', padding: '8px 16px 6px',
+        display: 'grid', gridTemplateColumns: tableColumns,
+        gap: isCompact ? '6px' : '8px', padding: isCompact ? '8px 8px 6px' : '8px 16px 6px',
         color: '#555', fontSize: '11px', fontWeight: 700,
         textTransform: 'uppercase', letterSpacing: '0.6px',
         borderBottom: '1px solid rgba(255,255,255,0.05)',
@@ -1131,9 +1144,9 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
         <span style={{ textAlign: 'center' }}>#</span>
         <span>Joueur</span>
         <span style={{ textAlign: 'right' }}>Points</span>
-        <span style={{ textAlign: 'center' }}>Top 8 / joues</span>
-        <span style={{ textAlign: 'center' }}>Trend</span>
-        <span style={{ textAlign: 'center' }}>Saison</span>
+        <span style={{ textAlign: 'center' }}>{isCompact ? 'Top 8' : 'Top 8 / joues'}</span>
+        {!isCompact && <span style={{ textAlign: 'center' }}>Trend</span>}
+        {!isCompact && <span style={{ textAlign: 'center' }}>Saison</span>}
       </div>
 
       {/* Rows */}
@@ -1143,9 +1156,9 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
             className="mpl-table-row"
             onClick={() => openPlayer(r)}
             style={{
-              display: 'grid', gridTemplateColumns: '52px minmax(220px,1fr) 110px 100px 90px 90px',
-              gap: '8px', alignItems: 'center',
-              padding: '10px 16px',
+              display: 'grid', gridTemplateColumns: tableColumns,
+              gap: isCompact ? '6px' : '8px', alignItems: 'center',
+              padding: isCompact ? '9px 8px' : '10px 16px',
               background: r.rank === 1
                 ? 'rgba(201,168,76,0.07)'
                 : r.rank === 2
@@ -1170,13 +1183,14 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
             </div>
 
             {/* Joueur */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', overflow: 'hidden' }}>
-              <Initials name={r.player_name} color={color} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: isCompact ? '8px' : '12px', overflow: 'hidden', minWidth: 0 }}>
+              {!isCompact && <Initials name={r.player_name} color={color} />}
               <span style={{
                 color: r.rank <= 3 ? 'white' : 'rgba(255,255,255,0.85)',
                 fontWeight: r.rank <= 10 ? 700 : 500,
-                fontSize: '14px',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                fontSize: isCompact ? '12px' : '14px',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isCompact ? 'normal' : 'nowrap',
+                lineHeight: 1.15,
               }}>
                 {r.player_name}
               </span>
@@ -1187,7 +1201,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
               <span style={{
                 color: r.rank === 1 ? '#f59e0b' : r.rank <= 3 ? color : r.rank <= 10 ? 'white' : '#a0a0a0',
                 fontWeight: r.rank <= 10 ? 800 : 600,
-                fontSize: r.rank <= 3 ? '16px' : '14px',
+                fontSize: isCompact ? '12px' : r.rank <= 3 ? '16px' : '14px',
                 fontFamily: 'JetBrains Mono, monospace',
               }}>
                 {r.points > 0 ? formatPoints(r.points) : <span style={{ color: '#444', fontSize: '12px' }}>-</span>}
@@ -1207,11 +1221,11 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
               </span>
             </div>
 
-            <TrendCell player={r} />
+            {!isCompact && <TrendCell player={r} />}
 
-            <div style={{ textAlign: 'center', color: '#666', fontSize: '12px', fontFamily: 'JetBrains Mono, monospace' }}>
+            {!isCompact && <div style={{ textAlign: 'center', color: '#666', fontSize: '12px', fontFamily: 'JetBrains Mono, monospace' }}>
               {r.season ?? 2026}
-            </div>
+            </div>}
           </div>
         ))}
       </div>

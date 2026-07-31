@@ -299,7 +299,7 @@ function PremiumName({ name, podium }: { name: string; podium: boolean }) {
   const lastName  = parts.length > 1 ? parts[parts.length - 1].toUpperCase() : formatted.toUpperCase();
   const firstName = parts.length > 1 ? parts.slice(0, -1).join(' ') : '';
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '5px' }}>
+    <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '5px', flexWrap: 'wrap', minWidth: 0, maxWidth: '100%', overflowWrap: 'anywhere' }}>
       {firstName && (
         <span style={{ fontSize: '11px', fontWeight: 500, color: podium ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.4)', letterSpacing: '0.2px' }}>
           {firstName}
@@ -500,12 +500,12 @@ function TournamentCard({ group, filterDiv = 'all', initialOpen = false }: { gro
 
                           {/* Joueurs — rendu premium */}
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', lineHeight: 1.5 }}>
-                              <button type="button" onClick={() => navigate(playerHistoryPath(r.player1_name))} title="Voir le profil historique" style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', textAlign: 'left' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', lineHeight: 1.5, flexWrap: 'wrap', minWidth: 0 }}>
+                              <button type="button" onClick={() => navigate(playerHistoryPath(r.player1_name))} title="Voir le profil historique" style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', textAlign: 'left', minWidth: 0 }}>
                                 <PremiumName name={r.player1_name} podium={isPodium} />
                               </button>
                               <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', fontWeight: 700 }}>/</span>
-                              <button type="button" onClick={() => navigate(playerHistoryPath(r.player2_name))} title="Voir le profil historique" style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', textAlign: 'left' }}>
+                              <button type="button" onClick={() => navigate(playerHistoryPath(r.player2_name))} title="Voir le profil historique" style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', textAlign: 'left', minWidth: 0 }}>
                                 <PremiumName name={r.player2_name} podium={isPodium} />
                               </button>
                             </div>
