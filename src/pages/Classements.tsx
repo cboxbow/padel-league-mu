@@ -652,7 +652,13 @@ function PlayerDetailModal({
   const officialMatchedDetails = officialTopDetails.length
     ? resolveOfficialMatchedDetails(officialTopDetails, realDisplayDetails)
     : [];
-  const officialFallbackDetails = officialMatchedDetails.filter(detail => detail.source === 'official');
+  const realOfficialLikeKeys = new Set(
+    realDisplayDetails.map(detail => `${detailEventKey(detail)}|${roundUpPoints(detail.points)}`)
+  );
+  const officialFallbackDetails = officialMatchedDetails.filter(detail =>
+    detail.source === 'official' &&
+    !realOfficialLikeKeys.has(`${detailEventKey(detail)}|${roundUpPoints(detail.points)}`)
+  );
   const displayDetails = dedupePlayerDetails([...realDisplayDetails, ...officialFallbackDetails]);
   const historicalDetails = displayDetails.filter(detail => detail.source === 'historical');
   const playerDivisionKey = divisionKey;
@@ -666,8 +672,29 @@ function PlayerDetailModal({
     .sort((a, b) => b.points - a.points || detailIsoDate(b).localeCompare(detailIsoDate(a)))
     .slice(0, 8);
   const retainedDetails = officialMatchedDetails.length ? officialMatchedDetails.slice(0, 8) : retainedRealDetails;
-  const retainedDisplayKeys = new Set(retainedDetails.map(detailDedupKey));
-  const retainedEventKeys = new Set(retainedDetails.map(detailEventKey));
+  const retainedDetailRefs = new WeakSet<PlayerRankingDetail>();
+  const usedDisplayIndexes = new Set<number>();
+  retainedDetails.forEach(retained => {
+    let bestIndex = -1;
+    let bestScore = 0;
+    displayDetails.forEach((detail, index) => {
+      if (usedDisplayIndexes.has(index)) return;
+      let score = 0;
+      if (detailDedupKey(detail) === detailDedupKey(retained)) score += 100;
+      if (detailEventKey(detail) === detailEventKey(retained)) score += 40;
+      if (roundUpPoints(detail.points) === roundUpPoints(retained.points)) score += 25;
+      if (detail.partner_name || detail.team_name) score += 8;
+      if (detail.rank) score += 6;
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = index;
+      }
+    });
+    if (bestIndex >= 0 && bestScore >= 65) {
+      usedDisplayIndexes.add(bestIndex);
+      retainedDetailRefs.add(displayDetails[bestIndex]);
+    }
+  });
   const playedCount = windowDetails.length || officialDetails.length || player.tournaments_played || 0;
   const calculatedTop8Total = officialTopDetails.length
     ? officialTopDetails.reduce((sum, detail) => sum + detail.points, 0)
@@ -681,8 +708,7 @@ function PlayerDetailModal({
   const bestClub = topCountLabel(displayDetails.map(detail => detail.club_name || ''));
   const wins = displayDetails.filter(detail => Number(detail.rank) === 1).length;
   const podiums = displayDetails.filter(detail => Number(detail.rank ?? 999) <= 3).length;
-  const isRetainedDetail = (detail: PlayerRankingDetail) =>
-    retainedDisplayKeys.has(detailDedupKey(detail)) || retainedEventKeys.has(detailEventKey(detail));
+  const isRetainedDetail = (detail: PlayerRankingDetail) => retainedDetailRefs.has(detail);
   const rankVisibleDetail = (detail: PlayerRankingDetail) => {
     if (!isRetainedDetail(detail)) return 999;
     const realIndex = retainedDetails.findIndex(retained =>
@@ -797,7 +823,7 @@ function PlayerDetailModal({
           ) : isMobile ? (
             <div style={{ display: 'grid', gap: '8px' }}>
               {visibleDetails.map((detail, index) => {
-                const counted = retainedDisplayKeys.has(detailDedupKey(detail)) || retainedEventKeys.has(detailEventKey(detail));
+                const counted = isRetainedDetail(detail);
                 const rankColor = Number(detail.rank) === 1 ? '#4ad569' : Number(detail.rank) <= 3 ? '#f59e0b' : '#888';
                 return (
                   <div key={`${detail.event_name}-${index}`} style={{
@@ -844,7 +870,7 @@ function PlayerDetailModal({
               </thead>
               <tbody>
                 {visibleDetails.map((detail, index) => {
-                  const counted = retainedDisplayKeys.has(detailDedupKey(detail)) || retainedEventKeys.has(detailEventKey(detail));
+                  const counted = isRetainedDetail(detail);
                   return (
                     <tr key={`${detail.event_name}-${index}`} style={{ background: counted ? 'rgba(74,213,105,0.08)' : index % 2 === 0 ? 'rgba(255,255,255,0.015)' : 'transparent' }}>
                       <td style={{ padding: '8px', borderBottom: '1px solid rgba(255,255,255,0.035)' }}>
