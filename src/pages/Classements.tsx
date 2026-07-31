@@ -646,9 +646,7 @@ function PlayerDetailModal({
   const officialMatchedDetails = officialDetails.length
     ? resolveOfficialMatchedDetails(officialDetails, realDisplayDetails)
     : [];
-  const displayDetails = officialDetails.length
-    ? dedupePlayerDetails([...officialMatchedDetails, ...realDisplayDetails])
-    : realDisplayDetails;
+  const displayDetails = realDisplayDetails;
   const historicalDetails = displayDetails.filter(detail => detail.source === 'historical');
   const playerDivisionKey = divisionKey;
   const windowRange = rankingWindowRange();
