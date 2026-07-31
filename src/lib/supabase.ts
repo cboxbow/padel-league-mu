@@ -52,6 +52,10 @@ export function getSupabaseRestUrl(): string {
   return SUPABASE_URL ? `${SUPABASE_URL}/rest/v1` : '';
 }
 
+export function getSupabaseAnonKey(): string {
+  return SUPABASE_KEY;
+}
+
 // ── Wrapper fetch robuste avec timeout ────────────────────────────────────────
 export async function safeSupabaseQuery<T>(
   queryFn: () => PromiseLike<{ data: T | null; error: unknown }>,

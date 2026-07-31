@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { Layout, GlassCard } from '@/components/Layout';
 import { DotWaveBackground } from '@/components/DotWaveBackground';
-import { getSupabaseClient, isSupabaseConnected, safeSupabaseQuery } from '@/lib/supabase';
+import { getSupabaseAnonKey, getSupabaseRestUrl, isSupabaseConnected } from '@/lib/supabase';
 import { useSeo } from '@/hooks/useSeo';
 
 type DivisionKey = 'men' | 'women' | 'mixed' | 'junior';
@@ -176,6 +176,24 @@ function playerKey(value: unknown): string {
 
 function roundPoints(value: unknown): number {
   return Math.ceil(Number(value) || 0);
+}
+
+async function fetchRestPage<T>(table: string, params: URLSearchParams): Promise<T[]> {
+  const restUrl = getSupabaseRestUrl();
+  const anonKey = getSupabaseAnonKey();
+  if (!restUrl || !anonKey) return [];
+
+  const res = await fetch(`${restUrl}/${table}?${params.toString()}`, {
+    cache: 'no-store',
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+      Accept: 'application/json',
+    },
+  });
+
+  if (!res.ok) throw new Error(`${table}: HTTP ${res.status}`);
+  return await res.json() as T[];
 }
 
 function formatPoints(value: unknown): string {
@@ -456,22 +474,18 @@ function seasonsLabel(seasons: Set<number>): string {
   return `${list[0]}-${list[list.length - 1]}`;
 }
 
-async function fetchHistoricalResultsPaged(sb: ReturnType<typeof getSupabaseClient>): Promise<HistoricalResult[]> {
-  if (!sb) return [];
+async function fetchHistoricalResultsPaged(): Promise<HistoricalResult[]> {
   const pageSize = 250;
   const allRows: HistoricalResult[] = [];
 
   for (let from = 0; from < 12000; from += pageSize) {
-    const to = from + pageSize - 1;
-    const { data, error } = await sb.from('historical_tournament_results')
-      .select(RESULT_COLUMNS)
-      .order('event_date', { ascending: false, nullsFirst: false })
-      .order('event_year', { ascending: false })
-      .order('rank_min', { ascending: true })
-      .range(from, to);
-
-    if (error) throw error;
-    const batch = (data ?? []) as HistoricalResult[];
+    const params = new URLSearchParams({
+      select: RESULT_COLUMNS,
+      order: 'event_date.desc.nullslast,event_year.desc,rank_min.asc',
+      limit: String(pageSize),
+      offset: String(from),
+    });
+    const batch = await fetchRestPage<HistoricalResult>('historical_tournament_results', params);
     allRows.push(...batch);
     if (batch.length < pageSize) break;
   }
@@ -479,19 +493,17 @@ async function fetchHistoricalResultsPaged(sb: ReturnType<typeof getSupabaseClie
   return allRows;
 }
 
-async function fetchCurrentRankingsPaged(sb: ReturnType<typeof getSupabaseClient>): Promise<CurrentRankingInfo[]> {
-  if (!sb) return [];
+async function fetchCurrentRankingsPaged(): Promise<CurrentRankingInfo[]> {
   const pageSize = 500;
   const allRows: CurrentRankingInfo[] = [];
 
   for (let from = 0; from < 6000; from += pageSize) {
-    const { data, error } = await sb
-      .from('rankings')
-      .select('player_name,division,rank,points,tournaments_played')
-      .range(from, from + pageSize - 1);
-
-    if (error) throw error;
-    const batch = (data ?? []) as Record<string, unknown>[];
+    const params = new URLSearchParams({
+      select: 'player_name,division,rank,points,tournaments_played',
+      limit: String(pageSize),
+      offset: String(from),
+    });
+    const batch = await fetchRestPage<Record<string, unknown>>('rankings', params);
     allRows.push(...batch.map(row => ({
       player_name: normalizeName(row.player_name),
       division: cleanText(row.division).toLowerCase() as DivisionKey,
@@ -1384,8 +1396,7 @@ export default function Historique() {
     setLoading(true);
     setError('');
 
-    const sb = getSupabaseClient();
-    if (!isSupabaseConnected() || !sb) {
+    if (!isSupabaseConnected()) {
       setRows([]);
       setCurrentRankings(new Map());
       setFromSupabase(false);
@@ -1394,11 +1405,21 @@ export default function Historique() {
       return;
     }
 
-    const { data, error: err, timedOut } = await safeSupabaseQuery<{ historical: HistoricalResult[]; rankings: CurrentRankingInfo[] }>(
-      () => Promise.all([fetchHistoricalResultsPaged(sb), fetchCurrentRankingsPaged(sb)])
-        .then(([historical, rankings]) => ({ data: { historical, rankings }, error: null })),
-      60000
-    );
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<{ data: null; error: string; timedOut: true }>(resolve => {
+      timeoutId = setTimeout(() => resolve({ data: null, error: 'timeout', timedOut: true }), 75000);
+    });
+    const request = (async (): Promise<{ data: { historical: HistoricalResult[]; rankings: CurrentRankingInfo[] } | null; error: unknown; timedOut: false }> => {
+      try {
+        const historical = await fetchHistoricalResultsPaged();
+        const rankings = await fetchCurrentRankingsPaged();
+        return { data: { historical, rankings }, error: null, timedOut: false };
+      } catch (requestError) {
+        return { data: null, error: requestError, timedOut: false };
+      }
+    })();
+    const { data, error: err, timedOut } = await Promise.race([request, timeout]);
+    if (timeoutId) clearTimeout(timeoutId);
 
     if (timedOut) {
       setRows([]);

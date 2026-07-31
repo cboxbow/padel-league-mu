@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Trophy, Medal, Search, Users, Calendar, MapPin, ChevronDown, ChevronUp, RefreshCw, ExternalLink } from 'lucide-react';
 import { DotWaveBackground } from '@/components/DotWaveBackground';
 import { Layout, GlassCard } from '@/components/Layout';
-import { getSupabaseClient, isSupabaseConnected, safeSupabaseQuery } from '@/lib/supabase';
+import { getSupabaseAnonKey, getSupabaseRestUrl, isSupabaseConnected } from '@/lib/supabase';
 import { ROUTE_PATHS } from '@/lib/index';
 import { normalizeJuniorCategory, normalizeTournamentDisplayName } from '@/lib/tournamentNames';
 import { useSeo } from '@/hooks/useSeo';
@@ -106,6 +106,24 @@ function supabaseErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   const record = error as Record<string, unknown>;
   return String(record.message ?? record.details ?? record.hint ?? JSON.stringify(record));
+}
+
+async function fetchRestPage<T>(table: string, params: URLSearchParams): Promise<T[]> {
+  const restUrl = getSupabaseRestUrl();
+  const anonKey = getSupabaseAnonKey();
+  if (!restUrl || !anonKey) return [];
+
+  const res = await fetch(`${restUrl}/${table}?${params.toString()}`, {
+    cache: 'no-store',
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+      Accept: 'application/json',
+    },
+  });
+
+  if (!res.ok) throw new Error(`${table}: HTTP ${res.status}`);
+  return await res.json() as T[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -212,22 +230,19 @@ function mapHistoricalResult(row: HistoricalTournamentResult): TournamentResult 
   };
 }
 
-async function fetchHistoricalResults2026(sb: ReturnType<typeof getSupabaseClient>): Promise<TournamentResult[]> {
-  if (!sb) return [];
+async function fetchHistoricalResults2026(): Promise<TournamentResult[]> {
   const pageSize = 300;
   const allRows: HistoricalTournamentResult[] = [];
 
   for (let from = 0; from < 9000; from += pageSize) {
-    const { data, error } = await sb
-      .from('historical_tournament_results')
-      .select(HISTORICAL_RESULT_COLUMNS)
-      .eq('event_year', 2026)
-      .order('event_date', { ascending: false, nullsFirst: false })
-      .order('rank_min', { ascending: true })
-      .range(from, from + pageSize - 1);
-
-    if (error) throw error;
-    const batch = (data ?? []) as HistoricalTournamentResult[];
+    const params = new URLSearchParams({
+      select: HISTORICAL_RESULT_COLUMNS,
+      event_year: 'eq.2026',
+      order: 'event_date.desc.nullslast,rank_min.asc',
+      limit: String(pageSize),
+      offset: String(from),
+    });
+    const batch = await fetchRestPage<HistoricalTournamentResult>('historical_tournament_results', params);
     allRows.push(...batch);
     if (batch.length < pageSize) break;
   }
@@ -235,20 +250,18 @@ async function fetchHistoricalResults2026(sb: ReturnType<typeof getSupabaseClien
   return allRows.map(mapHistoricalResult).filter(row => row.player1_name || row.player2_name);
 }
 
-async function fetchLegacyResults2026(sb: ReturnType<typeof getSupabaseClient>): Promise<TournamentResult[]> {
-  if (!sb) return [];
+async function fetchLegacyResults2026(): Promise<TournamentResult[]> {
   const pageSize = 300;
   const rows: TournamentResult[] = [];
 
   for (let from = 0; from < 9000; from += pageSize) {
-    const { data, error } = await sb.from('tournament_results')
-      .select(RESULT_COLUMNS)
-      .order('tournament_date', { ascending: false })
-      .order('rank', { ascending: true })
-      .range(from, from + pageSize - 1);
-
-    if (error) throw error;
-    const batch = (data ?? []) as TournamentResult[];
+    const params = new URLSearchParams({
+      select: RESULT_COLUMNS,
+      order: 'tournament_date.desc,rank.asc',
+      limit: String(pageSize),
+      offset: String(from),
+    });
+    const batch = await fetchRestPage<TournamentResult>('tournament_results', params);
     rows.push(...batch);
     if (batch.length < pageSize) break;
   }
@@ -555,23 +568,28 @@ export default function Resultats() {
 
   const load = async () => {
     setLoading(true); setError('');
-    const sb = getSupabaseClient();
-    if (isSupabaseConnected() && sb) {
-      const { data, error: err, timedOut } = await safeSupabaseQuery<TournamentResult[]>(async () => {
+    if (isSupabaseConnected()) {
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<{ data: null; error: string; timedOut: true }>(resolve => {
+        timeoutId = setTimeout(() => resolve({ data: null, error: 'timeout', timedOut: true }), 60000);
+      });
+      const request = (async (): Promise<{ data: TournamentResult[] | null; error: unknown; timedOut: false }> => {
         try {
-          const historical = await fetchHistoricalResults2026(sb);
-          if (historical.length > 0) return { data: historical, error: null };
+          const historical = await fetchHistoricalResults2026();
+          if (historical.length > 0) return { data: historical, error: null, timedOut: false };
         } catch (historyError) {
           console.warn('[Resultats] Historical Supabase error, fallback legacy:', historyError);
         }
 
         try {
-          const legacy = await fetchLegacyResults2026(sb);
-          return { data: legacy, error: null };
+          const legacy = await fetchLegacyResults2026();
+          return { data: legacy, error: null, timedOut: false };
         } catch (legacyError) {
-          return { data: null, error: legacyError };
+          return { data: null, error: legacyError, timedOut: false };
         }
-      }, 45000);
+      })();
+      const { data, error: err, timedOut } = await Promise.race([request, timeout]);
+      if (timeoutId) clearTimeout(timeoutId);
       if (timedOut) {
         setError('Connexion live temporairement indisponible. Réessayez dans quelques instants.');
         setAllResults([]);
