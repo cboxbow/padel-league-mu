@@ -408,7 +408,9 @@ function detailDedupKey(detail: PlayerRankingDetail): string {
     date,
     detail.division_key || '',
     compactEventName(detail.category || inferCategory(detail.event_name)),
-    compactEventName(detail.partner_name || ''),
+    detailClubKey(detail),
+    nameKey(detail.partner_name || detail.team_name || ''),
+    detail.rank ?? '',
     roundUpPoints(detail.points),
   ].join('|');
 }
@@ -640,7 +642,13 @@ function PlayerDetailModal({
   const [isMobile, setIsMobile] = useState(false);
   const officialDetails = details.filter(detail => detail.source === 'official');
   const realDetails = resolveDetailDivisionConflicts(details.filter(detail => detail.source !== 'official'));
-  const displayDetails = dedupePlayerDetails(realDetails);
+  const realDisplayDetails = dedupePlayerDetails(realDetails);
+  const officialMatchedDetails = officialDetails.length
+    ? resolveOfficialMatchedDetails(officialDetails, realDisplayDetails)
+    : [];
+  const displayDetails = officialDetails.length
+    ? dedupePlayerDetails([...officialMatchedDetails, ...realDisplayDetails])
+    : realDisplayDetails;
   const historicalDetails = displayDetails.filter(detail => detail.source === 'historical');
   const playerDivisionKey = divisionKey;
   const windowRange = rankingWindowRange();
@@ -652,7 +660,7 @@ function PlayerDetailModal({
   const retainedRealDetails = [...windowDetails]
     .sort((a, b) => b.points - a.points || detailIsoDate(b).localeCompare(detailIsoDate(a)))
     .slice(0, 8);
-  const retainedDetails = retainedRealDetails;
+  const retainedDetails = officialMatchedDetails.length ? officialMatchedDetails.slice(0, 8) : retainedRealDetails;
   const retainedDisplayKeys = new Set(retainedDetails.map(detailDedupKey));
   const retainedEventKeys = new Set(retainedDetails.map(detailEventKey));
   const playedCount = windowDetails.length || officialDetails.length || player.tournaments_played || 0;
