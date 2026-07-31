@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Trophy, Plus, Pencil, Trash2, Save, X, RefreshCw,
   ChevronDown, ChevronUp, Zap, CheckCircle, AlertCircle,
-  Award, Calendar, MapPin, Users, Upload, ClipboardList, Copy, Check,
+  Award, Calendar, MapPin, Users, Upload, Copy, Check,
+  BarChart3,
 } from 'lucide-react';
 import { getSupabaseClient, isSupabaseConnected } from '@/lib/supabase';
 import { normalizeJuniorCategory, normalizeTournamentDisplayName } from '@/lib/tournamentNames';
@@ -77,6 +78,33 @@ const CAT_COLORS: Record<string, string>  = {
   U11:'#fb923c', U13:'#f97316', U15:'#ef4444', JUNIOR:'#fb923c',
 };
 const DIVS = ['men','women','mixed','junior'];
+type RankingDivision = 'men' | 'women' | 'mixed' | 'junior';
+
+interface RankingInputRow {
+  id: string;
+  event_name: string;
+  event_date: string;
+  category: string;
+  division: RankingDivision;
+  club_name: string;
+  rank: number;
+  player_name: string;
+  partner_name: string;
+  points: number;
+}
+
+interface ComputedRankingRow {
+  id: string;
+  player_name: string;
+  rank: number;
+  rank_before: number;
+  points: number;
+  division: RankingDivision;
+  tournaments_played: number;
+  trend: 'up' | 'down' | 'same';
+  season: number;
+  details: RankingInputRow[];
+}
 
 const HISTORICAL_RESULT_COLUMNS = [
   'id',
@@ -152,6 +180,51 @@ function normalizeDivision(value: unknown, category?: unknown): string {
   if (['U11', 'U13', 'U15', 'U10', 'U12', 'U14'].includes(cat)) return 'junior';
   if (cat === 'MIXED') return 'mixed';
   return raw || 'men';
+}
+
+function normalizeRankingDivision(value: unknown, category?: unknown): RankingDivision {
+  const normalized = normalizeDivision(value, category);
+  return DIVS.includes(normalized) ? normalized as RankingDivision : 'men';
+}
+
+function newId() {
+  return crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+}
+
+async function withAdminTimeout<T>(promise: PromiseLike<T>, label: string, ms = 25000): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label}: delai depasse (${Math.round(ms / 1000)}s)`)), ms);
+  });
+  try {
+    return await Promise.race([Promise.resolve(promise), timeout]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+function rankTrend(rank: number, rankBefore: number): 'up' | 'down' | 'same' {
+  if (!rankBefore || rankBefore === rank) return 'same';
+  return rank < rankBefore ? 'up' : 'down';
+}
+
+function isSchemaCacheError(message: string): boolean {
+  return message.includes('schema cache') || message.includes('Could not find') || message.includes('column');
+}
+
+function computeRollingPeriod(today = new Date()) {
+  const end = new Date(today);
+  end.setHours(23, 59, 59, 999);
+  const start = new Date(end);
+  start.setFullYear(start.getFullYear() - 1);
+  start.setHours(0, 0, 0, 0);
+  return {
+    start,
+    end,
+    startIso: start.toISOString().slice(0, 10),
+    endIso: end.toISOString().slice(0, 10),
+    season: end.getFullYear(),
+  };
 }
 
 function rankNumber(row: HistoricalResultRow): number {
@@ -307,6 +380,401 @@ function mergeResults(legacyRows: TResult[], historicalRows: TResult[]): TResult
     }
   }
   return Array.from(map.values());
+}
+
+function historicalToRankingInputs(row: HistoricalResultRow): RankingInputRow[] {
+  const category = normalizeJuniorCategory(row.category || row.junior_category || '');
+  const division = normalizeRankingDivision(row.division, category);
+  const date = cleanText(row.event_date).slice(0, 10);
+  const clubName = normalizeClubName(row.club_name);
+  const rank = rankNumber(row);
+  const points = Math.ceil(Number(row.points) || 0);
+  const player1 = cleanText(row.player1_name);
+  const player2 = cleanText(row.player2_name);
+  const base = {
+    id: row.id,
+    event_name: normalizeTournamentDisplayName(row.event_name, clubName),
+    event_date: date,
+    category,
+    division,
+    club_name: clubName,
+    rank,
+    points,
+  };
+  return [
+    player1 ? { ...base, player_name: player1, partner_name: player2 } : null,
+    player2 ? { ...base, player_name: player2, partner_name: player1 } : null,
+  ].filter(Boolean) as RankingInputRow[];
+}
+
+function resultToRankingInputs(row: TResult): RankingInputRow[] {
+  const category = normalizeJuniorCategory(row.category);
+  const division = normalizeRankingDivision(row.division, category);
+  const date = cleanText(row.tournament_date).slice(0, 10);
+  const clubName = normalizeClubName(row.club_name);
+  const points = Math.ceil(Number(row.points) || 0);
+  const player1 = cleanText(row.player1_name);
+  const player2 = cleanText(row.player2_name);
+  const base = {
+    id: row.id,
+    event_name: normalizeTournamentDisplayName(row.tournament_name, clubName),
+    event_date: date,
+    category,
+    division,
+    club_name: clubName,
+    rank: Number(row.rank ?? 999),
+    points,
+  };
+  return [
+    player1 ? { ...base, player_name: player1, partner_name: player2 } : null,
+    player2 ? { ...base, player_name: player2, partner_name: player1 } : null,
+  ].filter(Boolean) as RankingInputRow[];
+}
+
+function dedupeRankingInputs(rows: RankingInputRow[]): RankingInputRow[] {
+  const seen = new Set<string>();
+  const out: RankingInputRow[] = [];
+  for (const row of rows) {
+    const key = [
+      row.event_date,
+      normKey(row.event_name),
+      row.division,
+      row.category,
+      row.rank,
+      normKey(row.player_name),
+      normKey(row.partner_name),
+      row.points,
+    ].join('|');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(row);
+  }
+  return out;
+}
+
+function computeRankingRows(
+  inputs: RankingInputRow[],
+  previousRanks: Map<string, number>,
+  period: ReturnType<typeof computeRollingPeriod>
+): ComputedRankingRow[] {
+  const byDivision = new Map<RankingDivision, Map<string, RankingInputRow[]>>();
+  for (const row of inputs) {
+    const date = new Date(`${row.event_date}T12:00:00`);
+    if (!row.player_name || !row.event_date || Number.isNaN(date.getTime())) continue;
+    if (date < period.start || date > period.end) continue;
+    if (!byDivision.has(row.division)) byDivision.set(row.division, new Map());
+    const key = normKey(row.player_name);
+    const playerRows = byDivision.get(row.division)!;
+    playerRows.set(key, [...(playerRows.get(key) ?? []), row]);
+  }
+
+  const computed: ComputedRankingRow[] = [];
+  for (const [division, players] of byDivision) {
+    const divisionRows = Array.from(players.values()).map(playerRows => {
+      const sortedDetails = [...playerRows].sort((a, b) =>
+        b.points - a.points ||
+        b.event_date.localeCompare(a.event_date) ||
+        a.rank - b.rank
+      );
+      const retained = sortedDetails.slice(0, 8);
+      return {
+        player_name: sortedDetails[0].player_name,
+        points: retained.reduce((sum, row) => sum + Math.ceil(Number(row.points) || 0), 0),
+        tournaments_played: sortedDetails.length,
+        division,
+        details: sortedDetails,
+      };
+    }).filter(row => row.points > 0)
+      .sort((a, b) => b.points - a.points || a.player_name.localeCompare(b.player_name));
+
+    let lastPoints = -1;
+    let lastRank = 0;
+    divisionRows.forEach((row, index) => {
+      const rank = row.points === lastPoints ? lastRank : index + 1;
+      lastPoints = row.points;
+      lastRank = rank;
+      const rankBefore = previousRanks.get(`${division}|${normKey(row.player_name)}`) ?? rank;
+      computed.push({
+        id: newId(),
+        player_name: row.player_name,
+        rank,
+        rank_before: rankBefore,
+        points: Math.ceil(row.points),
+        division,
+        tournaments_played: row.tournaments_played,
+        trend: rankTrend(rank, rankBefore),
+        season: period.season,
+        details: row.details,
+      });
+    });
+  }
+  return computed;
+}
+
+async function fetchPreviousOfficialRanks(sb: NonNullable<ReturnType<typeof getSupabaseClient>>) {
+  const previous = new Map<string, number>();
+  const { data } = await withAdminTimeout(
+    sb.from('official_rankings').select('player_name,division,rank,batch_id,created_at').order('created_at', { ascending: false }).limit(5000),
+    'Lecture anciens classements officiels',
+    12000
+  );
+  const rows = (data ?? []) as Record<string, unknown>[];
+  const latestBatch = String(rows.find(row => row.batch_id)?.batch_id ?? '');
+  const latestCreatedAt = String(rows[0]?.created_at ?? '').slice(0, 16);
+  for (const row of rows) {
+    if (latestBatch && String(row.batch_id ?? '') !== latestBatch) continue;
+    if (!latestBatch && latestCreatedAt && String(row.created_at ?? '').slice(0, 16) !== latestCreatedAt) continue;
+    const division = normalizeRankingDivision(row.division);
+    const name = normKey(row.player_name);
+    const rank = Number(row.rank ?? 0);
+    if (name && Number.isFinite(rank) && rank > 0) previous.set(`${division}|${name}`, rank);
+  }
+  return previous;
+}
+
+async function fetchRollingRankingInputs(sb: NonNullable<ReturnType<typeof getSupabaseClient>>, period: ReturnType<typeof computeRollingPeriod>) {
+  const inputs: RankingInputRow[] = [];
+  const pageSize = 1000;
+  for (let from = 0; from < 12000; from += pageSize) {
+    const { data, error } = await withAdminTimeout(
+      sb.from('historical_tournament_results')
+        .select(HISTORICAL_RESULT_COLUMNS)
+        .gte('event_date', period.startIso)
+        .lte('event_date', period.endIso)
+        .order('event_date', { ascending: false, nullsFirst: false })
+        .range(from, from + pageSize - 1),
+      `Lecture historique resultats ${from + 1}-${from + pageSize}`,
+      12000
+    );
+    if (error) throw new Error(`historical_tournament_results: ${error.message}`);
+    const batch = (data ?? []) as HistoricalResultRow[];
+    inputs.push(...batch.flatMap(historicalToRankingInputs));
+    if (batch.length < pageSize) break;
+  }
+
+  const { data: legacyData, error: legacyError } = await withAdminTimeout(
+    sb.from('tournament_results')
+      .select('*')
+      .gte('tournament_date', period.startIso)
+      .lte('tournament_date', period.endIso)
+      .limit(5000),
+    'Lecture resultats recents',
+    12000
+  );
+  if (!legacyError) inputs.push(...((legacyData ?? []) as TResult[]).flatMap(resultToRankingInputs));
+  return dedupeRankingInputs(inputs);
+}
+
+async function clearCurrentRankingDetails(sb: NonNullable<ReturnType<typeof getSupabaseClient>>, divisions: RankingDivision[]) {
+  for (const division of divisions) {
+    const { error } = await withAdminTimeout(
+      sb.from('official_ranking_details').delete().eq('division', division),
+      `Nettoyage details ${DIV_LABELS[division]}`,
+      12000
+    );
+    if (error) throw new Error(`official_ranking_details: ${error.message}`);
+  }
+}
+
+async function replaceRankingsFromComputed(sb: NonNullable<ReturnType<typeof getSupabaseClient>>, rows: ComputedRankingRow[]) {
+  for (const division of Array.from(new Set(rows.map(row => row.division)))) {
+    for (;;) {
+      const { data, error } = await withAdminTimeout(
+        sb.from('rankings').select('id').eq('division', division).limit(250),
+        `Lecture rankings ${DIV_LABELS[division]}`,
+        12000
+      );
+      if (error) throw new Error(`rankings: ${error.message}`);
+      const ids = ((data ?? []) as { id: string }[]).map(row => row.id).filter(Boolean);
+      if (!ids.length) break;
+      const { error: deleteError } = await withAdminTimeout(
+        sb.from('rankings').delete().in('id', ids),
+        `Suppression rankings ${DIV_LABELS[division]}`,
+        12000
+      );
+      if (deleteError) throw new Error(`rankings: ${deleteError.message}`);
+    }
+  }
+
+  const fullPayload = rows.map(row => ({
+    id: row.id,
+    player_name: row.player_name,
+    rank: row.rank,
+    rank_before: row.rank_before,
+    points: row.points,
+    division: row.division,
+    tournaments_played: row.tournaments_played,
+    trend: row.trend,
+    season: row.season,
+    updated_at: new Date().toISOString(),
+  }));
+  const leanPayload = fullPayload.map(row => ({
+    id: row.id,
+    player_name: row.player_name,
+    rank: row.rank,
+    points: row.points,
+    division: row.division,
+    tournaments_played: row.tournaments_played,
+    trend: row.trend,
+    season: row.season,
+    updated_at: row.updated_at,
+  }));
+  let lastError = '';
+  for (const payload of [fullPayload, leanPayload]) {
+    let inserted = 0;
+    let tryNext = false;
+    for (let i = 0; i < payload.length; i += 250) {
+      const { error } = await withAdminTimeout(
+        sb.from('rankings').insert(payload.slice(i, i + 250)),
+        `Publication rankings ${i + 1}-${Math.min(i + 250, payload.length)}`,
+        25000
+      );
+      if (error) {
+        lastError = error.message;
+        if (inserted === 0 && isSchemaCacheError(error.message)) {
+          tryNext = true;
+          break;
+        }
+        throw new Error(`rankings: ${error.message}`);
+      }
+      inserted += Math.min(i + 250, payload.length) - i;
+    }
+    if (!tryNext) return;
+  }
+  throw new Error(`rankings: ${lastError}`);
+}
+
+async function publishOfficialRankingsFromResults(onProgress?: (message: string) => void) {
+  const sb = getSupabaseClient();
+  if (!sb) throw new Error('Supabase non configure.');
+
+  const period = computeRollingPeriod();
+  onProgress?.(`Periode ${period.startIso} -> ${period.endIso}: lecture des resultats...`);
+  const [inputs, previousRanks] = await Promise.all([
+    fetchRollingRankingInputs(sb, period),
+    fetchPreviousOfficialRanks(sb),
+  ]);
+
+  onProgress?.(`${inputs.length} lignes joueurs detectees: calcul top 8...`);
+  const rows = computeRankingRows(inputs, previousRanks, period);
+  if (!rows.length) throw new Error('Aucun resultat exploitable pour recalculer les classements.');
+  const divisions = Array.from(new Set(rows.map(row => row.division)));
+  const batchId = newId();
+  const now = new Date().toISOString();
+
+  const officialFullPayload = rows.map(row => ({
+    id: newId(),
+    player_name: row.player_name,
+    rank: row.rank,
+    rank_before: row.rank_before,
+    points: row.points,
+    division: row.division,
+    tournaments_played: row.tournaments_played,
+    trend: row.trend,
+    season: row.season,
+    is_current: true,
+    batch_id: batchId,
+  }));
+
+  onProgress?.('Publication classement officiel courant...');
+  const officialLeanPayload = officialFullPayload.map(row => ({
+    id: row.id,
+    player_name: row.player_name,
+    rank: row.rank,
+    points: row.points,
+    division: row.division,
+    batch_id: row.batch_id,
+  }));
+  let officialLastError = '';
+  let officialPublished = false;
+  for (const payload of [officialFullPayload, officialLeanPayload]) {
+    let inserted = 0;
+    let tryNext = false;
+    for (let i = 0; i < payload.length; i += 250) {
+      const { error } = await withAdminTimeout(
+        sb.from('official_rankings').insert(payload.slice(i, i + 250)),
+        `Publication official_rankings ${i + 1}-${Math.min(i + 250, payload.length)}`,
+        25000
+      );
+      if (error) {
+        officialLastError = error.message;
+        if (inserted === 0 && isSchemaCacheError(error.message)) {
+          tryNext = true;
+          break;
+        }
+        throw new Error(`official_rankings: ${error.message}`);
+      }
+      inserted += Math.min(i + 250, payload.length) - i;
+    }
+    if (!tryNext) {
+      officialPublished = true;
+      break;
+    }
+  }
+  if (!officialPublished) throw new Error(`official_rankings: ${officialLastError}`);
+
+  onProgress?.('Mise a jour details joueurs...');
+  await clearCurrentRankingDetails(sb, divisions);
+  const detailPayload = rows.flatMap(row => row.details.map(detail => ({
+    id: newId(),
+    player_name: row.player_name,
+    division: row.division,
+    event_name: detail.event_name,
+    event_date: detail.event_date,
+    category: detail.category,
+    club_name: detail.club_name,
+    partner_name: detail.partner_name,
+    rank_label: `#${detail.rank}`,
+    points: Math.ceil(Number(detail.points) || 0),
+    season: Number(detail.event_date.slice(0, 4)) || row.season,
+    batch_id: batchId,
+  })));
+  const detailLeanPayload = detailPayload.map(row => ({
+    id: row.id,
+    player_name: row.player_name,
+    division: row.division,
+    event_name: row.event_name,
+    points: row.points,
+    season: row.season,
+    batch_id: row.batch_id,
+  }));
+  let detailLastError = '';
+  let detailsPublished = detailPayload.length === 0;
+  for (const payload of [detailPayload, detailLeanPayload]) {
+    let inserted = 0;
+    let tryNext = false;
+    for (let i = 0; i < payload.length; i += 500) {
+      const { error } = await withAdminTimeout(
+        sb.from('official_ranking_details').insert(payload.slice(i, i + 500)),
+        `Publication details ${i + 1}-${Math.min(i + 500, payload.length)}`,
+        25000
+      );
+      if (error) {
+        detailLastError = error.message;
+        if (inserted === 0 && isSchemaCacheError(error.message)) {
+          tryNext = true;
+          break;
+        }
+        throw new Error(`official_ranking_details: ${error.message}`);
+      }
+      inserted += Math.min(i + 500, payload.length) - i;
+    }
+    if (!tryNext) {
+      detailsPublished = true;
+      break;
+    }
+  }
+  if (!detailsPublished) throw new Error(`official_ranking_details: ${detailLastError}`);
+
+  onProgress?.('Publication vers la page Classements...');
+  await replaceRankingsFromComputed(sb, rows);
+
+  return {
+    totalPlayers: rows.length,
+    totalDetails: detailPayload.length,
+    period,
+    publishedAt: now,
+  };
 }
 
 const inp: React.CSSProperties = {
@@ -531,7 +999,7 @@ function QuickEntryPanel({
         }
 
         // 2) Extraire points en fin de ligne : "(250)" ou "| 250" ou "- 250"
-        const ptsSuffixMatch = line.match(/[\|(\-]\s*(\d+)\s*\)?\s*$/);
+        const ptsSuffixMatch = line.match(/(?:\(|\||-)\s*(\d+)\s*\)?\s*$/);
         if (ptsSuffixMatch) {
           customPts = parseInt(ptsSuffixMatch[1]);
           line = line.slice(0, line.lastIndexOf(ptsSuffixMatch[0])).trim();
@@ -919,6 +1387,9 @@ export default function ResultsAdminPage() {
   const [quickTourn,   setQuickTourn]  = useState<TournRow | null>(null);
   const [search,       setSearch]      = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'done' | 'missing'>('all');
+  const [recalcBusy,   setRecalcBusy]  = useState(false);
+  const [recalcMessage,setRecalcMessage] = useState('');
+  const [recalcOk,     setRecalcOk]    = useState(false);
 
   // ── Chargement ──────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -995,7 +1466,7 @@ export default function ResultsAdminPage() {
     };
     const isEdit = results.some(r => r.id === row.id);
     let err: { message: string } | null = null;
-    let savedId = row.id && !row.id.startsWith('res-') ? row.id : crypto.randomUUID();
+    const savedId = row.id && !row.id.startsWith('res-') ? row.id : crypto.randomUUID();
     if (isEdit && row._source !== 'historical') {
       ({ error: err } = await sb.from('tournament_results').update(payload).eq('id', row.id!));
     } else {
@@ -1014,7 +1485,7 @@ export default function ResultsAdminPage() {
     if (!sb) return { ok: 0, fail: rows.length };
     let ok = 0, fail = 0;
     for (let i = 0; i < rows.length; i += 20) {
-      const batch = rows.slice(i, i + 20).map((r, j) => ({
+      const batch = rows.slice(i, i + 20).map(r => ({
         id: (r.id && !r.id.startsWith('res-')) ? r.id : crypto.randomUUID(),
         tournament_id: r.tournament_id ?? '', tournament_name: r.tournament_name ?? '',
         tournament_date: r.tournament_date ?? '', category: r.category ?? '',
@@ -1046,6 +1517,33 @@ export default function ResultsAdminPage() {
     ]);
     const e = legacyDelete.error ?? historicalDelete.error;
     if (e) setError(e.message); else await load();
+  };
+
+  const handlePublishRankings = async () => {
+    if (!isSupabaseConnected()) {
+      setError('Supabase non connecte: impossible de recalculer les classements officiels.');
+      return;
+    }
+    if (!confirm('Recalculer et publier les classements officiels depuis tous les resultats saisis sur les 12 derniers mois ?')) return;
+
+    setRecalcBusy(true);
+    setRecalcOk(false);
+    setError('');
+    setRecalcMessage('Preparation du recalcul...');
+    try {
+      const summary = await publishOfficialRankingsFromResults(message => setRecalcMessage(message));
+      setRecalcOk(true);
+      setRecalcMessage(
+        `Classements recalcules: ${summary.totalPlayers} joueurs, ${summary.totalDetails} details, periode ${summary.period.startIso} -> ${summary.period.endIso}.`
+      );
+      await load();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`Recalcul classements: ${msg}`);
+      setRecalcMessage('');
+    } finally {
+      setRecalcBusy(false);
+    }
   };
 
   // ── Tournois terminés + résultats groupés ────────────────────────────────────
@@ -1139,15 +1637,41 @@ export default function ResultsAdminPage() {
             </div>
           </div>
         </div>
-        <button onClick={load} style={{ display:'flex',alignItems:'center',gap:'5px',background:'rgba(255,255,255,0.04)',color:'#888',border:'1px solid rgba(255,255,255,0.08)',borderRadius:'8px',padding:'8px 12px',cursor:'pointer',fontSize:'12px' }}>
-          <RefreshCw size={12}/> Actualiser
-        </button>
+        <div style={{ display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap' }}>
+          <button onClick={handlePublishRankings} disabled={recalcBusy || !isSupabaseConnected()} style={{
+            display:'flex',alignItems:'center',gap:'6px',
+            background: recalcBusy ? 'rgba(74,213,105,0.08)' : 'rgba(74,213,105,0.12)',
+            color: recalcBusy ? '#86efac' : '#4ad569',
+            border:'1px solid rgba(74,213,105,0.28)',
+            borderRadius:'8px',padding:'8px 12px',
+            cursor: recalcBusy ? 'wait' : 'pointer',fontSize:'12px',fontWeight:700,
+            opacity: !isSupabaseConnected() ? 0.45 : 1,
+          }}>
+            <BarChart3 size={13}/>{recalcBusy ? 'Recalcul...' : 'Publier classements'}
+          </button>
+          <button onClick={load} style={{ display:'flex',alignItems:'center',gap:'5px',background:'rgba(255,255,255,0.04)',color:'#888',border:'1px solid rgba(255,255,255,0.08)',borderRadius:'8px',padding:'8px 12px',cursor:'pointer',fontSize:'12px' }}>
+            <RefreshCw size={12}/> Actualiser
+          </button>
+        </div>
       </div>
 
       {/* ── Erreur ── */}
       {error && (
         <div style={{ background:'rgba(245,158,11,0.06)',color:'#f59e0b',borderRadius:'10px',padding:'10px 14px',marginBottom:'16px',fontSize:'12px',display:'flex',alignItems:'center',gap:'8px',border:'1px solid rgba(245,158,11,0.2)' }}>
           <AlertCircle size={14}/>{error}
+        </div>
+      )}
+
+      {recalcMessage && (
+        <div style={{
+          background: recalcOk ? 'rgba(74,213,105,0.08)' : 'rgba(59,130,246,0.08)',
+          color: recalcOk ? '#4ad569' : '#60a5fa',
+          borderRadius:'10px',padding:'10px 14px',marginBottom:'16px',
+          fontSize:'12px',display:'flex',alignItems:'center',gap:'8px',
+          border:`1px solid ${recalcOk ? 'rgba(74,213,105,0.22)' : 'rgba(59,130,246,0.22)'}`,
+        }}>
+          {recalcBusy ? <RefreshCw size={14} style={{ animation:'spin 1s linear infinite' }}/> : <CheckCircle size={14}/>}
+          {recalcMessage}
         </div>
       )}
 
