@@ -309,7 +309,7 @@ async function fetchData(target: ExportTarget): Promise<FetchResult> {
   //   player1_name, player2_name, points, created_at
   if (target === 'results') {
     if (sbOk) {
-      // 1. Essai principal: tournament_results (937 lignes confirmées)
+      // 1. Essai principal: tournament_results
       const { rows: r1, error: e1 } = await sbQuery<Record<string, unknown>>(
         () => sb!.from('tournament_results').select('*').order('tournament_date', { ascending: false }).limit(2000),
         'tournament_results'
@@ -325,12 +325,12 @@ async function fetchData(target: ExportTarget): Promise<FetchResult> {
       if (r2.length) return { rows: normalizeExportTournamentRows(r2.map(flattenRow)), source: 'supabase', sourceLabel: `Supabase matches (${r2.length} résultats)`, error: null };
       console.warn('[Export] matches error:', e2);
 
-      // 3. Aucune donnée trouvée — indiquer clairement
+      // 3. Aucune donnée trouvée — indiquer clairement sans injecter de données de démo
       const errMsg = e1 ?? e2 ?? 'Table vide';
       return {
-        rows: normalizeExportTournamentRows(MOCK_RESULTS),
-        source: 'mock',
-        sourceLabel: `Fallback mock (Supabase: ${errMsg})`,
+        rows: [],
+        source: 'supabase',
+        sourceLabel: `Supabase résultats vide (${errMsg})`,
         error: errMsg,
       };
     }
@@ -355,7 +355,7 @@ async function fetchData(target: ExportTarget): Promise<FetchResult> {
       );
       if (r2.length) return { rows: r2, source: 'supabase', sourceLabel: `Supabase tournament_registrations (${r2.length} inscriptions)`, error: null };
 
-      return { rows: normalizeExportTournamentRows(MOCK_REGISTRATIONS), source: 'mock', sourceLabel: 'Supabase inscriptions vide (0 ligne)', error: null };
+      return { rows: [], source: 'supabase', sourceLabel: 'Supabase inscriptions vide (0 ligne)', error: null };
     }
     return { rows: normalizeExportTournamentRows(MOCK_REGISTRATIONS), source: 'mock', sourceLabel: 'Fallback mock (Supabase non connecté)', error: null };
   }
@@ -429,7 +429,7 @@ const EXPORTS: ExportCard[] = [
   { target: 'rankings_junior', label: 'Classement Junior',  desc: 'Supabase rankings [division=junior] → CSV officiel MPL en fallback',            icon: '⭐', color: '#f59e0b' },
   { target: 'rankings_mixte',  label: 'Classement Mixte',   desc: 'Supabase rankings [division=mixte/mixed] → CSV officiel MPL en fallback',       icon: '🎾', color: '#8b5cf6' },
   { target: 'rankings_all',    label: 'Classement Complet', desc: 'Supabase rankings toutes divisions → CSV officiel MPL en fallback',            icon: '📊', color: '#4ad569' },
-  { target: 'results',         label: 'Résultats',          desc: 'Table tournament_results Supabase — 937 résultats',                             icon: '📋', color: '#10b981' },
+  { target: 'results',         label: 'Résultats',          desc: 'Table tournament_results Supabase — export live',                              icon: '📋', color: '#10b981' },
   { target: 'registrations',   label: 'Inscriptions',       desc: 'Table registrations Supabase avec statuts',                                      icon: '📝', color: '#f97316' },
 ];
 
