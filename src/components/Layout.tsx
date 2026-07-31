@@ -143,11 +143,23 @@ export function Navbar() {
   const { lang, setLang, t } = useI18n();
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40);
     window.addEventListener('scroll', onScroll);
     return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 820px)');
+    const syncMobile = () => {
+      setIsMobile(mediaQuery.matches);
+      if (!mediaQuery.matches) setOpen(false);
+    };
+    syncMobile();
+    mediaQuery.addEventListener('change', syncMobile);
+    return () => mediaQuery.removeEventListener('change', syncMobile);
   }, []);
 
   const links = [
@@ -177,15 +189,24 @@ export function Navbar() {
         ? '0 4px 32px rgba(0,0,0,0.5), 0 1px 0 rgba(74,213,105,0.08)'
         : 'none',
       transition: 'all 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
-      overflowX: 'auto' as const,
+      overflowX: 'hidden' as const,
     }}>
-      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 24px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', minWidth: '820px' }}>
+      <div style={{
+        maxWidth: '1280px',
+        margin: '0 auto',
+        padding: isMobile ? '0 14px' : '0 24px',
+        height: isMobile ? '58px' : '64px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: isMobile ? '10px' : '18px',
+      }}>
         {/* Logo MPL + badge AfrAsia */}
         <Link to={ROUTE_PATHS.HOME} style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <MPLLogo size={36} />
+          <MPLLogo size={isMobile ? 28 : 36} />
           {/* Séparateur + logo AfrAsia Bank Padel League */}
           <div style={{
-            display: 'flex', alignItems: 'center', gap: '8px',
+            display: isMobile ? 'none' : 'flex', alignItems: 'center', gap: '8px',
             borderLeft: '1px solid rgba(255,255,255,0.1)', paddingLeft: '12px',
           }}>
             <img
@@ -201,7 +222,7 @@ export function Navbar() {
         </Link>
 
         {/* Desktop links */}
-        <div style={{ display: 'flex', gap: '2px', alignItems: 'center' }} className="hidden md:flex">
+        <div style={{ display: isMobile ? 'none' : 'flex', gap: '2px', alignItems: 'center' }}>
           {links.map(link => (
             <NavLink
               key={link.to}
@@ -264,8 +285,19 @@ export function Navbar() {
           {/* Hamburger */}
           <button
             onClick={() => setOpen(!open)}
-            style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', display: 'none' }}
-            className="flex md:hidden"
+            aria-label={open ? 'Fermer le menu' : 'Ouvrir le menu'}
+            style={{
+              width: '38px',
+              height: '38px',
+              borderRadius: '10px',
+              border: '1px solid rgba(255,255,255,0.12)',
+              background: open ? 'rgba(74,213,105,0.14)' : 'rgba(255,255,255,0.06)',
+              color: 'white',
+              cursor: 'pointer',
+              display: isMobile ? 'inline-flex' : 'none',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
           >
             {open ? <X size={24} /> : <Menu size={24} />}
           </button>
@@ -273,10 +305,12 @@ export function Navbar() {
       </div>
 
       {/* Mobile menu */}
-      {open && (
+      {open && isMobile && (
         <div style={{
-          background: 'rgba(10,10,10,0.98)', padding: '16px 24px',
+          background: 'rgba(10,10,10,0.98)', padding: '10px 14px 16px',
           borderTop: '1px solid rgba(74,213,105,0.1)',
+          maxHeight: 'calc(100vh - 58px)',
+          overflowY: 'auto',
         }}>
           {[...links, ...(!IS_PUBLIC_MODE ? [{ to: ROUTE_PATHS.ADMIN, label: t.nav.admin }] : [])].map(link => (
             <NavLink
@@ -284,9 +318,11 @@ export function Navbar() {
               to={link.to}
               onClick={() => setOpen(false)}
               style={({ isActive }) => ({
-                display: 'block', padding: '12px 0', textDecoration: 'none',
+                display: 'block', padding: '13px 10px', textDecoration: 'none',
                 color: isActive ? '#4ad569' : 'rgba(255,255,255,0.8)',
                 borderBottom: '1px solid rgba(255,255,255,0.05)',
+                borderRadius: '8px',
+                background: isActive ? 'rgba(74,213,105,0.08)' : 'transparent',
                 fontWeight: isActive ? 600 : 400,
               })}
             >
