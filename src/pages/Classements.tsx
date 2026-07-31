@@ -411,7 +411,6 @@ function detailDedupKey(detail: PlayerRankingDetail): string {
     detailClubKey(detail),
     nameKey(detail.partner_name || detail.team_name || ''),
     detail.rank ?? '',
-    roundUpPoints(detail.points),
   ].join('|');
 }
 
@@ -520,10 +519,18 @@ function detailQuality(detail: PlayerRankingDetail): number {
 function mergeDetailRows(base: PlayerRankingDetail, incoming: PlayerRankingDetail): PlayerRankingDetail {
   const preferred = detailQuality(incoming) > detailQuality(base) ? incoming : base;
   const other = preferred === incoming ? base : incoming;
+  const preferredPoints = roundUpPoints(preferred.points);
+  const otherPoints = roundUpPoints(other.points);
+  const points = preferred.source === 'current' && other.source === 'historical'
+    ? preferredPoints
+    : preferred.source === 'historical' && other.source === 'current'
+      ? otherPoints
+      : Math.max(preferredPoints, otherPoints);
+
   return {
     ...preferred,
     event_name: preferred.event_name || other.event_name,
-    points: Math.max(roundUpPoints(preferred.points), roundUpPoints(other.points)),
+    points,
     season: preferred.season ?? other.season,
     rank: preferred.rank ?? other.rank,
     team_name: preferred.team_name || other.team_name,

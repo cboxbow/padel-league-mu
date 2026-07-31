@@ -31,6 +31,10 @@ function normKey(value) {
     .trim();
 }
 
+function compactEventName(value) {
+  return normKey(value).replace(/\s+/g, '');
+}
+
 function normalizeJuniorCategory(category) {
   const value = cleanText(category).toUpperCase().replace(/\s+/g, ' ');
   if (value === 'U10') return 'U11';
@@ -46,6 +50,8 @@ function normalizeClubName(value) {
   const name = cleanText(value);
   if (!name) return '';
   return name
+    .replace(/^SPARC$/i, 'SPARC Cascavelle')
+    .replace(/\bCascavelle\b/gi, 'SPARC Cascavelle')
     .replace(/Ca\?a|Ca\u00f1a|CANA/gi, 'Ca\u00f1a')
     .replace(/Isla Padel de Beau Plan/gi, 'Isla Padel Beau Plan')
     .replace(/Labourdonnais Sports Club|LAB SPORTS CLUB/gi, 'Labourdonnais Mapou')
@@ -148,6 +154,7 @@ function historicalToRankingInputs(row) {
     club_name: clubName,
     rank,
     points,
+    source: 'historical',
   };
   return [
     player1 ? { ...base, player_name: player1, partner_name: player2 } : null,
@@ -172,6 +179,7 @@ function resultToRankingInputs(row) {
     club_name: clubName,
     rank: Number(row.rank ?? 999),
     points,
+    source: 'current',
   };
   return [
     player1 ? { ...base, player_name: player1, partner_name: player2 } : null,
@@ -180,22 +188,32 @@ function resultToRankingInputs(row) {
 }
 
 function dedupeRankingInputs(rows) {
-  const seen = new Set();
-  const out = [];
+  const byKey = new Map();
   for (const row of rows) {
     const key = [
       row.event_date,
       row.division,
       row.category,
+      compactEventName(row.club_name || row.event_name),
       normKey(row.player_name),
       normKey(row.partner_name),
-      row.points,
+      row.rank,
     ].join('|');
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(row);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, row);
+      continue;
+    }
+    const existingPriority = existing.source === 'current' ? 2 : 1;
+    const rowPriority = row.source === 'current' ? 2 : 1;
+    if (
+      rowPriority > existingPriority ||
+      (rowPriority === existingPriority && Math.ceil(Number(row.points) || 0) > Math.ceil(Number(existing.points) || 0))
+    ) {
+      byKey.set(key, row);
+    }
   }
-  return out;
+  return Array.from(byKey.values());
 }
 
 function rankTrend(rank, rankBefore) {
