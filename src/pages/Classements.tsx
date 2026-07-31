@@ -650,10 +650,14 @@ function PlayerDetailModal({
   const officialDetails = details.filter(detail => detail.source === 'official');
   const realDetails = resolveDetailDivisionConflicts(details.filter(detail => detail.source !== 'official'));
   const realDisplayDetails = dedupePlayerDetails(realDetails);
-  const officialMatchedDetails = officialDetails.length
-    ? resolveOfficialMatchedDetails(officialDetails, realDisplayDetails)
+  const officialTopDetails = [...officialDetails]
+    .sort((a, b) => b.points - a.points || detailRankingMonthKey(b).localeCompare(detailRankingMonthKey(a)) || a.event_name.localeCompare(b.event_name))
+    .slice(0, 8);
+  const officialMatchedDetails = officialTopDetails.length
+    ? resolveOfficialMatchedDetails(officialTopDetails, realDisplayDetails)
     : [];
-  const displayDetails = realDisplayDetails;
+  const officialFallbackDetails = officialMatchedDetails.filter(detail => detail.source === 'official');
+  const displayDetails = dedupePlayerDetails([...realDisplayDetails, ...officialFallbackDetails]);
   const historicalDetails = displayDetails.filter(detail => detail.source === 'historical');
   const playerDivisionKey = divisionKey;
   const windowRange = rankingWindowRange();
@@ -669,7 +673,9 @@ function PlayerDetailModal({
   const retainedDisplayKeys = new Set(retainedDetails.map(detailDedupKey));
   const retainedEventKeys = new Set(retainedDetails.map(detailEventKey));
   const playedCount = windowDetails.length || officialDetails.length || player.tournaments_played || 0;
-  const calculatedTop8Total = retainedDetails.reduce((sum, detail) => sum + detail.points, 0);
+  const calculatedTop8Total = officialTopDetails.length
+    ? officialTopDetails.reduce((sum, detail) => sum + detail.points, 0)
+    : retainedDetails.reduce((sum, detail) => sum + detail.points, 0);
   const real12MonthTotal = windowDetails.reduce((sum, detail) => sum + detail.points, 0);
   const outOfTop8Count = Math.max(0, windowDetails.length - retainedDetails.length);
   const rankingTotal = player.points || calculatedTop8Total;
