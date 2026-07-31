@@ -1915,7 +1915,7 @@ export default function AdminDashboard({ onLogout, role, userName }: Props) {
     { key: 'results',     label: lang === 'fr' ? 'Résultats' : 'Results',   icon: Medal       },
     { key: 'rankings',    label: lang === 'fr' ? 'Classements' : 'Rankings', icon: BarChart2   },
     { key: 'official_import', label: 'Classements officiels', icon: FileText },
-    { key: 'historical_audit', label: 'Audit historique', icon: Database },
+    { key: 'historical_audit', label: 'Controle donnees', icon: Database },
     { key: 'brackets',    label: 'Brackets',     icon: GitBranch },
     { key: 'scores',      label: 'Scores',       icon: Star      },
     { key: 'exports',     label: 'Exports',      icon: Download  },
