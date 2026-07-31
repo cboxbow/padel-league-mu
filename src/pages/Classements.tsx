@@ -403,10 +403,12 @@ function detailClubKey(detail: PlayerRankingDetail): string {
 }
 
 function detailDedupKey(detail: PlayerRankingDetail): string {
+  const date = detailIsoDate(detail) || detailMonthKey(detail);
   return [
-    detailMonthKey(detail),
+    date,
     detail.division_key || '',
-    detailClubKey(detail),
+    compactEventName(detail.category || inferCategory(detail.event_name)),
+    compactEventName(detail.partner_name || ''),
     roundUpPoints(detail.points),
   ].join('|');
 }
