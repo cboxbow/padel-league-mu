@@ -277,7 +277,7 @@ const CLUB_ALIASES: Array<[RegExp, string]> = [
   [/\bAZURI\b|STUDIO BY RM AZURI/, 'Studio by RM Azuri'],
   [/\bISLA\b|ISLA PADEL GRAND BAIE/, 'Isla Padel Grand Baie'],
   [/\bLSC\b|LABOURDONNAIS|MAPOU/, 'Labourdonnais Mapou'],
-  [/\bCANA\b|CAÃ‘A|CANA BEAU PLAN|BEAU PLAN/, 'CaÃ±a Beau Plan'],
+  [/\bCANA\b|CAÑA|CANA BEAU PLAN|BEAU PLAN/, 'Caña Beau Plan'],
   [/\bTB\b|TERRES BRUNES|TAMARIN BAY/, 'Terres Brunes Sports & Leisure'],
   [/\bCMA\b|CLUB MED|ALBION/, 'Club Med Albion'],
   [/\bMCG\b|MONT CHOISY/, 'Mont Choisy Golf'],
@@ -703,7 +703,7 @@ function PlayerDetailModal({
             <span style={{ color: '#f59e0b', fontSize: '20px', lineHeight: 1 }}>#{player.rank}</span>
             <div style={{ minWidth: 0 }}>
               <div style={{ color: 'white', fontSize: '16px', fontWeight: 900, textTransform: 'uppercase', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{player.player_name}</div>
-              <div style={{ color: '#777', fontSize: '12px', marginTop: '2px' }}>{formatPoints(player.points)} pts ranking Â· Top 8 / 12 mois: {top8Label} Â· {historicalDetails.length} historique</div>
+              <div style={{ color: '#777', fontSize: '12px', marginTop: '2px' }}>{formatPoints(player.points)} pts ranking - Top 8 / 12 mois: {top8Label} - {historicalDetails.length} historique</div>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
@@ -716,7 +716,7 @@ function PlayerDetailModal({
           <div style={{ color: '#d0d0d0', fontSize: '12px', fontWeight: 800, lineHeight: 1.45 }}>{ruleText}</div>
           {detectedGap > 0 && officialDetails.length > 0 && (
             <div style={{ color: '#f59e0b', fontSize: '11px', fontWeight: 800, marginTop: '6px' }}>
-              Controle donnees: officiel {formatPoints(rankingTotal)} Â· details detectes {formatPoints(calculatedTop8Total)}.
+              Controle donnees: officiel {formatPoints(rankingTotal)} - details detectes {formatPoints(calculatedTop8Total)}.
             </div>
           )}
         </div>
@@ -908,16 +908,38 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
 
     const name = player.player_name.trim();
     const escapedName = name.replace(/[%_,]/g, '');
-    const { data: historicalRows, error: historicalError } = await sb
-      .from('historical_tournament_results')
-      .select('event_name,season,category,division,rank_min,team_name,player1_name,player2_name,points,club_name,event_date')
-      .or(`player1_name.ilike.%${escapedName}%,player2_name.ilike.%${escapedName}%`)
-      .limit(2000);
+    const historicalRows: Record<string, unknown>[] = [];
+    const historicalSeen = new Set<string>();
+    const pageSize = 300;
+
+    for (const column of ['player1_name', 'player2_name'] as const) {
+      for (let from = 0; from < 3000; from += pageSize) {
+        const { data, error } = await sb
+          .from('historical_tournament_results')
+          .select('id,event_name,season,category,division,rank_min,team_name,player1_name,player2_name,points,club_name,event_date')
+          .ilike(column, `%${escapedName}%`)
+          .range(from, from + pageSize - 1);
+
+        if (error) {
+          console.warn('[Classements] historical_tournament_results error:', error);
+          break;
+        }
+
+        const batch = (data ?? []) as Record<string, unknown>[];
+        for (const row of batch) {
+          const key = String(row.id ?? `${row.event_name}|${row.team_name}|${row.points}`);
+          if (historicalSeen.has(key)) continue;
+          historicalSeen.add(key);
+          historicalRows.push(row);
+        }
+        if (batch.length < pageSize) break;
+      }
+    }
 
     const seen = new Set<string>();
     const details: PlayerRankingDetail[] = [];
-    if (!historicalError && historicalRows) {
-      for (const row of historicalRows as Record<string, unknown>[]) {
+    if (historicalRows.length) {
+      for (const row of historicalRows) {
         const eventName = String(row.event_name ?? '').trim();
         const season = Number(row.season ?? 0) || undefined;
         const points = roundUpPoints(row.points);

@@ -746,7 +746,7 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
           let includeRankBefore = true;
           for (;;) {
             const controller = new AbortController();
-            const tId = setTimeout(() => controller.abort(), 12000);
+            const tId = setTimeout(() => controller.abort(), 30000);
             const params = new URLSearchParams({
               select: includeRankBefore
                 ? 'player_name,rank,rank_before,points,division,tournaments_played,trend,season,updated_at'
@@ -810,7 +810,7 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
           let trOffset = 0;
           for (;;) {
             const controller = new AbortController();
-            const tId = setTimeout(() => controller.abort(), 10000);
+            const tId = setTimeout(() => controller.abort(), 30000);
             const res = await fetch(
               `${sbUrl}/tournament_results?select=player1_name,player2_name,points,division&division=in.(${divVariants.join(',')})&order=points.desc&limit=1000&offset=${trOffset}`,
               { signal: controller.signal, headers: { 'apikey': sbKey, 'Authorization': `Bearer ${sbKey}`, 'Accept': 'application/json' } }

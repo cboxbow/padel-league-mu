@@ -214,10 +214,10 @@ function mapHistoricalResult(row: HistoricalTournamentResult): TournamentResult 
 
 async function fetchHistoricalResults2026(sb: ReturnType<typeof getSupabaseClient>): Promise<TournamentResult[]> {
   if (!sb) return [];
-  const pageSize = 1000;
+  const pageSize = 300;
   const allRows: HistoricalTournamentResult[] = [];
 
-  for (let from = 0; from < 6000; from += pageSize) {
+  for (let from = 0; from < 9000; from += pageSize) {
     const { data, error } = await sb
       .from('historical_tournament_results')
       .select(HISTORICAL_RESULT_COLUMNS)
@@ -237,14 +237,23 @@ async function fetchHistoricalResults2026(sb: ReturnType<typeof getSupabaseClien
 
 async function fetchLegacyResults2026(sb: ReturnType<typeof getSupabaseClient>): Promise<TournamentResult[]> {
   if (!sb) return [];
-  const { data, error } = await sb.from('tournament_results')
-    .select(RESULT_COLUMNS)
-    .order('tournament_date', { ascending: false })
-    .order('rank', { ascending: true })
-    .limit(5000);
+  const pageSize = 300;
+  const rows: TournamentResult[] = [];
 
-  if (error) throw error;
-  return (data ?? []) as TournamentResult[];
+  for (let from = 0; from < 9000; from += pageSize) {
+    const { data, error } = await sb.from('tournament_results')
+      .select(RESULT_COLUMNS)
+      .order('tournament_date', { ascending: false })
+      .order('rank', { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (error) throw error;
+    const batch = (data ?? []) as TournamentResult[];
+    rows.push(...batch);
+    if (batch.length < pageSize) break;
+  }
+
+  return rows;
 }
 
 /** Convertit un nom en format Prénom Nom (première lettre de chaque mot en majuscule)
@@ -562,7 +571,7 @@ export default function Resultats() {
         } catch (legacyError) {
           return { data: null, error: legacyError };
         }
-      }, 20000);
+      }, 45000);
       if (timedOut) {
         setError('Connexion live temporairement indisponible. Réessayez dans quelques instants.');
         setAllResults([]);
