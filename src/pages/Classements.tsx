@@ -693,7 +693,8 @@ function PlayerDetailModal({
   const historicalDetails = displayDetails.filter(detail => detail.source === 'historical');
   const playerDivisionKey = divisionKey;
   const windowRange = rankingWindowRange();
-  const windowDetails = displayDetails.filter(detail => {
+  const calculationDetails = realDisplayDetails.length ? realDisplayDetails : displayDetails;
+  const windowDetails = calculationDetails.filter(detail => {
     const date = detailIsoDate(detail);
     if (playerDivisionKey && detail.division_key && detail.division_key !== playerDivisionKey) return false;
     return /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= windowRange.start && date <= windowRange.end;
@@ -701,7 +702,7 @@ function PlayerDetailModal({
   const retainedRealDetails = [...windowDetails]
     .sort((a, b) => b.points - a.points || detailIsoDate(b).localeCompare(detailIsoDate(a)))
     .slice(0, 8);
-  const retainedDetails = officialMatchedDetails.length ? officialMatchedDetails.slice(0, 8) : retainedRealDetails;
+  const retainedDetails = retainedRealDetails.length ? retainedRealDetails : officialTopDetails.slice(0, 8);
   const retainedDisplayDetails: PlayerRankingDetail[] = [];
   const retainedDetailRefs = new WeakSet<PlayerRankingDetail>();
   const usedDisplayIndexes = new Set<number>();
@@ -742,12 +743,10 @@ function PlayerDetailModal({
   );
   const combinedDetails = [...retainedDisplayDetails, ...nonRetainedDisplayDetails];
   const playedCount = Math.max(windowDetails.length, officialUniqueDetails.length, player.tournaments_played || 0);
-  const calculatedTop8Total = officialTopDetails.length
-    ? officialTopDetails.reduce((sum, detail) => sum + detail.points, 0)
-    : retainedDetails.reduce((sum, detail) => sum + detail.points, 0);
+  const calculatedTop8Total = retainedDetails.reduce((sum, detail) => sum + detail.points, 0);
   const real12MonthTotal = windowDetails.reduce((sum, detail) => sum + detail.points, 0);
   const outOfTop8Count = Math.max(0, windowDetails.length - retainedDetails.length);
-  const rankingTotal = player.points || calculatedTop8Total;
+  const rankingTotal = calculatedTop8Total || player.points;
   const rankingGap = Math.max(0, real12MonthTotal - rankingTotal);
   const bestPartner = topCountLabel(combinedDetails.map(detail => detailPartnerLabel(detail, player.player_name)));
   const bestClub = topCountLabel(combinedDetails.map(detail => detail.club_name || ''));

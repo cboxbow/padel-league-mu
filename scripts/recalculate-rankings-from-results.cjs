@@ -189,6 +189,13 @@ function resultToRankingInputs(row) {
 
 function dedupeRankingInputs(rows) {
   const byKey = new Map();
+  const qualityScore = (row) => {
+    let score = 0;
+    if (cleanText(row.partner_name)) score += 12;
+    if (Number(row.rank) > 0 && Number(row.rank) < 999) score += 8;
+    if (cleanText(row.id)) score += 2;
+    return score;
+  };
   for (const row of rows) {
     const key = [
       row.event_date,
@@ -196,15 +203,14 @@ function dedupeRankingInputs(rows) {
       row.category,
       compactEventName(row.club_name || row.event_name),
       normKey(row.player_name),
-      normKey(row.partner_name),
-      row.rank,
+      Math.ceil(Number(row.points) || 0),
     ].join('|');
     const existing = byKey.get(key);
     if (!existing) {
       byKey.set(key, row);
       continue;
     }
-    if (Math.ceil(Number(row.points) || 0) > Math.ceil(Number(existing.points) || 0)) {
+    if (qualityScore(row) > qualityScore(existing)) {
       byKey.set(key, row);
     }
   }
