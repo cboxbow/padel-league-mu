@@ -458,7 +458,7 @@ function seasonsLabel(seasons: Set<number>): string {
 
 async function fetchHistoricalResultsPaged(sb: ReturnType<typeof getSupabaseClient>): Promise<HistoricalResult[]> {
   if (!sb) return [];
-  const pageSize = 1000;
+  const pageSize = 250;
   const allRows: HistoricalResult[] = [];
 
   for (let from = 0; from < 12000; from += pageSize) {
@@ -481,7 +481,7 @@ async function fetchHistoricalResultsPaged(sb: ReturnType<typeof getSupabaseClie
 
 async function fetchCurrentRankingsPaged(sb: ReturnType<typeof getSupabaseClient>): Promise<CurrentRankingInfo[]> {
   if (!sb) return [];
-  const pageSize = 1000;
+  const pageSize = 500;
   const allRows: CurrentRankingInfo[] = [];
 
   for (let from = 0; from < 6000; from += pageSize) {
@@ -1397,7 +1397,7 @@ export default function Historique() {
     const { data, error: err, timedOut } = await safeSupabaseQuery<{ historical: HistoricalResult[]; rankings: CurrentRankingInfo[] }>(
       () => Promise.all([fetchHistoricalResultsPaged(sb), fetchCurrentRankingsPaged(sb)])
         .then(([historical, rankings]) => ({ data: { historical, rankings }, error: null })),
-      25000
+      60000
     );
 
     if (timedOut) {
