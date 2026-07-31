@@ -635,6 +635,7 @@ function PlayerDetailModal({
   onClose: () => void;
 }) {
   const [activeHistoryTab, setActiveHistoryTab] = useState<'all' | 'men' | 'women' | 'mixed' | 'junior'>('all');
+  const [isMobile, setIsMobile] = useState(false);
   const officialDetails = details.filter(detail => detail.source === 'official');
   const realDetails = resolveDetailDivisionConflicts(details.filter(detail => detail.source !== 'official'));
   const displayDetails = dedupePlayerDetails(realDetails);
@@ -695,24 +696,32 @@ function PlayerDetailModal({
   const top8Label = playedCount > 8 ? `8/${playedCount}` : String(playedCount);
   const ruleText = `Ranking period: ${formatIsoDateFr(windowRange.start)} to ${formatIsoDateFr(windowRange.end)} - Best 8 scores. Les autres tournois restent visibles mais ne comptent pas dans le total ranking.`;
 
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 720px)');
+    const update = () => setIsMobile(media.matches);
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+
   return createPortal(
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.76)', zIndex: 2147483000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-      <div onClick={event => event.stopPropagation()} style={{ width: '100%', maxWidth: '920px', maxHeight: '88vh', overflow: 'hidden', background: '#101010', border: `1px solid ${color}40`, borderRadius: '10px', boxShadow: '0 22px 70px rgba(0,0,0,0.45)', position: 'relative', zIndex: 2147483001 }}>
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'space-between', gap: '14px', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-            <span style={{ color: '#f59e0b', fontSize: '20px', lineHeight: 1 }}>#{player.rank}</span>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.76)', zIndex: 2147483000, display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'center', padding: isMobile ? '8px' : '16px' }}>
+      <div onClick={event => event.stopPropagation()} style={{ width: '100%', maxWidth: '920px', maxHeight: isMobile ? 'calc(100dvh - 16px)' : '88vh', overflow: isMobile ? 'auto' : 'hidden', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'thin', scrollbarColor: `${color} rgba(255,255,255,0.08)`, background: '#101010', border: `1px solid ${color}40`, borderRadius: isMobile ? '12px' : '10px', boxShadow: '0 22px 70px rgba(0,0,0,0.45)', position: 'relative', zIndex: 2147483001 }}>
+        <div style={{ padding: isMobile ? '14px 16px' : '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'space-between', gap: isMobile ? '10px' : '14px', alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: isMobile ? '10px' : '12px', minWidth: 0 }}>
+            <span style={{ color: '#f59e0b', fontSize: isMobile ? '18px' : '20px', lineHeight: 1.2, flex: '0 0 auto' }}>#{player.rank}</span>
             <div style={{ minWidth: 0 }}>
-              <div style={{ color: 'white', fontSize: '16px', fontWeight: 900, textTransform: 'uppercase', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{player.player_name}</div>
-              <div style={{ color: '#777', fontSize: '12px', marginTop: '2px' }}>{formatPoints(player.points)} pts ranking - Top 8 / 12 mois: {top8Label} - {historicalDetails.length} historique</div>
+              <div style={{ color: 'white', fontSize: isMobile ? '17px' : '16px', fontWeight: 900, textTransform: 'uppercase', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isMobile ? 'normal' : 'nowrap', lineHeight: 1.08 }}>{player.player_name}</div>
+              <div style={{ color: '#777', fontSize: '12px', marginTop: '4px', lineHeight: 1.35 }}>{formatPoints(player.points)} pts ranking - Top 8 / 12 mois: {top8Label} - {historicalDetails.length} historique</div>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{ color: '#777', fontSize: '12px' }}>{careerStats ? `${careerStats.tournaments_played} tournois carriere` : `${displayDetails.length} lignes`}</div>
-            <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', padding: 0 }}><X size={22} /></button>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: isMobile ? '8px' : '14px', flex: '0 0 auto' }}>
+            {!isMobile && <div style={{ color: '#777', fontSize: '12px' }}>{careerStats ? `${careerStats.tournaments_played} tournois carriere` : `${displayDetails.length} lignes`}</div>}
+            <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: '#777', cursor: 'pointer', padding: isMobile ? '8px' : '4px' }}><X size={isMobile ? 20 : 22} /></button>
           </div>
         </div>
 
-        <div style={{ padding: '12px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(59,130,246,0.045)' }}>
+        <div style={{ padding: isMobile ? '12px 16px' : '12px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(59,130,246,0.045)' }}>
           <div style={{ color: '#d0d0d0', fontSize: '12px', fontWeight: 800, lineHeight: 1.45 }}>{ruleText}</div>
           {detectedGap > 0 && officialDetails.length > 0 && (
             <div style={{ color: '#f59e0b', fontSize: '11px', fontWeight: 800, marginTop: '6px' }}>
@@ -721,7 +730,7 @@ function PlayerDetailModal({
           )}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: '8px', padding: '12px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,minmax(0,1fr))' : 'repeat(auto-fit,minmax(130px,1fr))', gap: '8px', padding: isMobile ? '12px 16px' : '12px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           {[
             { label: 'Ranking', value: formatPoints(player.points), c: color },
             { label: 'Top 8 retenus', value: loading ? '...' : formatPoints(calculatedTop8Total || rankingTotal), c: '#4ad569' },
@@ -729,40 +738,79 @@ function PlayerDetailModal({
             { label: 'Hors calcul', value: `${outOfTop8Count} / ${formatPoints(rankingGap)}`, c: '#ef4444' },
             { label: 'Carriere pts', value: careerStats ? formatPoints(careerStats.total_points) : '-', c: '#8b5cf6' },
           ].map(item => (
-            <div key={item.label} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', padding: '9px 11px' }}>
-              <div style={{ color: item.c, fontWeight: 900, fontSize: '18px', fontFamily: 'JetBrains Mono, monospace' }}>{item.value}</div>
-              <div style={{ color: '#666', fontSize: '10px', marginTop: '3px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{item.label}</div>
+            <div key={item.label} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: isMobile ? '10px 12px' : '9px 11px', minWidth: 0 }}>
+              <div style={{ color: item.c, fontWeight: 900, fontSize: isMobile ? '19px' : '18px', fontFamily: 'JetBrains Mono, monospace', overflowWrap: 'anywhere' }}>{item.value}</div>
+              <div style={{ color: '#666', fontSize: '10px', marginTop: '5px', textTransform: 'uppercase', letterSpacing: '0.5px', lineHeight: 1.25 }}>{item.label}</div>
             </div>
           ))}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: '8px', padding: '0 20px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,minmax(0,1fr))' : 'repeat(auto-fit,minmax(150px,1fr))', gap: '8px', padding: isMobile ? '0 16px 12px' : '0 20px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           {[
             { label: 'Partenaire principal', value: bestPartner, c: '#d0d0d0' },
             { label: 'Performance par club', value: bestClub, c: '#d0d0d0' },
             { label: 'Victoires', value: String(careerStats?.wins ?? wins), c: '#4ad569' },
             { label: 'Podiums', value: String(careerStats?.podiums ?? podiums), c: '#f59e0b' },
           ].map(item => (
-            <div key={item.label} style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.055)', borderRadius: '6px', padding: '9px 11px', minWidth: 0 }}>
-              <div style={{ color: item.c, fontWeight: 850, fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.value}</div>
-              <div style={{ color: '#666', fontSize: '10px', marginTop: '3px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{item.label}</div>
+            <div key={item.label} style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.055)', borderRadius: '8px', padding: '9px 11px', minWidth: 0 }}>
+              <div style={{ color: item.c, fontWeight: 850, fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isMobile ? 'normal' : 'nowrap', lineHeight: 1.25 }}>{item.value}</div>
+              <div style={{ color: '#666', fontSize: '10px', marginTop: '5px', textTransform: 'uppercase', letterSpacing: '0.5px', lineHeight: 1.25 }}>{item.label}</div>
             </div>
           ))}
         </div>
 
-        <div style={{ padding: '10px 20px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ padding: isMobile ? '10px 16px 8px' : '10px 20px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: '6px', flexWrap: isMobile ? 'nowrap' : 'wrap', alignItems: 'center', overflowX: isMobile ? 'auto' : 'visible', WebkitOverflowScrolling: 'touch' }}>
           {historyTabs.map(tab => (
-            <button key={tab.key} onClick={() => setActiveHistoryTab(tab.key)} style={{ background: activeHistoryTab === tab.key ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.025)', border: activeHistoryTab === tab.key ? `1px solid ${color}45` : '1px solid rgba(255,255,255,0.06)', color: activeHistoryTab === tab.key ? 'white' : '#888', borderRadius: '5px', padding: '5px 9px', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px', cursor: 'pointer' }}>
+            <button key={tab.key} onClick={() => setActiveHistoryTab(tab.key)} style={{ background: activeHistoryTab === tab.key ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.025)', border: activeHistoryTab === tab.key ? `1px solid ${color}45` : '1px solid rgba(255,255,255,0.06)', color: activeHistoryTab === tab.key ? 'white' : '#888', borderRadius: '5px', padding: '5px 9px', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px', cursor: 'pointer', flex: isMobile ? '0 0 auto' : undefined }}>
               {tab.label} ({tab.count})
             </button>
           ))}
         </div>
 
-        <div style={{ maxHeight: '48vh', overflow: 'auto' }}>
+        <div style={{ maxHeight: isMobile ? 'none' : '48vh', overflow: isMobile ? 'visible' : 'auto', padding: isMobile ? '10px 16px 16px' : 0 }}>
           {loading ? (
             <div style={{ padding: '42px', textAlign: 'center', color: '#666' }}>Chargement des details...</div>
           ) : visibleDetails.length === 0 ? (
             <div style={{ padding: '42px', textAlign: 'center', color: '#666' }}>Aucun detail disponible pour ce filtre.</div>
+          ) : isMobile ? (
+            <div style={{ display: 'grid', gap: '8px' }}>
+              {visibleDetails.map((detail, index) => {
+                const counted = retainedDisplayKeys.has(detailDedupKey(detail)) || retainedEventKeys.has(detailEventKey(detail));
+                const rankColor = Number(detail.rank) === 1 ? '#4ad569' : Number(detail.rank) <= 3 ? '#f59e0b' : '#888';
+                return (
+                  <div key={`${detail.event_name}-${index}`} style={{
+                    background: counted ? 'rgba(74,213,105,0.09)' : 'rgba(255,255,255,0.025)',
+                    border: `1px solid ${counted ? 'rgba(74,213,105,0.22)' : 'rgba(255,255,255,0.055)'}`,
+                    borderRadius: '9px',
+                    padding: '10px 11px',
+                    boxShadow: counted ? 'inset 3px 0 0 rgba(74,213,105,0.55)' : 'none',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span style={{ color: detail.category?.startsWith('M') ? '#4ad569' : '#f59e0b', fontSize: '11px', fontWeight: 950 }}>{detail.category || '-'}</span>
+                          <span style={{ color: '#7b8495', fontSize: '11px', fontFamily: 'JetBrains Mono, monospace' }}>{detail.event_date || detail.season || '-'}</span>
+                          <span style={{ color: counted ? '#4ad569' : '#777', background: counted ? 'rgba(74,213,105,0.12)' : 'rgba(255,255,255,0.05)', border: `1px solid ${counted ? 'rgba(74,213,105,0.24)' : 'rgba(255,255,255,0.06)'}`, borderRadius: '999px', padding: '2px 7px', fontSize: '9px', fontWeight: 950 }}>
+                            {counted ? 'RETENU' : 'HORS TOP 8'}
+                          </span>
+                        </div>
+                        <div style={{ color: '#9aa4b5', fontSize: '11px', fontWeight: 750, textTransform: 'uppercase', marginTop: '7px', lineHeight: 1.3, overflowWrap: 'anywhere' }}>
+                          {detail.club_name || detail.event_name}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right', flex: '0 0 auto' }}>
+                        <div style={{ color: counted ? '#4ad569' : 'white', fontSize: '15px', fontWeight: 950, fontFamily: 'JetBrains Mono, monospace' }}>{formatPoints(detail.points)}</div>
+                        <div style={{ color: rankColor, fontSize: '12px', fontWeight: 900, fontFamily: 'JetBrains Mono, monospace', marginTop: '3px' }}>#{detail.rank ?? '-'}</div>
+                      </div>
+                    </div>
+                    <div style={{ marginTop: '9px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center' }}>
+                      <div style={{ color: '#666', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.6px', flex: '0 0 auto' }}>Partenaire</div>
+                      <div style={{ color: 'white', fontSize: '12px', fontWeight: 950, textTransform: 'uppercase', textAlign: 'right', overflowWrap: 'anywhere' }}>{detailPartnerLabel(detail, player.player_name)}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
               <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
