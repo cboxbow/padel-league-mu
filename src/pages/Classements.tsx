@@ -1166,7 +1166,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
         .limit(1);
 
       const latestBatchId = String((latestBatchRows as Record<string, unknown>[] | null)?.[0]?.batch_id ?? '');
-      const buildDetailsQuery = (select: string) => {
+      const buildDetailsQuery = (select: string, scopedToPlayer = true) => {
         let query = sb
           .from('official_ranking_details')
           .select(select)
@@ -1174,10 +1174,12 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
           .order('points', { ascending: false })
           .limit(5000);
 
+        if (scopedToPlayer) {
+          query = query.ilike('player_name', player.player_name);
+        }
+
         if (latestBatchId) {
           query = query.eq('batch_id', latestBatchId);
-        } else {
-          query = query.ilike('player_name', player.player_name);
         }
         return query;
       };
@@ -1191,6 +1193,12 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
       const officialRows = !error && data
         ? (data as Record<string, unknown>[]).filter(row => playerCanonicalKey(row.player_name) === playerKey)
         : [];
+      if (!officialRows.length && latestBatchId) {
+        const fallback = await buildDetailsQuery('player_name,event_name,points,season,batch_id', false);
+        if (!fallback.error && fallback.data) {
+          officialRows.push(...(fallback.data as Record<string, unknown>[]).filter(row => playerCanonicalKey(row.player_name) === playerKey));
+        }
+      }
 
       const officialDetails = officialRows.length
         ? officialRows.map(row => ({
