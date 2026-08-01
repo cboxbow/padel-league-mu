@@ -1166,20 +1166,28 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
         .limit(1);
 
       const latestBatchId = String((latestBatchRows as Record<string, unknown>[] | null)?.[0]?.batch_id ?? '');
-      let detailsQuery = sb
-        .from('official_ranking_details')
-        .select('player_name,event_name,event_date,category,club_name,partner_name,rank_label,points,season,batch_id,import_id,created_at')
-        .eq('division', divToDb(division))
-        .order('points', { ascending: false })
-        .limit(5000);
+      const buildDetailsQuery = (select: string) => {
+        let query = sb
+          .from('official_ranking_details')
+          .select(select)
+          .eq('division', divToDb(division))
+          .order('points', { ascending: false })
+          .limit(5000);
 
-      if (latestBatchId) {
-        detailsQuery = detailsQuery.eq('batch_id', latestBatchId);
-      } else {
-        detailsQuery = detailsQuery.ilike('player_name', player.player_name).order('created_at', { ascending: false });
+        if (latestBatchId) {
+          query = query.eq('batch_id', latestBatchId);
+        } else {
+          query = query.ilike('player_name', player.player_name);
+        }
+        return query;
+      };
+
+      let { data, error } = await buildDetailsQuery('player_name,event_name,event_date,category,club_name,partner_name,rank_label,points,season,batch_id,import_id,created_at');
+      if (error && /schema cache|Could not find|column/i.test(error.message)) {
+        const fallback = await buildDetailsQuery('player_name,event_name,points,season,batch_id');
+        data = fallback.data;
+        error = fallback.error;
       }
-
-      const { data, error } = await detailsQuery;
       const officialRows = !error && data
         ? (data as Record<string, unknown>[]).filter(row => playerCanonicalKey(row.player_name) === playerKey)
         : [];
