@@ -89,7 +89,18 @@ function normalizeDivision(value, category) {
   return raw || 'men';
 }
 
-function normalizeRankingDivision(value, category) {
+function inferDivisionFromEventName(eventName) {
+  const event = ` ${normKey(eventName)} `;
+  if (/\b(JUNIOR|U10|U11|U12|U13|U14|U15)\b/.test(event)) return 'junior';
+  if (/\b(MIXED|MIXTE)\b/.test(event)) return 'mixed';
+  if (/\b(WOMEN|WOME|WOM|DAMES|DAME|FEMMES|FEMME)\b/.test(event)) return 'women';
+  if (/\b(MEN|HOMMES|HOMME)\b/.test(event)) return 'men';
+  return '';
+}
+
+function normalizeRankingDivision(value, category, eventName = '') {
+  const eventDivision = inferDivisionFromEventName(eventName);
+  if (eventDivision) return eventDivision;
   const normalized = normalizeDivision(value, category);
   return DIVS.includes(normalized) ? normalized : 'men';
 }
@@ -138,7 +149,7 @@ function rankNumber(row) {
 
 function historicalToRankingInputs(row) {
   const category = normalizeJuniorCategory(row.category || row.junior_category || '');
-  const division = normalizeRankingDivision(row.division, category);
+  const division = normalizeRankingDivision(row.division, category, row.event_name);
   const date = cleanText(row.event_date).slice(0, 10);
   const clubName = normalizeClubName(row.club_name);
   const rank = rankNumber(row);
@@ -164,7 +175,7 @@ function historicalToRankingInputs(row) {
 
 function resultToRankingInputs(row) {
   const category = normalizeJuniorCategory(row.category);
-  const division = normalizeRankingDivision(row.division, category);
+  const division = normalizeRankingDivision(row.division, category, row.tournament_name);
   const date = cleanText(row.tournament_date).slice(0, 10);
   const clubName = normalizeClubName(row.club_name);
   const points = Math.ceil(Number(row.points) || 0);

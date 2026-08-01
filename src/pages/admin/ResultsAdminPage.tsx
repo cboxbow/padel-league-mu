@@ -170,7 +170,9 @@ function normalizeClubName(value: unknown): string {
     .trim();
 }
 
-function normalizeDivision(value: unknown, category?: unknown): string {
+function normalizeDivision(value: unknown, category?: unknown, eventName?: unknown): string {
+  const eventDivision = inferDivisionFromEventName(eventName);
+  if (eventDivision) return eventDivision;
   const raw = cleanText(value).toLowerCase();
   if (['men', 'hommes', 'h', 'mens'].includes(raw)) return 'men';
   if (['women', 'dames', 'femmes', 'w'].includes(raw)) return 'women';
@@ -182,7 +184,18 @@ function normalizeDivision(value: unknown, category?: unknown): string {
   return raw || 'men';
 }
 
-function normalizeRankingDivision(value: unknown, category?: unknown): RankingDivision {
+function inferDivisionFromEventName(eventName: unknown): RankingDivision | '' {
+  const event = ` ${normKey(eventName)} `;
+  if (/\b(JUNIOR|U10|U11|U12|U13|U14|U15)\b/.test(event)) return 'junior';
+  if (/\b(MIXED|MIXTE)\b/.test(event)) return 'mixed';
+  if (/\b(WOMEN|WOME|WOM|DAMES|DAME|FEMMES|FEMME)\b/.test(event)) return 'women';
+  if (/\b(MEN|HOMMES|HOMME)\b/.test(event)) return 'men';
+  return '';
+}
+
+function normalizeRankingDivision(value: unknown, category?: unknown, eventName?: unknown): RankingDivision {
+  const eventDivision = inferDivisionFromEventName(eventName);
+  if (eventDivision) return eventDivision;
   const normalized = normalizeDivision(value, category);
   return DIVS.includes(normalized) ? normalized as RankingDivision : 'men';
 }
@@ -250,7 +263,7 @@ function resultMatchKey(parts: { date?: string; category?: string; club?: string
 function tournMatchKeys(tourn: TournRow): string[] {
   const date = tournamentDate(tourn);
   const category = normalizeJuniorCategory(tourn.category ?? '');
-  const division = normalizeDivision(tourn.division ?? tourn.tournament_type ?? tourn.type, category);
+  const division = normalizeDivision(tourn.division ?? tourn.tournament_type ?? tourn.type, category, tourn.name ?? tourn.tournament_name);
   const club = normalizeClubName(tourn.club_name);
   const keys = [resultMatchKey({ date, category, club, division })];
   if ((tourn.tournament_type ?? tourn.type ?? '').toString().toUpperCase() === 'MEN&WOMEN') {
@@ -263,7 +276,7 @@ function tournMatchKeys(tourn: TournRow): string[] {
 function mapHistorical(row: HistoricalResultRow): TResult {
   const category = normalizeJuniorCategory(row.category || row.junior_category || '');
   const clubName = normalizeClubName(row.club_name);
-  const division = normalizeDivision(row.division, category);
+  const division = normalizeDivision(row.division, category, row.event_name);
   const date = cleanText(row.event_date);
   return {
     id: row.id,
@@ -288,7 +301,7 @@ function historicalPayload(row: Partial<TResult>) {
   const date = cleanText(row.tournament_date);
   const year = Number(date.slice(0, 4)) || 2026;
   const category = normalizeJuniorCategory(row.category ?? '');
-  const division = normalizeDivision(row.division, category);
+  const division = normalizeDivision(row.division, category, row.tournament_name);
   const clubName = normalizeClubName(row.club_name);
   const eventName = normalizeTournamentDisplayName(row.tournament_name ?? '', clubName);
   const rank = Number(row.rank ?? 1);
@@ -348,7 +361,7 @@ function mergeResults(legacyRows: TResult[], historicalRows: TResult[]): TResult
   for (const row of legacyRows) {
     const category = normalizeJuniorCategory(row.category);
     const clubName = normalizeClubName(row.club_name);
-    const division = normalizeDivision(row.division, category);
+    const division = normalizeDivision(row.division, category, row.tournament_name);
     const normalized: TResult = {
       ...row,
       category,
@@ -384,7 +397,7 @@ function mergeResults(legacyRows: TResult[], historicalRows: TResult[]): TResult
 
 function historicalToRankingInputs(row: HistoricalResultRow): RankingInputRow[] {
   const category = normalizeJuniorCategory(row.category || row.junior_category || '');
-  const division = normalizeRankingDivision(row.division, category);
+  const division = normalizeRankingDivision(row.division, category, row.event_name);
   const date = cleanText(row.event_date).slice(0, 10);
   const clubName = normalizeClubName(row.club_name);
   const rank = rankNumber(row);
@@ -409,7 +422,7 @@ function historicalToRankingInputs(row: HistoricalResultRow): RankingInputRow[] 
 
 function resultToRankingInputs(row: TResult): RankingInputRow[] {
   const category = normalizeJuniorCategory(row.category);
-  const division = normalizeRankingDivision(row.division, category);
+  const division = normalizeRankingDivision(row.division, category, row.tournament_name);
   const date = cleanText(row.tournament_date).slice(0, 10);
   const clubName = normalizeClubName(row.club_name);
   const points = Math.ceil(Number(row.points) || 0);
