@@ -34,6 +34,7 @@ interface PlayerRanking {
 }
 
 interface PlayerRankingDetail {
+  player_name?: string;
   event_name: string;
   points: number;
   season?: number;
@@ -358,6 +359,14 @@ function nameKey(value: unknown): string {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^A-Z0-9]+/g, ' ')
     .trim();
+}
+
+function playerCanonicalKey(value: unknown): string {
+  return nameKey(value);
+}
+
+function rowHasPlayer(row: Record<string, unknown>, playerKey: string): boolean {
+  return playerCanonicalKey(row.player1_name) === playerKey || playerCanonicalKey(row.player2_name) === playerKey;
 }
 
 function partnerFromTeamName(teamName: string, playerName: string): string {
@@ -1001,6 +1010,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
     if (!sb) return [];
 
     const name = player.player_name.trim();
+    const playerKey = playerCanonicalKey(name);
     const escapedName = name.replace(/[%_,]/g, '');
     const namePattern = `%${escapedName}%`;
     const queries = await Promise.all([
@@ -1022,6 +1032,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
     for (const result of queries) {
       if (result.error || !result.data) continue;
       for (const row of result.data as Record<string, unknown>[]) {
+        if (!rowHasPlayer(row, playerKey)) continue;
         const eventName = String(row.tournament_name ?? '').trim();
         const date = String(row.tournament_date ?? '').trim();
         const points = roundUpPoints(row.points);
@@ -1054,6 +1065,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
     if (!sb) return { details: [], stats: null };
 
     const name = player.player_name.trim();
+    const playerKey = playerCanonicalKey(name);
     const escapedName = name.replace(/[%_,]/g, '');
     const historicalRows: Record<string, unknown>[] = [];
     const historicalSeen = new Set<string>();
@@ -1074,6 +1086,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
 
         const batch = (data ?? []) as Record<string, unknown>[];
         for (const row of batch) {
+          if (!rowHasPlayer(row, playerKey)) continue;
           const key = String(row.id ?? `${row.event_name}|${row.team_name}|${row.points}`);
           if (historicalSeen.has(key)) continue;
           historicalSeen.add(key);
@@ -1156,26 +1169,35 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
 
     setDetailsLoading(true);
     try {
-      const { data, error } = await sb
-        .from('official_ranking_details')
-        .select('event_name,points,season,batch_id,import_id,created_at')
-        .ilike('player_name', player.player_name)
-        .eq('division', divToDb(division))
+      const playerKey = playerCanonicalKey(player.player_name);
+      const { data: latestBatchRows } = await sb
+        .from('official_rankings')
+        .select('batch_id,created_at')
         .order('created_at', { ascending: false })
-        .order('points', { ascending: false });
+        .limit(1);
 
-      const officialRows = !error && data ? (data as Record<string, unknown>[]) : [];
-      const latestCreatedAt = String(officialRows[0]?.created_at ?? '').slice(0, 16);
-      const latestBatchId = String(officialRows.find(row => row.batch_id)?.batch_id ?? '');
-      const latestImportId = String(officialRows.find(row => row.import_id)?.import_id ?? '');
-      const currentOfficialRows = officialRows.filter(row => {
-        if (latestCreatedAt) return String(row.created_at ?? '').slice(0, 16) === latestCreatedAt;
-        if (latestBatchId) return String(row.batch_id ?? '') === latestBatchId;
-        return latestImportId ? String(row.import_id ?? '') === latestImportId : true;
-      });
+      const latestBatchId = String((latestBatchRows as Record<string, unknown>[] | null)?.[0]?.batch_id ?? '');
+      let detailsQuery = sb
+        .from('official_ranking_details')
+        .select('player_name,event_name,points,season,batch_id,import_id,created_at')
+        .eq('division', divToDb(division))
+        .order('points', { ascending: false })
+        .limit(5000);
 
-      const officialDetails = currentOfficialRows.length
-        ? currentOfficialRows.map(row => ({
+      if (latestBatchId) {
+        detailsQuery = detailsQuery.eq('batch_id', latestBatchId);
+      } else {
+        detailsQuery = detailsQuery.ilike('player_name', player.player_name).order('created_at', { ascending: false });
+      }
+
+      const { data, error } = await detailsQuery;
+      const officialRows = !error && data
+        ? (data as Record<string, unknown>[]).filter(row => playerCanonicalKey(row.player_name) === playerKey)
+        : [];
+
+      const officialDetails = officialRows.length
+        ? officialRows.map(row => ({
+          player_name: String(row.player_name ?? ''),
           event_name: String(row.event_name ?? ''),
           points: roundUpPoints(row.points),
           season: inferEventSeason(String(row.event_name ?? ''), Number(row.season ?? 2026)),
