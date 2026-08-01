@@ -685,33 +685,22 @@ function PlayerDetailModal({
   const realDetails = resolveDetailDivisionConflicts(details.filter(detail => detail.source !== 'official'));
   const realDisplayDetails = dedupePlayerDetails(realDetails);
   const officialUniqueDetails = dedupePlayerDetails(officialDetails);
-  const officialTopDetails = [...officialUniqueDetails]
-    .sort((a, b) => b.points - a.points || detailRankingMonthKey(b).localeCompare(detailRankingMonthKey(a)) || a.event_name.localeCompare(b.event_name))
-    .slice(0, 8);
-  const officialMatchedDetails = officialTopDetails.length
-    ? resolveOfficialMatchedDetails(officialTopDetails, realDisplayDetails)
-    : [];
-  const realOfficialLikeKeys = new Set(
-    realDisplayDetails.map(detail => `${detailEventKey(detail)}|${roundUpPoints(detail.points)}`)
-  );
-  const officialFallbackDetails = officialMatchedDetails.filter(detail =>
-    detail.source === 'official' &&
-    !realOfficialLikeKeys.has(`${detailEventKey(detail)}|${roundUpPoints(detail.points)}`)
-  );
-  const displayDetails = dedupePlayerDetails([...realDisplayDetails, ...officialFallbackDetails]);
+  const hasOfficialDetails = officialUniqueDetails.length > 0;
+  const displayDetails = hasOfficialDetails
+    ? dedupePlayerDetails([...officialUniqueDetails, ...realDisplayDetails])
+    : realDisplayDetails;
   const historicalDetails = displayDetails.filter(detail => detail.source === 'historical');
   const playerDivisionKey = divisionKey;
   const windowRange = rankingWindowRange();
-  const calculationDetails = realDisplayDetails.length ? realDisplayDetails : displayDetails;
+  const calculationDetails = hasOfficialDetails ? officialUniqueDetails : displayDetails;
   const windowDetails = calculationDetails.filter(detail => {
     const date = detailIsoDate(detail);
     if (playerDivisionKey && detail.division_key && detail.division_key !== playerDivisionKey) return false;
     return /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= windowRange.start && date <= windowRange.end;
   });
-  const retainedRealDetails = [...windowDetails]
+  const retainedDetails = [...windowDetails]
     .sort((a, b) => b.points - a.points || detailIsoDate(b).localeCompare(detailIsoDate(a)))
     .slice(0, 8);
-  const retainedDetails = retainedRealDetails.length ? retainedRealDetails : officialTopDetails.slice(0, 8);
   const retainedDisplayDetails: PlayerRankingDetail[] = [];
   const retainedDetailRefs = new WeakSet<PlayerRankingDetail>();
   const usedDisplayIndexes = new Set<number>();
@@ -751,7 +740,7 @@ function PlayerDetailModal({
     !usedDisplayIndexes.has(index) && !retainedLooseKeys.has(detailLooseEventKey(detail))
   );
   const combinedDetails = [...retainedDisplayDetails, ...nonRetainedDisplayDetails];
-  const playedCount = Math.max(windowDetails.length, officialUniqueDetails.length, player.tournaments_played || 0);
+  const playedCount = Math.max(windowDetails.length, hasOfficialDetails ? 0 : player.tournaments_played || 0);
   const calculatedTop8Total = retainedDetails.reduce((sum, detail) => sum + detail.points, 0);
   const real12MonthTotal = windowDetails.reduce((sum, detail) => sum + detail.points, 0);
   const outOfTop8Count = Math.max(0, windowDetails.length - retainedDetails.length);
@@ -1179,7 +1168,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
       const latestBatchId = String((latestBatchRows as Record<string, unknown>[] | null)?.[0]?.batch_id ?? '');
       let detailsQuery = sb
         .from('official_ranking_details')
-        .select('player_name,event_name,points,season,batch_id,import_id,created_at')
+        .select('player_name,event_name,event_date,category,club_name,partner_name,rank_label,points,season,batch_id,import_id,created_at')
         .eq('division', divToDb(division))
         .order('points', { ascending: false })
         .limit(5000);
@@ -1201,10 +1190,11 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
           event_name: String(row.event_name ?? ''),
           points: roundUpPoints(row.points),
           season: inferEventSeason(String(row.event_name ?? ''), Number(row.season ?? 2026)),
-          rank: undefined,
-          category: inferCategory(String(row.event_name ?? '')),
-          club_name: inferClubName(String(row.event_name ?? '')),
-          event_date: resolveEventDate(String(row.event_name ?? ''), undefined, Number(row.season ?? 2026), divToDb(division) as PlayerRankingDetail['division_key'], undefined, inferCategory(String(row.event_name ?? ''))),
+          rank: Number(String(row.rank_label ?? '').match(/\d+/)?.[0] ?? 0) || undefined,
+          category: inferCategory(String(row.event_name ?? ''), String(row.category ?? '')),
+          club_name: inferClubName(String(row.event_name ?? ''), String(row.club_name ?? '')),
+          partner_name: String(row.partner_name ?? '').trim().toUpperCase(),
+          event_date: resolveEventDate(String(row.event_name ?? ''), String(row.event_date ?? ''), Number(row.season ?? 2026), divToDb(division) as PlayerRankingDetail['division_key'], String(row.club_name ?? ''), inferCategory(String(row.event_name ?? ''), String(row.category ?? ''))),
           division_key: divToDb(division) as PlayerRankingDetail['division_key'],
           source: 'official' as const,
         })).filter(detail => detail.event_name && detail.points > 0)

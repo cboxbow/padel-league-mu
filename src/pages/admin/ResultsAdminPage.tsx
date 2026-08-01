@@ -91,6 +91,7 @@ interface RankingInputRow {
   player_name: string;
   partner_name: string;
   points: number;
+  is_retained?: boolean;
 }
 
 interface ComputedRankingRow {
@@ -445,24 +446,41 @@ function resultToRankingInputs(row: TResult): RankingInputRow[] {
 }
 
 function dedupeRankingInputs(rows: RankingInputRow[]): RankingInputRow[] {
-  const seen = new Set<string>();
-  const out: RankingInputRow[] = [];
+  const byKey = new Map<string, RankingInputRow>();
+  const qualityScore = (row: RankingInputRow) => {
+    let score = 0;
+    if (cleanText(row.partner_name)) score += 12;
+    if (Number(row.rank) > 0 && Number(row.rank) < 999) score += 8;
+    if (cleanText(row.id)) score += 2;
+    if (cleanText(row.club_name)) score += 2;
+    if (cleanText(row.event_date)) score += 2;
+    return score;
+  };
+
   for (const row of rows) {
+    if (!cleanText(row.player_name) || !cleanText(row.event_date) || !Math.ceil(Number(row.points) || 0)) continue;
     const key = [
       row.event_date,
-      normKey(row.event_name),
       row.division,
       row.category,
-      row.rank,
+      normKey(row.club_name || row.event_name),
       normKey(row.player_name),
-      normKey(row.partner_name),
-      row.points,
     ].join('|');
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(row);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, row);
+      continue;
+    }
+    const rowQuality = qualityScore(row);
+    const existingQuality = qualityScore(existing);
+    if (
+      rowQuality > existingQuality ||
+      (rowQuality === existingQuality && Math.ceil(Number(row.points) || 0) > Math.ceil(Number(existing.points) || 0))
+    ) {
+      byKey.set(key, row);
+    }
   }
-  return out;
+  return Array.from(byKey.values());
 }
 
 function computeRankingRows(
@@ -490,12 +508,13 @@ function computeRankingRows(
         a.rank - b.rank
       );
       const retained = sortedDetails.slice(0, 8);
+      const retainedTotal = retained.reduce((sum, row) => sum + Math.ceil(Number(row.points) || 0), 0);
       return {
         player_name: sortedDetails[0].player_name,
-        points: retained.reduce((sum, row) => sum + Math.ceil(Number(row.points) || 0), 0),
+        points: retainedTotal,
         tournaments_played: sortedDetails.length,
         division,
-        details: sortedDetails,
+        details: sortedDetails.map((detail, index) => ({ ...detail, is_retained: index < 8 })),
       };
     }).filter(row => row.points > 0)
       .sort((a, b) => b.points - a.points || a.player_name.localeCompare(b.player_name));
@@ -522,6 +541,24 @@ function computeRankingRows(
     });
   }
   return computed;
+}
+
+function assertRankingDetailsMatch(rows: ComputedRankingRow[]) {
+  const mismatches = rows
+    .map(row => {
+      const detailTotal = row.details
+        .filter(detail => detail.is_retained)
+        .reduce((sum, detail) => sum + Math.ceil(Number(detail.points) || 0), 0);
+      return { row, detailTotal, gap: Math.ceil(Number(row.points) || 0) - detailTotal };
+    })
+    .filter(entry => entry.gap !== 0);
+
+  if (mismatches.length) {
+    const sample = mismatches.slice(0, 12).map(({ row, detailTotal, gap }) =>
+      `${row.division} | ${row.player_name} | ranking ${row.points} | details ${detailTotal} | ecart ${gap}`
+    ).join('\n');
+    throw new Error(`Controle Top 8 impossible: ${mismatches.length} joueurs avec ecart.\n${sample}`);
+  }
 }
 
 async function fetchPreviousOfficialRanks(sb: NonNullable<ReturnType<typeof getSupabaseClient>>) {
@@ -671,6 +708,7 @@ async function publishOfficialRankingsFromResults(onProgress?: (message: string)
   onProgress?.(`${inputs.length} lignes joueurs detectees: calcul top 8...`);
   const rows = computeRankingRows(inputs, previousRanks, period);
   if (!rows.length) throw new Error('Aucun resultat exploitable pour recalculer les classements.');
+  assertRankingDetailsMatch(rows);
   const divisions = Array.from(new Set(rows.map(row => row.division)));
   const batchId = newId();
   const now = new Date().toISOString();

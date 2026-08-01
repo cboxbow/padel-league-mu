@@ -205,23 +205,31 @@ function dedupeRankingInputs(rows) {
     if (cleanText(row.partner_name)) score += 12;
     if (Number(row.rank) > 0 && Number(row.rank) < 999) score += 8;
     if (cleanText(row.id)) score += 2;
+    if (cleanText(row.club_name)) score += 2;
+    if (cleanText(row.event_date)) score += 2;
+    if (cleanText(row.source) === 'historical') score += 1;
     return score;
   };
   for (const row of rows) {
+    if (!cleanText(row.player_name) || !cleanText(row.event_date) || !Math.ceil(Number(row.points) || 0)) continue;
     const key = [
       row.event_date,
       row.division,
       row.category,
       compactEventName(row.club_name || row.event_name),
       normKey(row.player_name),
-      Math.ceil(Number(row.points) || 0),
     ].join('|');
     const existing = byKey.get(key);
     if (!existing) {
       byKey.set(key, row);
       continue;
     }
-    if (qualityScore(row) > qualityScore(existing)) {
+    const rowQuality = qualityScore(row);
+    const existingQuality = qualityScore(existing);
+    if (
+      rowQuality > existingQuality ||
+      (rowQuality === existingQuality && Math.ceil(Number(row.points) || 0) > Math.ceil(Number(existing.points) || 0))
+    ) {
       byKey.set(key, row);
     }
   }
@@ -255,12 +263,13 @@ function computeRankingRows(inputs, previousRanks, period) {
           a.rank - b.rank
         );
         const retained = sortedDetails.slice(0, 8);
+        const retainedTotal = retained.reduce((sum, row) => sum + Math.ceil(Number(row.points) || 0), 0);
         return {
           player_name: sortedDetails[0].player_name,
-          points: retained.reduce((sum, row) => sum + Math.ceil(Number(row.points) || 0), 0),
+          points: retainedTotal,
           tournaments_played: sortedDetails.length,
           division,
-          details: sortedDetails,
+          details: sortedDetails.map((detail, index) => ({ ...detail, is_retained: index < 8 })),
         };
       })
       .filter((row) => row.points > 0)
@@ -288,6 +297,28 @@ function computeRankingRows(inputs, previousRanks, period) {
     });
   }
   return computed;
+}
+
+function assertRankingDetailsMatch(rows) {
+  const mismatches = rows
+    .map((row) => {
+      const detailTotal = row.details
+        .filter((detail) => detail.is_retained)
+        .reduce((sum, detail) => sum + Math.ceil(Number(detail.points) || 0), 0);
+      return {
+        row,
+        detailTotal,
+        gap: Math.ceil(Number(row.points) || 0) - detailTotal,
+      };
+    })
+    .filter((entry) => entry.gap !== 0);
+
+  if (mismatches.length) {
+    const sample = mismatches.slice(0, 12).map(({ row, detailTotal, gap }) =>
+      `${row.division} | ${row.player_name} | ranking ${row.points} | details ${detailTotal} | ecart ${gap}`
+    ).join('\n');
+    throw new Error(`Controle Top 8 impossible: ${mismatches.length} joueurs avec ecart.\n${sample}`);
+  }
 }
 
 async function fetchAll(supabase, table, select, buildQuery) {
@@ -393,6 +424,7 @@ async function main() {
   }
   const rows = computeRankingRows(inputs, previousRanks, period);
   if (!rows.length) throw new Error('Aucun classement calcule.');
+  assertRankingDetailsMatch(rows);
   const divisions = Array.from(new Set(rows.map((row) => row.division)));
   const batchId = newId();
   const now = new Date().toISOString();
@@ -437,11 +469,32 @@ async function main() {
     player_name: row.player_name,
     division: row.division,
     event_name: detail.event_name,
+    event_date: detail.event_date,
+    category: detail.category,
+    club_name: detail.club_name,
+    partner_name: detail.partner_name,
+    rank_label: Number(detail.rank) > 0 && Number(detail.rank) < 999 ? `#${detail.rank}` : '',
     points: Math.ceil(Number(detail.points) || 0),
     season: Number(detail.event_date.slice(0, 4)) || row.season,
     batch_id: batchId,
   })));
-  await insertChunks(supabase, 'official_ranking_details', details, 500);
+  const leanDetails = details.map((detail) => ({
+    id: detail.id,
+    player_name: detail.player_name,
+    division: detail.division,
+    event_name: detail.event_name,
+    points: detail.points,
+    season: detail.season,
+    batch_id: detail.batch_id,
+  }));
+  try {
+    await insertChunks(supabase, 'official_ranking_details', details, 500);
+  } catch (error) {
+    if (!String(error.message || '').includes('schema cache') && !String(error.message || '').includes('Could not find') && !String(error.message || '').includes('column')) {
+      throw error;
+    }
+    await insertChunks(supabase, 'official_ranking_details', leanDetails, 500);
+  }
 
   const kate = rows.find((row) => row.division === 'women' && normKey(row.player_name) === 'KATE FOO KUNE');
   console.log(`OK: ${rows.length} joueurs, ${details.length} details, batch ${batchId}.`);
