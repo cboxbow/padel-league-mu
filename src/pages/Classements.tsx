@@ -1522,6 +1522,9 @@ export default function Classements() {
     { label: lang === 'fr' ? 'Mixte classes'   : 'Mixed',        val: divCounts['MIXTE']  != null ? `${divCounts['MIXTE']}`  : '-', icon: 'M', color: '#8b5cf6' },
   ];
   const activeCount = divCounts[activeTab] != null ? `${divCounts[activeTab]}` : '-';
+  const rankingPeriod = rankingWindowRange();
+  const rankingPeriodText = `${formatIsoDateFr(rankingPeriod.start)} -> ${formatIsoDateFr(rankingPeriod.end)}`;
+  const rankingTodayText = formatIsoDateFr(rankingPeriod.end);
 
   return (
     <Layout>
@@ -1568,6 +1571,34 @@ export default function Classements() {
                   ? 'Meilleurs 8 resultats sur les 12 derniers mois, calcules depuis les resultats reels.'
                   : 'Best 8 scores over the last 12 months, calculated from real results.'}
               </p>
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '8px',
+                alignItems: 'center',
+                marginTop: '12px',
+                color: '#aeb7c4',
+                fontSize: '12px',
+                lineHeight: 1.35,
+              }}>
+                <span style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 10px',
+                  borderRadius: '999px',
+                  border: '1px solid rgba(59,130,246,0.24)',
+                  background: 'rgba(59,130,246,0.08)',
+                  color: '#93c5fd',
+                  fontWeight: 800,
+                }}>
+                  <CalendarDays size={13} />
+                  {lang === 'fr' ? `Calcul au ${rankingTodayText}` : `Calculated on ${rankingTodayText}`}
+                </span>
+                <span style={{ color: '#777' }}>
+                  {lang === 'fr' ? `Periode ranking: ${rankingPeriodText}` : `Ranking period: ${rankingPeriodText}`}
+                </span>
+              </div>
             </div>
             <div style={{
               display: 'grid',
@@ -1741,7 +1772,9 @@ export default function Classements() {
 
           {/* Tableau */}
           <GlassCard style={{ padding: '16px 0' }}>
-            <div style={{ padding: '0 16px 12px', color: '#777', fontSize: '12px' }}>Ranking officiel: meilleurs 8 resultats sur les 12 derniers mois.</div>
+            <div style={{ padding: '0 16px 12px', color: '#777', fontSize: '12px' }}>
+              Ranking officiel: meilleurs 8 resultats sur les 12 derniers mois. Calcul au {rankingTodayText} - periode {rankingPeriodText}.
+            </div>
             <RankingTable key={activeTab} division={activeTab} color={activeConfig.color} search={search} onCountChange={n => updateCount(activeTab, n)} />
           </GlassCard>
 
