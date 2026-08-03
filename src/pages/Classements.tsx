@@ -418,8 +418,6 @@ function detailDedupKey(detail: PlayerRankingDetail): string {
     detail.division_key || '',
     compactEventName(detail.category || inferCategory(detail.event_name)),
     detailClubKey(detail),
-    nameKey(detail.partner_name || detail.team_name || ''),
-    detail.rank ?? '',
   ].join('|');
 }
 
@@ -427,6 +425,7 @@ function detailEventKey(detail: PlayerRankingDetail): string {
   return [
     detailRankingMonthKey(detail),
     detail.division_key || '',
+    compactEventName(detail.category || inferCategory(detail.event_name)),
     detailClubKey(detail),
   ].join('|');
 }
@@ -523,6 +522,28 @@ function detailQuality(detail: PlayerRankingDetail): number {
   if (detail.source === 'current') score += 2;
   if (detail.source === 'historical') score += 1;
   return score;
+}
+
+function detailHasReliableIdentity(detail: PlayerRankingDetail, playerName: string): boolean {
+  const partner = detailPartnerLabel(detail, playerName).trim();
+  const hasPartner = Boolean(partner && partner !== '-' && partner !== playerName.toUpperCase());
+  const rank = Number(detail.rank ?? 0);
+  return hasPartner && Number.isFinite(rank) && rank > 0 && rank < 999;
+}
+
+function detailStatusLabel(counted: boolean, detail: PlayerRankingDetail, playerName: string): string {
+  if (!counted) return 'HORS TOP 8';
+  return detailHasReliableIdentity(detail, playerName) ? 'RETENU' : 'RETENU - A CONTROLER';
+}
+
+function detailStatusColor(counted: boolean, detail: PlayerRankingDetail, playerName: string): string {
+  if (!counted) return '#888';
+  return detailHasReliableIdentity(detail, playerName) ? '#4ad569' : '#f59e0b';
+}
+
+function detailRankLabel(detail: PlayerRankingDetail): string {
+  const rank = Number(detail.rank ?? 0);
+  return Number.isFinite(rank) && rank > 0 && rank < 999 ? `#${rank}` : '-';
 }
 
 function mergeDetailRows(base: PlayerRankingDetail, incoming: PlayerRankingDetail): PlayerRankingDetail {
@@ -692,14 +713,18 @@ function PlayerDetailModal({
   const historicalDetails = displayDetails.filter(detail => detail.source === 'historical');
   const playerDivisionKey = divisionKey;
   const windowRange = rankingWindowRange();
-  const calculationDetails = hasOfficialDetails ? officialUniqueDetails : displayDetails;
+  const calculationDetails = displayDetails;
   const windowDetails = calculationDetails.filter(detail => {
     const date = detailIsoDate(detail);
     if (playerDivisionKey && detail.division_key && detail.division_key !== playerDivisionKey) return false;
     return /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= windowRange.start && date <= windowRange.end;
   });
   const retainedDetails = [...windowDetails]
-    .sort((a, b) => b.points - a.points || detailIsoDate(b).localeCompare(detailIsoDate(a)))
+    .sort((a, b) =>
+      b.points - a.points ||
+      detailQuality(b) - detailQuality(a) ||
+      detailIsoDate(b).localeCompare(detailIsoDate(a))
+    )
     .slice(0, 8);
   const retainedDisplayDetails: PlayerRankingDetail[] = [];
   const retainedDetailRefs = new WeakSet<PlayerRankingDetail>();
@@ -874,8 +899,8 @@ function PlayerDetailModal({
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                           <span style={{ color: detail.category?.startsWith('M') ? '#4ad569' : '#f59e0b', fontSize: '11px', fontWeight: 950 }}>{detail.category || '-'}</span>
                           <span style={{ color: '#7b8495', fontSize: '11px', fontFamily: 'JetBrains Mono, monospace' }}>{detail.event_date || detail.season || '-'}</span>
-                          <span style={{ color: counted ? '#4ad569' : '#777', background: counted ? 'rgba(74,213,105,0.12)' : 'rgba(255,255,255,0.05)', border: `1px solid ${counted ? 'rgba(74,213,105,0.24)' : 'rgba(255,255,255,0.06)'}`, borderRadius: '999px', padding: '2px 7px', fontSize: '9px', fontWeight: 950 }}>
-                            {counted ? 'RETENU' : 'HORS TOP 8'}
+                          <span style={{ color: detailStatusColor(counted, detail, player.player_name), background: counted ? 'rgba(74,213,105,0.12)' : 'rgba(255,255,255,0.05)', border: `1px solid ${counted ? 'rgba(74,213,105,0.24)' : 'rgba(255,255,255,0.06)'}`, borderRadius: '999px', padding: '2px 7px', fontSize: '9px', fontWeight: 950 }}>
+                            {detailStatusLabel(counted, detail, player.player_name)}
                           </span>
                         </div>
                         <div style={{ color: '#9aa4b5', fontSize: '11px', fontWeight: 750, textTransform: 'uppercase', marginTop: '7px', lineHeight: 1.3, overflowWrap: 'anywhere' }}>
@@ -884,12 +909,12 @@ function PlayerDetailModal({
                       </div>
                       <div style={{ textAlign: 'right', flex: '0 0 auto' }}>
                         <div style={{ color: counted ? '#4ad569' : 'white', fontSize: '15px', fontWeight: 950, fontFamily: 'JetBrains Mono, monospace' }}>{formatPoints(detail.points)}</div>
-                        <div style={{ color: rankColor, fontSize: '12px', fontWeight: 900, fontFamily: 'JetBrains Mono, monospace', marginTop: '3px' }}>#{detail.rank ?? '-'}</div>
+                        <div style={{ color: rankColor, fontSize: '12px', fontWeight: 900, fontFamily: 'JetBrains Mono, monospace', marginTop: '3px' }}>{detailRankLabel(detail)}</div>
                       </div>
                     </div>
                     <div style={{ marginTop: '9px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center' }}>
                       <div style={{ color: '#666', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.6px', flex: '0 0 auto' }}>Partenaire</div>
-                      <div style={{ color: 'white', fontSize: '12px', fontWeight: 950, textTransform: 'uppercase', textAlign: 'right', overflowWrap: 'anywhere' }}>{detailPartnerLabel(detail, player.player_name)}</div>
+                      <div style={{ color: detailHasReliableIdentity(detail, player.player_name) ? 'white' : '#f59e0b', fontSize: '12px', fontWeight: 950, textTransform: 'uppercase', textAlign: 'right', overflowWrap: 'anywhere' }}>{detailPartnerLabel(detail, player.player_name) === '-' ? 'A COMPLETER' : detailPartnerLabel(detail, player.player_name)}</div>
                     </div>
                   </div>
                 );
@@ -914,7 +939,7 @@ function PlayerDetailModal({
                           display: 'inline-flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          color: counted ? '#4ad569' : '#888',
+                          color: detailStatusColor(counted, detail, player.player_name),
                           background: counted ? 'rgba(74,213,105,0.12)' : 'rgba(255,255,255,0.04)',
                           border: `1px solid ${counted ? 'rgba(74,213,105,0.28)' : 'rgba(255,255,255,0.07)'}`,
                           borderRadius: '999px',
@@ -924,14 +949,14 @@ function PlayerDetailModal({
                           letterSpacing: '0.4px',
                           whiteSpace: 'nowrap',
                         }}>
-                          {counted ? 'RETENU' : 'HORS TOP 8'}
+                          {detailStatusLabel(counted, detail, player.player_name)}
                         </span>
                       </td>
                       <td style={{ padding: '8px', color: '#666', fontSize: '11px', fontFamily: 'JetBrains Mono, monospace', borderBottom: '1px solid rgba(255,255,255,0.035)' }}>{detail.event_date || detail.season || '-'}</td>
                       <td style={{ padding: '8px', borderBottom: '1px solid rgba(255,255,255,0.035)' }}><span style={{ color: detail.category?.startsWith('M') ? '#4ad569' : '#f59e0b', fontSize: '10px', fontWeight: 900 }}>{detail.category || '-'}</span></td>
                       <td style={{ padding: '8px', color: '#8a94a6', fontSize: '11px', textTransform: 'uppercase', lineHeight: 1.25, overflowWrap: 'anywhere', borderBottom: '1px solid rgba(255,255,255,0.035)' }}>{detail.club_name || detail.event_name}</td>
-                      <td style={{ padding: '8px', color: 'white', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', lineHeight: 1.25, overflowWrap: 'anywhere', borderBottom: '1px solid rgba(255,255,255,0.035)' }}>{detailPartnerLabel(detail, player.player_name)}</td>
-                      <td style={{ padding: '8px', color: Number(detail.rank) === 1 ? '#4ad569' : Number(detail.rank) <= 3 ? '#f59e0b' : '#888', fontSize: '12px', fontWeight: 900, textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', borderBottom: '1px solid rgba(255,255,255,0.035)' }}>#{detail.rank ?? '-'}</td>
+                      <td style={{ padding: '8px', color: detailHasReliableIdentity(detail, player.player_name) ? 'white' : '#f59e0b', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', lineHeight: 1.25, overflowWrap: 'anywhere', borderBottom: '1px solid rgba(255,255,255,0.035)' }}>{detailPartnerLabel(detail, player.player_name) === '-' ? 'A COMPLETER' : detailPartnerLabel(detail, player.player_name)}</td>
+                      <td style={{ padding: '8px', color: Number(detail.rank) === 1 ? '#4ad569' : Number(detail.rank) <= 3 ? '#f59e0b' : '#888', fontSize: '12px', fontWeight: 900, textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', borderBottom: '1px solid rgba(255,255,255,0.035)' }}>{detailRankLabel(detail)}</td>
                       <td style={{ padding: '8px', color: counted ? '#4ad569' : 'white', fontSize: '12px', fontWeight: 900, textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', borderBottom: '1px solid rgba(255,255,255,0.035)' }}>{formatPoints(detail.points)}</td>
                     </tr>
                   );
