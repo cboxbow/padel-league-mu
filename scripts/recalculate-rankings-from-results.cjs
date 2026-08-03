@@ -200,14 +200,21 @@ function resultToRankingInputs(row) {
 
 function dedupeRankingInputs(rows) {
   const byKey = new Map();
+  const hasReliableIdentity = (row) => {
+    const partner = cleanText(row.partner_name);
+    const rank = Number(row.rank);
+    return Boolean(partner && normKey(partner) !== normKey(row.player_name)) && Number.isFinite(rank) && rank > 0 && rank < 999;
+  };
   const qualityScore = (row) => {
     let score = 0;
+    if (hasReliableIdentity(row)) score += 100;
     if (cleanText(row.partner_name)) score += 12;
     if (Number(row.rank) > 0 && Number(row.rank) < 999) score += 8;
     if (cleanText(row.id)) score += 2;
     if (cleanText(row.club_name)) score += 2;
     if (cleanText(row.event_date)) score += 2;
-    if (cleanText(row.source) === 'historical') score += 1;
+    if (cleanText(row.source) === 'historical') score += 4;
+    if (cleanText(row.source) === 'current') score += 3;
     return score;
   };
   for (const row of rows) {
@@ -226,9 +233,14 @@ function dedupeRankingInputs(rows) {
     }
     const rowQuality = qualityScore(row);
     const existingQuality = qualityScore(existing);
+    const rowReliable = hasReliableIdentity(row);
+    const existingReliable = hasReliableIdentity(existing);
+    const samePoints = Math.ceil(Number(row.points) || 0) === Math.ceil(Number(existing.points) || 0);
     if (
-      rowQuality > existingQuality ||
-      (rowQuality === existingQuality && Math.ceil(Number(row.points) || 0) > Math.ceil(Number(existing.points) || 0))
+      (rowReliable && !existingReliable) ||
+      (rowReliable === existingReliable && rowQuality > existingQuality) ||
+      (rowReliable === existingReliable && rowQuality === existingQuality && samePoints && cleanText(row.source) === 'historical' && cleanText(existing.source) !== 'historical') ||
+      (rowReliable === existingReliable && rowQuality === existingQuality && Math.ceil(Number(row.points) || 0) > Math.ceil(Number(existing.points) || 0) && !existingReliable)
     ) {
       byKey.set(key, row);
     }

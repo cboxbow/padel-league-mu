@@ -516,12 +516,20 @@ function formatIsoDateFr(date: string): string {
 
 function detailQuality(detail: PlayerRankingDetail): number {
   let score = 0;
+  if (detailHasSourceIdentity(detail)) score += 80;
   if (detail.partner_name) score += 8;
   if (detail.rank && detail.rank > 0) score += 6;
   if (detail.team_name) score += 3;
   if (detail.source === 'current') score += 2;
   if (detail.source === 'historical') score += 1;
   return score;
+}
+
+function detailHasSourceIdentity(detail: PlayerRankingDetail): boolean {
+  const partner = normalizePersonName(detail.partner_name);
+  const player = normalizePersonName(detail.player_name);
+  const rank = Number(detail.rank ?? 0);
+  return Boolean(partner && partner !== '-' && (!player || nameKey(partner) !== nameKey(player))) && Number.isFinite(rank) && rank > 0 && rank < 999;
 }
 
 function detailHasReliableIdentity(detail: PlayerRankingDetail, playerName: string): boolean {
@@ -551,7 +559,13 @@ function mergeDetailRows(base: PlayerRankingDetail, incoming: PlayerRankingDetai
   const other = preferred === incoming ? base : incoming;
   const preferredPoints = roundUpPoints(preferred.points);
   const otherPoints = roundUpPoints(other.points);
-  const points = Math.max(preferredPoints, otherPoints);
+  const preferredReliable = detailHasSourceIdentity(preferred);
+  const otherReliable = detailHasSourceIdentity(other);
+  const points = preferredReliable && !otherReliable
+    ? preferredPoints
+    : otherReliable && !preferredReliable
+      ? otherPoints
+      : Math.max(preferredPoints, otherPoints);
 
   return {
     ...preferred,
@@ -608,6 +622,9 @@ function removeWeakDuplicateDetails(details: PlayerRankingDetail[]): PlayerRanki
     if (group.length <= 1) return true;
     const quality = detailQuality(detail);
     const bestQuality = Math.max(...group.map(detailQuality));
+    const hasReliable = detailHasSourceIdentity(detail);
+    const groupHasReliable = group.some(detailHasSourceIdentity);
+    if (groupHasReliable) return hasReliable && quality >= bestQuality;
     const hasIdentity = Boolean(detail.partner_name || detail.team_name || detail.rank);
     return quality >= bestQuality || hasIdentity;
   });
@@ -706,9 +723,10 @@ function PlayerDetailModal({
   const realDetails = resolveDetailDivisionConflicts(details.filter(detail => detail.source !== 'official'));
   const realDisplayDetails = dedupePlayerDetails(realDetails);
   const officialUniqueDetails = dedupePlayerDetails(officialDetails);
-  const hasOfficialDetails = officialUniqueDetails.length > 0;
+  const reliableOfficialDetails = officialUniqueDetails.filter(detailHasSourceIdentity);
+  const hasOfficialDetails = reliableOfficialDetails.length > 0;
   const displayDetails = hasOfficialDetails
-    ? dedupePlayerDetails([...officialUniqueDetails, ...realDisplayDetails])
+    ? dedupePlayerDetails([...reliableOfficialDetails, ...realDisplayDetails])
     : realDisplayDetails;
   const historicalDetails = displayDetails.filter(detail => detail.source === 'historical');
   const playerDivisionKey = divisionKey;
