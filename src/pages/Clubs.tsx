@@ -8,9 +8,11 @@ import { useClubs } from '@/hooks/useData';
 import { REGION_CONFIG, MPL_STATS } from '@/lib/index';
 import type { Region } from '@/lib/index';
 
-// Emojis drapeaux régions
-const REGION_EMOJI: Record<string, string> = {
-  Nord: '🌊', Ouest: '🏔️', Centre: '🌿', Est: '☀️',
+const REGION_SHORT: Record<string, string> = {
+  Nord: 'N',
+  Ouest: 'O',
+  Centre: 'C',
+  Est: 'E',
 };
 
 // ─── Mapping logos clubs ────────────────────────────────────────────────────
@@ -276,11 +278,11 @@ export default function Clubs() {
             {/* Stats rapides */}
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
               {[
-                { icon: '🏟️', val: 18,  label: lang === 'fr' ? 'Clubs affiliés' : 'Affiliated Clubs' },
-                { icon: '🎾', val: totalCourts > 0 ? totalCourts : 65, label: lang === 'fr' ? 'Terrains' : 'Courts' },
-                { icon: '🏆', val: totalEvents > 0 ? totalEvents : MPL_STATS.tournaments, label: lang === 'fr' ? 'Tournois' : 'Tournaments' },
-                { icon: '📍', val: 4,   label: lang === 'fr' ? 'Zones' : 'Zones' },
-              ].map(({ icon, val, label }) => (
+                { Icon: Users, val: 18,  label: lang === 'fr' ? 'Clubs affiliés' : 'Affiliated Clubs' },
+                { Icon: Grid3x3, val: totalCourts > 0 ? totalCourts : 65, label: lang === 'fr' ? 'Terrains' : 'Courts' },
+                { Icon: Calendar, val: totalEvents > 0 ? totalEvents : MPL_STATS.tournaments, label: lang === 'fr' ? 'Tournois' : 'Tournaments' },
+                { Icon: MapPin, val: 4,   label: lang === 'fr' ? 'Zones' : 'Zones' },
+              ].map(({ Icon, val, label }) => (
                 <div key={label} style={{
                   background: 'rgba(255,255,255,0.04)',
                   border: '1px solid rgba(74,213,105,0.15)',
@@ -288,7 +290,7 @@ export default function Clubs() {
                   display: 'flex', alignItems: 'center', gap: '10px',
                   transition: 'border-color 0.2s',
                 }}>
-                  <span style={{ fontSize: '18px' }}>{icon}</span>
+                  <Icon size={18} color="#4ad569" strokeWidth={2.3} />
                   <div>
                     <div style={{ color: '#4ad569', fontWeight: 800, fontSize: '20px', lineHeight: 1, fontFamily: 'JetBrains Mono, monospace' }}>{val}</div>
                     <div style={{ color: '#666', fontSize: '11px', marginTop: '1px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</div>
@@ -318,7 +320,7 @@ export default function Clubs() {
                 >
                   {r === 'all'
                     ? `${t.clubs.filter_all} (18)`
-                    : `${REGION_EMOJI[r] ?? ''} ${r}`}
+                    : `${REGION_SHORT[r] ?? ''} ${r}`}
                 </button>
               );
             })}
