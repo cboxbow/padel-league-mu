@@ -1,6 +1,6 @@
 ﻿import { useState, useMemo, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, TrendingUp, Medal, RefreshCw, X, CalendarDays } from 'lucide-react';
+import { Search, TrendingUp, Medal, RefreshCw, X, CalendarDays, ShieldCheck, Database } from 'lucide-react';
 import { Layout, GlassCard } from '@/components/Layout';
 import { DotWaveBackground } from '@/components/DotWaveBackground';
 import { useI18n } from '@/hooks/useI18n';
@@ -1521,6 +1521,7 @@ export default function Classements() {
     { label: lang === 'fr' ? 'Juniors classes' : 'Juniors',      val: divCounts['JUNIOR'] != null ? `${divCounts['JUNIOR']}` : '-', icon: 'J', color: '#f59e0b' },
     { label: lang === 'fr' ? 'Mixte classes'   : 'Mixed',        val: divCounts['MIXTE']  != null ? `${divCounts['MIXTE']}`  : '-', icon: 'M', color: '#8b5cf6' },
   ];
+  const activeCount = divCounts[activeTab] != null ? `${divCounts[activeTab]}` : '-';
 
   return (
     <Layout>
@@ -1532,40 +1533,134 @@ export default function Classements() {
         <div style={{ maxWidth: '1100px', margin: '0 auto', minWidth: '320px' }}>
 
           {/* Header */}
-          <h1 style={{ fontSize: 'clamp(28px,4vw,52px)', fontWeight: 900, color: 'white', margin: '0 0 6px', letterSpacing: '-1px' }}>
-            {lang === 'fr' ? 'Classements' : 'Rankings'}
-          </h1>
-          <p style={{ color: '#777', marginBottom: '36px', fontSize: '14px', letterSpacing: '0.1px' }}>
-            {lang === 'fr' ? 'Classements individuels officiels MPL Saison 2026' : 'Official MPL 2026 Season Individual Rankings'}
-          </p>
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '18px',
+            alignItems: 'end',
+            justifyContent: 'space-between',
+            marginBottom: '26px',
+          }}>
+            <div style={{ flex: '1 1 420px', minWidth: 0 }}>
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '7px 11px',
+                borderRadius: '999px',
+                border: '1px solid rgba(74,213,105,0.28)',
+                background: 'rgba(74,213,105,0.08)',
+                color: '#4ad569',
+                fontSize: '11px',
+                fontWeight: 900,
+                letterSpacing: '0.9px',
+                textTransform: 'uppercase',
+                marginBottom: '14px',
+              }}>
+                <ShieldCheck size={14} />
+                {lang === 'fr' ? 'Ranking officiel MPL' : 'Official MPL Ranking'}
+              </div>
+              <h1 style={{ fontSize: 'clamp(34px,5vw,64px)', fontWeight: 950, color: 'white', margin: '0 0 8px', letterSpacing: '-1px', lineHeight: 0.95 }}>
+                {lang === 'fr' ? 'Classements' : 'Rankings'}
+              </h1>
+              <p style={{ color: '#9ca3af', margin: 0, fontSize: '15px', letterSpacing: '0.1px', lineHeight: 1.55, maxWidth: '680px' }}>
+                {lang === 'fr'
+                  ? 'Meilleurs 8 resultats sur les 12 derniers mois, calcules depuis les resultats reels.'
+                  : 'Best 8 scores over the last 12 months, calculated from real results.'}
+              </p>
+            </div>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, minmax(110px, 1fr))',
+              gap: '10px',
+              flex: '1 1 250px',
+              maxWidth: '360px',
+            }}>
+              <div style={{
+                border: '1px solid rgba(59,130,246,0.22)',
+                background: 'rgba(59,130,246,0.07)',
+                borderRadius: '12px',
+                padding: '12px 14px',
+              }}>
+                <div style={{ color: activeConfig.color, fontFamily: 'JetBrains Mono, monospace', fontWeight: 900, fontSize: '22px', lineHeight: 1 }}>{activeCount}</div>
+                <div style={{ color: '#777', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.8px', marginTop: '5px' }}>{lang === 'fr' ? 'Joueurs actifs' : 'Active players'}</div>
+              </div>
+              <div style={{
+                border: '1px solid rgba(245,158,11,0.22)',
+                background: 'rgba(245,158,11,0.07)',
+                borderRadius: '12px',
+                padding: '12px 14px',
+              }}>
+                <div style={{ color: '#f59e0b', fontFamily: 'JetBrains Mono, monospace', fontWeight: 900, fontSize: '22px', lineHeight: 1 }}>Top 8</div>
+                <div style={{ color: '#777', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.8px', marginTop: '5px' }}>{lang === 'fr' ? 'Regle 12 mois' : '12-month rule'}</div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{
+            border: '1px solid rgba(74,213,105,0.18)',
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.045), rgba(255,255,255,0.02))',
+            borderRadius: '16px',
+            padding: '14px',
+            marginBottom: '24px',
+            boxShadow: '0 18px 50px rgba(0,0,0,0.24)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#777', fontSize: '12px', margin: '0 4px 12px', flexWrap: 'wrap' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#4ad569', fontWeight: 800 }}>
+                <Database size={13} />
+                {lang === 'fr' ? 'Donnees live' : 'Live data'}
+              </span>
+              <span>•</span>
+              <span>{lang === 'fr' ? 'Classement recalcule automatiquement a chaque publication officielle.' : 'Ranking recalculated automatically after each official publication.'}</span>
+            </div>
 
           {/* Onglets division */}
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '28px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(138px, 1fr))', gap: '10px' }}>
             {TABS.map(tab => (
               <button
                 key={tab.key}
                 onClick={() => { setActiveTab(tab.key); setSearch(''); }}
                 style={{
-                  padding: '10px 22px', borderRadius: '10px',
-                  cursor: 'pointer', fontSize: '14px', fontWeight: 700,
+                  padding: '13px 14px', borderRadius: '12px',
+                  cursor: 'pointer', fontSize: '14px', fontWeight: 800,
                   transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                   background: activeTab === tab.key
-                    ? `linear-gradient(135deg, ${tab.color} 0%, ${tab.color}cc 100%)`
-                    : 'rgba(255,255,255,0.04)',
-                  color: activeTab === tab.key ? (tab.key === 'WOMEN' ? 'white' : '#0a0a0a') : 'rgba(255,255,255,0.45)',
-                  boxShadow: activeTab === tab.key ? `0 4px 24px ${tab.color}45` : 'none',
-                  display: 'flex', alignItems: 'center', gap: '8px',
-                  border: activeTab === tab.key ? 'none' : '1px solid rgba(255,255,255,0.06)',
+                    ? `linear-gradient(135deg, ${tab.color}22 0%, rgba(255,255,255,0.06) 100%)`
+                    : 'rgba(255,255,255,0.035)',
+                  color: activeTab === tab.key ? 'white' : 'rgba(255,255,255,0.62)',
+                  boxShadow: activeTab === tab.key ? `0 10px 30px ${tab.color}20` : 'none',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
+                  border: activeTab === tab.key ? `1px solid ${tab.color}80` : '1px solid rgba(255,255,255,0.07)',
                   letterSpacing: '0.1px',
                 }}
                 onMouseEnter={e => { if (activeTab !== tab.key) { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.75)'; }}}
                 onMouseLeave={e => { if (activeTab !== tab.key) { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.45)'; }}}
               >
-                <span>{tab.icon}</span>
-                <span>{lang === 'fr' ? tab.label_fr : tab.label_en}</span>
-                
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{
+                    width: '24px',
+                    height: '24px',
+                    borderRadius: '8px',
+                    background: `${tab.color}20`,
+                    color: tab.color,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontFamily: 'JetBrains Mono, monospace',
+                    fontSize: '12px',
+                    fontWeight: 900,
+                  }}>{tab.icon}</span>
+                  <span>{lang === 'fr' ? tab.label_fr : tab.label_en}</span>
+                </span>
+                <span style={{
+                  color: activeTab === tab.key ? tab.color : '#777',
+                  fontFamily: 'JetBrains Mono, monospace',
+                  fontSize: '12px',
+                  fontWeight: 900,
+                }}>{divCounts[tab.key] ?? '-'}</span>
               </button>
             ))}
+          </div>
           </div>
 
           {/* Recherche + indicateur */}
