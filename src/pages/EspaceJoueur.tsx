@@ -8,6 +8,7 @@ import {
   LogOut,
   Mail,
   Search,
+  Send,
   ShieldCheck,
   Sparkles,
   Trophy,
@@ -41,6 +42,25 @@ type PlayerAccountRow = {
   email?: string | null;
   license_no?: string | null;
   active?: boolean | null;
+};
+
+type RegistrationDraft = {
+  player: string;
+  tournament: TournamentData;
+  status: string;
+  eligibilityDetail: string;
+  nextStep: string;
+  submitted?: boolean;
+};
+
+type PairEligibility = {
+  label: string;
+  tone: string;
+  detail: string;
+  allowed: boolean;
+  playerRank?: number;
+  partnerRank?: number;
+  pairRankSum?: number;
 };
 
 const divisionLabels: Record<DivisionKey, string> = {
@@ -185,6 +205,114 @@ function canPrepareRegistration(label: string) {
   return !['Non eligible', 'Hors seuil', 'Termine', 'Profil requis'].includes(label);
 }
 
+function rankingForDivision(profile: PlayerProfile | undefined, division: DivisionKey | 'all') {
+  if (!profile) return undefined;
+  const rows = profile.rankings.filter(ranking => division === 'all' || ranking.division === division);
+  return rows.slice().sort((a, b) => a.rank - b.rank || b.points - a.points)[0];
+}
+
+function pairKeyForPlayers(playerA: string, playerB: string) {
+  return [normalizeName(playerA), normalizeName(playerB)].sort().join('|');
+}
+
+function pairEligibilityFor(
+  profile: PlayerProfile | undefined,
+  partner: PlayerProfile | undefined,
+  tournament: TournamentData | undefined,
+): PairEligibility {
+  if (!profile || !tournament) {
+    return { label: 'Profil requis', tone: '#a0a0a0', detail: 'Selectionne ton profil avant de verifier la paire.', allowed: false };
+  }
+  if (!partner) {
+    return { label: 'Partenaire requis', tone: '#f59e0b', detail: 'Choisis ton partenaire pour confirmer l eligibilite de la paire.', allowed: false };
+  }
+
+  const targetDivision = tournamentDivision(tournament);
+  const category = tournament.category;
+
+  if (targetDivision === 'women' && profile.rankings.some(r => r.division === 'men') && !profile.rankings.some(r => r.division === 'women')) {
+    return { label: 'Non eligible', tone: '#ef4444', detail: 'Un joueur Hommes ne peut pas entrer en division Dames.', allowed: false };
+  }
+
+  if (targetDivision === 'mixed') {
+    return {
+      label: 'Paire mixte a valider',
+      tone: '#8b5cf6',
+      detail: 'Demande possible. L admin validera la compatibilite finale de la paire mixte.',
+      allowed: true,
+    };
+  }
+
+  if (targetDivision === 'junior') {
+    return {
+      label: 'Junior a valider',
+      tone: '#f59e0b',
+      detail: 'Demande possible. L admin confirmera la categorie junior et les licences.',
+      allowed: true,
+    };
+  }
+
+  if (targetDivision !== 'men' && targetDivision !== 'women') {
+    return {
+      label: 'Demande possible',
+      tone: '#4ad569',
+      detail: 'Tournoi ouvert. L admin confirmera les informations de la paire.',
+      allowed: true,
+    };
+  }
+
+  if (category === 'M500' || category === 'M1000') {
+    return {
+      label: 'Open',
+      tone: '#4ad569',
+      detail: 'Tournoi open: demande possible pour les licencies, sous reserve des places disponibles.',
+      allowed: true,
+    };
+  }
+
+  const pairLimit = pairAccessRules[targetDivision][category];
+  const playerRanking = rankingForDivision(profile, targetDivision);
+  const partnerRanking = rankingForDivision(partner, targetDivision);
+  const playerRank = playerRanking?.rank;
+  const partnerRank = partnerRanking?.rank;
+
+  if (!pairLimit) {
+    return {
+      label: 'A valider',
+      tone: '#f59e0b',
+      detail: 'Categorie non standard: l admin verifiera la demande.',
+      allowed: true,
+      playerRank,
+      partnerRank,
+    };
+  }
+
+  if (!playerRank || !partnerRank) {
+    return {
+      label: 'A valider',
+      tone: '#f59e0b',
+      detail: `Cumul minimum requis: ${pairLimit}. Rang manquant sur un des deux joueurs, validation admin necessaire.`,
+      allowed: true,
+      playerRank,
+      partnerRank,
+    };
+  }
+
+  const pairRankSum = playerRank + partnerRank;
+  const allowed = pairRankSum >= pairLimit;
+  return {
+    label: allowed ? 'Paire eligible' : 'Paire hors seuil',
+    tone: allowed ? '#4ad569' : '#ef4444',
+    detail: allowed
+      ? `Cumul paire ${pairRankSum} valide pour le minimum ${pairLimit}.`
+      : `Cumul paire ${pairRankSum}. Minimum requis: ${pairLimit}.`,
+    allowed,
+    playerRank,
+    partnerRank,
+    pairRankSum,
+  };
+}
+
 export default function EspaceJoueur() {
   useSeo({
     title: 'Espace Joueur MPL - Profil, Classements et Inscriptions',
@@ -208,12 +336,10 @@ export default function EspaceJoueur() {
   const [authMessage, setAuthMessage] = useState('');
   const [linkedPlayer, setLinkedPlayer] = useState<PlayerAccountRow | null>(null);
   const [linkMessage, setLinkMessage] = useState('');
-  const [registrationDraft, setRegistrationDraft] = useState<{
-    player: string;
-    tournament: string;
-    status: string;
-    nextStep: string;
-  } | null>(null);
+  const [registrationDraft, setRegistrationDraft] = useState<RegistrationDraft | null>(null);
+  const [partnerQuery, setPartnerQuery] = useState('');
+  const [selectedPartnerKey, setSelectedPartnerKey] = useState('');
+  const [submittingRequest, setSubmittingRequest] = useState(false);
 
   const loadingRankings = men.loading || women.loading || junior.loading || mixed.loading;
   const liveSource = [men.source, women.source, junior.source, mixed.source, tournamentSource].includes('supabase')
@@ -284,6 +410,25 @@ export default function EspaceJoueur() {
   const selectedBestRankings = selectedProfile?.rankings
     .slice()
     .sort((a, b) => a.rank - b.rank || b.points - a.points) ?? [];
+
+  const partnerCandidates = useMemo(() => {
+    const q = normalizeName(partnerQuery);
+    if (!selectedProfile) return [];
+    return profiles
+      .filter(profile => profile.key !== selectedProfile.key)
+      .filter(profile => !q || profile.key.includes(q))
+      .slice(0, 7);
+  }, [profiles, selectedProfile, partnerQuery]);
+
+  const selectedPartner = useMemo(
+    () => profiles.find(profile => profile.key === selectedPartnerKey),
+    [profiles, selectedPartnerKey],
+  );
+
+  const draftPairCheck = useMemo(
+    () => pairEligibilityFor(selectedProfile, selectedPartner, registrationDraft?.tournament),
+    [selectedProfile, selectedPartner, registrationDraft],
+  );
 
   const supabaseReady = isSupabaseConnected();
 
@@ -379,16 +524,80 @@ export default function EspaceJoueur() {
       return;
     }
 
-    const partnerNote = label === 'Paire mixte' || label === 'Paire requise' || label === 'A verifier'
-      ? ' Prochaine etape: choix du partenaire et validation de la paire.'
-      : '';
+    const eligibility = eligibilityFor(selectedProfile, tournament);
+    const partnerNote = 'Prochaine etape: choisis ton partenaire pour valider la paire.';
+    setSelectedPartnerKey('');
+    setPartnerQuery('');
     setRegistrationDraft({
       player: selectedProfile.name,
-      tournament: tournament.name,
+      tournament,
       status: label,
-      nextStep: partnerNote.trim() || 'Prochaine etape: confirmation des informations joueur.',
+      eligibilityDetail: eligibility.detail,
+      nextStep: partnerNote,
     });
     setAuthMessage(`Pre-inscription preparee pour ${selectedProfile.name} - ${tournament.name}.${partnerNote}`);
+  }
+
+  async function submitRegistrationRequest() {
+    if (!registrationDraft || !selectedProfile || !selectedPartner) {
+      setAuthMessage('Choisis un tournoi et un partenaire avant d envoyer la demande.');
+      return;
+    }
+    if (!draftPairCheck.allowed) {
+      setAuthMessage(draftPairCheck.detail);
+      return;
+    }
+
+    const client = getSupabaseClient();
+    if (!client) {
+      setAuthMessage('Envoi impossible: Supabase indisponible.');
+      return;
+    }
+
+    const targetDivision = tournamentDivision(registrationDraft.tournament);
+    const requestDivision = targetDivision === 'all'
+      ? registrationDraft.tournament.division
+      : divisionLabels[targetDivision];
+    const playerRanking = rankingForDivision(selectedProfile, targetDivision);
+    const partnerRanking = rankingForDivision(selectedPartner, targetDivision);
+
+    setSubmittingRequest(true);
+    const { error } = await client.from('player_registration_requests').insert({
+      tournament_id: registrationDraft.tournament.id,
+      tournament_name: registrationDraft.tournament.name,
+      tournament_date: registrationDraft.tournament.date || null,
+      category: registrationDraft.tournament.category,
+      division: requestDivision,
+      region: registrationDraft.tournament.region,
+      club_name: registrationDraft.tournament.club_name,
+      player1_name: selectedProfile.name,
+      player1_key: selectedProfile.key,
+      player1_email: accountEmail,
+      player1_license: linkedPlayer?.license_no ?? null,
+      player1_rank: playerRanking?.rank ?? null,
+      player1_points: playerRanking?.points ?? null,
+      player2_name: selectedPartner.name,
+      player2_key: selectedPartner.key,
+      player2_rank: partnerRanking?.rank ?? null,
+      player2_points: partnerRanking?.points ?? null,
+      pair_rank_sum: draftPairCheck.pairRankSum ?? null,
+      eligibility_label: draftPairCheck.label,
+      eligibility_detail: draftPairCheck.detail,
+      pair_key: pairKeyForPlayers(selectedProfile.name, selectedPartner.name),
+      status: 'pending',
+    });
+    setSubmittingRequest(false);
+
+    if (error) {
+      const message = error.code === '23505'
+        ? 'Cette paire a deja une demande pour ce tournoi.'
+        : `Envoi impossible: ${error.message}`;
+      setAuthMessage(message);
+      return;
+    }
+
+    setRegistrationDraft(prev => prev ? { ...prev, submitted: true, status: 'Envoyee a l admin', nextStep: 'Demande recue. L admin peut maintenant la valider dans Inscriptions.' } : prev);
+    setAuthMessage('Demande envoyee a l admin MPL.');
   }
 
   return (
@@ -526,17 +735,84 @@ export default function EspaceJoueur() {
 
         {registrationDraft && (
           <div className="player-panel draft-panel">
-            <div>
-              <span className="source-pill source-supabase">Demande preparee</span>
-              <h3>{registrationDraft.tournament}</h3>
-              <p>{registrationDraft.player} - {registrationDraft.status}</p>
-            </div>
-            <div>
-              <small>{registrationDraft.nextStep}</small>
-              <button type="button" className="registration-button" onClick={() => setRegistrationDraft(null)}>
+            <div className="draft-head">
+              <div>
+                <span className={`source-pill ${registrationDraft.submitted ? 'source-supabase' : 'source-csv'}`}>
+                  {registrationDraft.submitted ? 'Demande envoyee' : 'Demande en preparation'}
+                </span>
+                <h3>{registrationDraft.tournament.name}</h3>
+                <p>{registrationDraft.player} - {registrationDraft.status}</p>
+                <small>{registrationDraft.eligibilityDetail}</small>
+              </div>
+              <button type="button" className="registration-button secondary" onClick={() => setRegistrationDraft(null)}>
                 Modifier le choix
               </button>
             </div>
+            {registrationDraft.submitted ? (
+              <div className="pair-check success">
+                <CheckCircle2 size={16} />
+                <span>{registrationDraft.nextStep}</span>
+              </div>
+            ) : (
+              <div className="draft-workflow">
+                <div className="partner-picker">
+                  <label>Partenaire</label>
+                  <div className="search-box compact">
+                    <Search size={16} />
+                    <input
+                      value={partnerQuery}
+                      onChange={event => {
+                        setPartnerQuery(event.target.value);
+                        setSelectedPartnerKey('');
+                      }}
+                      placeholder="Rechercher le partenaire..."
+                    />
+                  </div>
+                  <div className="partner-results">
+                    {partnerCandidates.map(partner => (
+                      <button
+                        key={partner.key}
+                        type="button"
+                        className={selectedPartnerKey === partner.key ? 'active' : ''}
+                        onClick={() => {
+                          setSelectedPartnerKey(partner.key);
+                          setPartnerQuery(partner.name);
+                        }}
+                      >
+                        <strong>{partner.name}</strong>
+                        <span>#{partner.bestRank} - {formatNumber(partner.bestPoints)} pts</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pair-submit">
+                  <div className="pair-check" style={{ borderColor: `${draftPairCheck.tone}55`, color: draftPairCheck.tone }}>
+                    <CheckCircle2 size={16} />
+                    <div>
+                      <strong>{draftPairCheck.label}</strong>
+                      <span>{draftPairCheck.detail}</span>
+                    </div>
+                  </div>
+                  {selectedPartner && (
+                    <div className="pair-summary">
+                      <span>{selectedProfile?.name}</span>
+                      <b>+</b>
+                      <span>{selectedPartner.name}</span>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    className="registration-button send"
+                    disabled={!draftPairCheck.allowed || submittingRequest}
+                    onClick={submitRegistrationRequest}
+                  >
+                    <Send size={15} />
+                    {submittingRequest ? 'Envoi...' : 'Envoyer a l admin'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -940,15 +1216,20 @@ export default function EspaceJoueur() {
           border: 1px solid rgba(255,255,255,0.12);
         }
         .draft-panel {
-          display: grid;
-          grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
-          gap: 16px;
-          align-items: center;
+          display: flex;
+          flex-direction: column;
+          gap: 18px;
           margin-bottom: 20px;
           border-color: rgba(245,158,11,0.34);
           background:
             radial-gradient(circle at 100% 0%, rgba(245,158,11,0.14), transparent 38%),
             linear-gradient(180deg, rgba(20,20,20,0.94), rgba(13,13,13,0.94));
+        }
+        .draft-head {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 14px;
         }
         .draft-panel h3 {
           margin: 10px 0 6px;
@@ -964,6 +1245,106 @@ export default function EspaceJoueur() {
           margin-bottom: 12px;
           color: #c8c8c8;
           line-height: 1.5;
+        }
+        .draft-workflow {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
+          gap: 16px;
+        }
+        .partner-picker label {
+          display: block;
+          margin-bottom: 8px;
+          color: #a0a0a0;
+          font-size: 12px;
+          font-weight: 900;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+        }
+        .search-box.compact {
+          min-height: 44px;
+          padding: 0 12px;
+        }
+        .partner-results {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 8px;
+          margin-top: 10px;
+        }
+        .partner-results button {
+          min-height: 58px;
+          text-align: left;
+          border-radius: 12px;
+          border: 1px solid rgba(255,255,255,0.1);
+          background: rgba(255,255,255,0.035);
+          color: white;
+          padding: 10px 12px;
+          cursor: pointer;
+        }
+        .partner-results button.active {
+          border-color: rgba(74,213,105,0.65);
+          background: rgba(74,213,105,0.12);
+        }
+        .partner-results strong,
+        .partner-results span {
+          display: block;
+        }
+        .partner-results span {
+          margin-top: 4px;
+          color: #8b8b8b;
+          font-size: 12px;
+        }
+        .pair-submit {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .pair-check {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          border: 1px solid;
+          border-radius: 14px;
+          padding: 12px;
+          background: rgba(255,255,255,0.035);
+        }
+        .pair-check.success {
+          color: #4ad569;
+          border-color: rgba(74,213,105,0.35);
+          background: rgba(74,213,105,0.1);
+        }
+        .pair-check strong,
+        .pair-check span {
+          display: block;
+        }
+        .pair-check span {
+          margin-top: 3px;
+          color: #a0a0a0;
+          line-height: 1.45;
+        }
+        .pair-summary {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+          gap: 8px;
+          align-items: center;
+          color: white;
+          font-weight: 900;
+        }
+        .pair-summary span {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.1);
+          padding: 8px 10px;
+          background: rgba(255,255,255,0.04);
+        }
+        .registration-button.send {
+          gap: 8px;
+        }
+        .registration-button.secondary {
+          background: rgba(255,255,255,0.06);
+          color: white;
+          border-color: rgba(255,255,255,0.12);
         }
         .auth-message {
           margin: 0;

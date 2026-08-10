@@ -53,6 +53,27 @@ interface Registration {
   created_at?: string;
 }
 
+interface PlayerRegistrationRequest {
+  id: string;
+  tournament_id?: string | null;
+  tournament_name: string;
+  tournament_date?: string | null;
+  category?: string | null;
+  division?: string | null;
+  region?: string | null;
+  club_name?: string | null;
+  player1_name: string;
+  player2_name: string;
+  player1_email?: string | null;
+  player1_rank?: number | null;
+  player2_rank?: number | null;
+  pair_rank_sum?: number | null;
+  eligibility_label?: string | null;
+  eligibility_detail?: string | null;
+  status?: string | null;
+  created_at?: string | null;
+}
+
 interface CsvRow {
   player1_name: string;
   player2_name: string;
@@ -316,6 +337,9 @@ export default function RegistrationsPage() {
   const [registrations, setRegistrations]     = useState<Registration[]>([]);
   const [loadingTourns, setLoadingTourns]     = useState(false);
   const [loadingRegs,   setLoadingRegs]       = useState(false);
+  const [playerRequests, setPlayerRequests]   = useState<PlayerRegistrationRequest[]>([]);
+  const [loadingRequests, setLoadingRequests] = useState(false);
+  const [requestMsg, setRequestMsg]           = useState<{ type: MsgType; text: string } | null>(null);
 
   // Manual form
   const [formP1,       setFormP1]       = useState('');
@@ -396,10 +420,47 @@ export default function RegistrationsPage() {
     setLoadingRegs(false);
   }, [demo, supabase]);
 
+  const loadPlayerRequests = useCallback(async (tournId: string) => {
+    if (!tournId) {
+      setPlayerRequests([]);
+      return;
+    }
+    setLoadingRequests(true);
+    setRequestMsg(null);
+    if (demo || !supabase) {
+      setPlayerRequests([]);
+      setLoadingRequests(false);
+      return;
+    }
+    const { data, error } = await supabase
+      .from('player_registration_requests')
+      .select('*')
+      .eq('tournament_id', tournId)
+      .order('created_at', { ascending: false });
+    if (error || !data) {
+      setPlayerRequests([]);
+      setRequestMsg({
+        type: 'warn',
+        text: error?.message?.includes('player_registration_requests')
+          ? 'Table demandes joueurs non installee. Lancez le fichier player_registration_requests_schema.sql dans Supabase.'
+          : error?.message ?? 'Demandes joueurs indisponibles.',
+      });
+    } else {
+      setPlayerRequests(data as PlayerRegistrationRequest[]);
+    }
+    setLoadingRequests(false);
+  }, [demo, supabase]);
+
   useEffect(() => { loadTournaments(); }, [loadTournaments]);
   useEffect(() => {
-    if (selectedTournId) loadRegistrations(selectedTournId);
-  }, [selectedTournId, loadRegistrations]);
+    if (selectedTournId) {
+      loadRegistrations(selectedTournId);
+      loadPlayerRequests(selectedTournId);
+    } else {
+      setRegistrations([]);
+      setPlayerRequests([]);
+    }
+  }, [selectedTournId, loadRegistrations, loadPlayerRequests]);
 
   // ── Computed ───────────────────────────────────────────────────────────────
   const selectedTourn = useMemo(
@@ -434,6 +495,11 @@ export default function RegistrationsPage() {
     checkedIn: registrations.filter(r => r.checked_in).length,
     missing:   registrations.filter(r => !r.checked_in).length,
   }), [registrations]);
+
+  const pendingRequests = useMemo(
+    () => playerRequests.filter(r => (r.status ?? 'pending') === 'pending'),
+    [playerRequests]
+  );
 
   // ── Manual add ────────────────────────────────────────────────────────────
   const handleAdd = useCallback(async () => {
@@ -507,6 +573,80 @@ export default function RegistrationsPage() {
     }
     setFormBusy(false);
   }, [formP1, formP2, formSeed, selectedTournId, registrationDivision, registrations, demo, supabase]);
+
+  const handleApproveRequest = useCallback(async (request: PlayerRegistrationRequest) => {
+    if (!request.tournament_id) {
+      setRequestMsg({ type: 'error', text: 'Demande sans tournoi associe.' });
+      return;
+    }
+    const requestPairKey = pairKey(request.player1_name, request.player2_name);
+    const alreadyRegistered = registrations.some(
+      r => pairKey(r.player1_name, r.player2_name) === requestPairKey
+    );
+
+    if (demo || !supabase) {
+      if (!alreadyRegistered) {
+        setRegistrations(prev => [...prev, {
+          id: `request-${Date.now()}`,
+          tournament_id: request.tournament_id ?? selectedTournId,
+          player1_name: request.player1_name,
+          player2_name: request.player2_name,
+          division: normalizeDivision(request.division ?? registrationDivision),
+          confirmed: true,
+          checked_in: false,
+        }]);
+      }
+      setPlayerRequests(prev => prev.map(r => r.id === request.id ? { ...r, status: 'approved' } : r));
+      setRequestMsg({ type: 'success', text: 'Demande approuvee en mode demo.' });
+      return;
+    }
+
+    if (!alreadyRegistered) {
+      const { error: insertError } = await supabase.from('registrations').insert([{
+        tournament_id: request.tournament_id,
+        player1_name: request.player1_name,
+        player2_name: request.player2_name,
+        seed: null,
+        division: normalizeDivision(request.division ?? registrationDivision),
+        confirmed: true,
+        checked_in: false,
+      }]);
+      if (insertError) {
+        setRequestMsg({ type: 'error', text: `Insertion inscription impossible: ${insertError.message}` });
+        return;
+      }
+    }
+
+    const { error: updateError } = await supabase
+      .from('player_registration_requests')
+      .update({ status: 'approved' })
+      .eq('id', request.id);
+    if (updateError) {
+      setRequestMsg({ type: 'warn', text: `Inscription creee, mais statut demande non mis a jour: ${updateError.message}` });
+    } else {
+      setRequestMsg({ type: 'success', text: alreadyRegistered ? 'Paire deja inscrite. Demande marquee comme approuvee.' : 'Demande approuvee et inscription ajoutee.' });
+    }
+    await loadRegistrations(request.tournament_id);
+    await loadPlayerRequests(request.tournament_id);
+  }, [demo, supabase, registrations, registrationDivision, selectedTournId, loadRegistrations, loadPlayerRequests]);
+
+  const handleRejectRequest = useCallback(async (request: PlayerRegistrationRequest) => {
+    if (demo || !supabase) {
+      setPlayerRequests(prev => prev.map(r => r.id === request.id ? { ...r, status: 'rejected' } : r));
+      setRequestMsg({ type: 'success', text: 'Demande refusee en mode demo.' });
+      return;
+    }
+    const { error } = await supabase
+      .from('player_registration_requests')
+      .update({ status: 'rejected' })
+      .eq('id', request.id);
+    if (error) {
+      setRequestMsg({ type: 'error', text: `Refus impossible: ${error.message}` });
+      return;
+    }
+    setRequestMsg({ type: 'success', text: 'Demande refusee.' });
+    if (request.tournament_id) await loadPlayerRequests(request.tournament_id);
+  }, [demo, supabase, loadPlayerRequests]);
 
   // ── CSV parsing ───────────────────────────────────────────────────────────
   const handleFileRead = useCallback((file: File) => {
@@ -700,10 +840,83 @@ export default function RegistrationsPage() {
             </select>
             <ChevronDown size={14} color={T.muted} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
           </div>
-          <Btn onClick={() => loadRegistrations(selectedTournId)} variant="ghost" size="sm">
+          <Btn onClick={() => { loadRegistrations(selectedTournId); loadPlayerRequests(selectedTournId); }} variant="ghost" size="sm">
             <RefreshCw size={13} /> Actualiser
           </Btn>
         </div>
+      </GlassCard>
+
+      <GlassCard style={{ marginBottom: 20, padding: '18px 20px', borderColor: pendingRequests.length ? `${T.accent}44` : T.border }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
+          <div>
+            <h2 style={{ color: T.text, fontSize: 14, fontWeight: 800, margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Users size={15} color={T.accent} /> Demandes joueurs
+            </h2>
+            <p style={{ color: T.muted, fontSize: 12, margin: 0 }}>
+              <span style={{ color: pendingRequests.length ? T.accent : T.text, fontWeight: 800 }}>{pendingRequests.length}</span> en attente ·{' '}
+              {playerRequests.length} demande(s) pour ce tournoi
+            </p>
+          </div>
+          <Btn onClick={() => loadPlayerRequests(selectedTournId)} variant="ghost" size="sm" disabled={!selectedTournId || loadingRequests}>
+            <RefreshCw size={13} /> Recharger
+          </Btn>
+        </div>
+        {requestMsg && <div style={{ marginBottom: 12 }}><Notice type={requestMsg.type}>{requestMsg.text}</Notice></div>}
+        {loadingRequests ? (
+          <div style={{ color: T.muted, fontSize: 13, padding: '14px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <RefreshCw size={15} style={{ animation: 'spin 1s linear infinite' }} /> Chargement des demandes...
+          </div>
+        ) : playerRequests.length === 0 ? (
+          <div style={{ color: T.muted, fontSize: 13, padding: '10px 0' }}>
+            Aucune demande joueur pour ce tournoi. Les demandes envoyees depuis l Espace Joueur apparaitront ici.
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gap: 10 }}>
+            {playerRequests.map(request => {
+              const isPending = (request.status ?? 'pending') === 'pending';
+              const statusColor = isPending ? T.warn : request.status === 'approved' ? T.accent : T.error;
+              const alreadyRegistered = registrations.some(r => pairKey(r.player1_name, r.player2_name) === pairKey(request.player1_name, request.player2_name));
+              return (
+                <div
+                  key={request.id}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'minmax(0,1.4fr) minmax(0,1fr) auto',
+                    gap: 12,
+                    alignItems: 'center',
+                    background: 'rgba(255,255,255,0.035)',
+                    border: `1px solid ${isPending ? T.warn + '33' : T.border}`,
+                    borderRadius: 12,
+                    padding: 12,
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ color: T.text, fontWeight: 800, fontSize: 13, marginBottom: 4 }}>
+                      {request.player1_name} / {request.player2_name}
+                    </div>
+                    <div style={{ color: T.muted, fontSize: 12 }}>
+                      {request.player1_email || 'Email non fourni'} · {request.eligibility_detail || 'Controle a faire'}
+                    </div>
+                  </div>
+                  <div style={{ color: T.muted, fontSize: 12 }}>
+                    <Badge color={statusColor} bg={`${statusColor}18`}>{request.status ?? 'pending'}</Badge>
+                    <span style={{ marginLeft: 8 }}>
+                      Rang paire: {request.pair_rank_sum ?? '-'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                    <Btn onClick={() => handleRejectRequest(request)} variant="danger" size="sm" disabled={!isPending}>
+                      <X size={12} /> Refuser
+                    </Btn>
+                    <Btn onClick={() => handleApproveRequest(request)} variant="accent" size="sm" disabled={!isPending}>
+                      <Check size={12} /> {alreadyRegistered ? 'Marquer OK' : 'Approuver'}
+                    </Btn>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </GlassCard>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
