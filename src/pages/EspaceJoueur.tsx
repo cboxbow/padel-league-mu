@@ -18,7 +18,7 @@ import { CategoryBadge, Layout, StatusBadge } from '@/components/Layout';
 import { useRankings, useTournaments, type SimpleRanking, type TournamentData } from '@/hooks/useData';
 import { ROUTE_PATHS } from '@/lib/index';
 import { useSeo } from '@/hooks/useSeo';
-import { getSupabaseClient, isSupabaseConnected } from '@/lib/supabase';
+import { getSupabaseClient, isSupabaseConnected, safeSupabaseQuery } from '@/lib/supabase';
 
 type DivisionKey = 'men' | 'women' | 'junior' | 'mixed';
 
@@ -43,6 +43,18 @@ type PlayerAccountRow = {
   license_no?: string | null;
   active?: boolean | null;
 };
+
+function errorMessage(error: unknown): string {
+  if (!error) return '';
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  if (typeof error === 'object' && 'message' in error) return String((error as { message?: unknown }).message ?? '');
+  return String(error);
+}
+
+function isTemporaryVerificationIssue(message: string): boolean {
+  return /abort|signal|timeout|failed to fetch|network/i.test(message);
+}
 
 type RegistrationDraft = {
   player: string;
@@ -493,17 +505,34 @@ export default function EspaceJoueur() {
 
     setAuthLoading(true);
     setAuthMessage('');
-    const { data, error } = await client.rpc('verify_player_profile', {
-      p_email: email,
-      p_license: license,
-    });
+
+    const verifyOnce = () => safeSupabaseQuery<unknown>(
+      () => client.rpc('verify_player_profile', {
+        p_email: email,
+        p_license: license,
+      }),
+      7000,
+    );
+
+    let result = await verifyOnce();
+    let verificationError = errorMessage(result.error);
+
+    if (!result.data && (result.timedOut || isTemporaryVerificationIssue(verificationError))) {
+      result = await verifyOnce();
+      verificationError = errorMessage(result.error);
+    }
+
     setAuthLoading(false);
-    if (error) {
-      setAuthMessage(`Verification impossible: ${error.message}`);
+    if (verificationError) {
+      setAuthMessage(
+        isTemporaryVerificationIssue(verificationError)
+          ? 'Verification temporairement indisponible. Reessaie dans quelques secondes.'
+          : `Verification impossible: ${verificationError}`,
+      );
       return;
     }
 
-    const rows = Array.isArray(data) ? data : data ? [data] : [];
+    const rows = Array.isArray(result.data) ? result.data : result.data ? [result.data] : [];
     if (!rows.length) {
       setAuthMessage('Email ou numero de licence incorrect.');
       return;
