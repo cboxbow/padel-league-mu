@@ -7,7 +7,7 @@ const translations = {
   fr: {
     nav: {
       home: 'Accueil', league: 'La Ligue', regions: 'Régions',
-      clubs: 'Clubs', calendar: 'Calendrier', rankings: 'Classements', results: 'Résultats', history: 'Historique', gallery: 'Galerie', admin: 'Admin',
+      clubs: 'Clubs', calendar: 'Calendrier', rankings: 'Classements', players: 'Joueurs', results: 'Résultats', history: 'Historique', gallery: 'Galerie', admin: 'Admin',
     },
     hero: {
       subtitle: 'AfrAsia Bank Padel League — Saison 2026',
@@ -82,7 +82,7 @@ const translations = {
   en: {
     nav: {
       home: 'Home', league: 'The League', regions: 'Regions',
-      clubs: 'Clubs', calendar: 'Calendar', rankings: 'Rankings', results: 'Results', history: 'History', gallery: 'Gallery', admin: 'Admin',
+      clubs: 'Clubs', calendar: 'Calendar', rankings: 'Rankings', players: 'Players', results: 'Results', history: 'History', gallery: 'Gallery', admin: 'Admin',
     },
     hero: {
       subtitle: 'AfrAsia Bank Padel League — Season 2026',

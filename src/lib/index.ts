@@ -7,6 +7,7 @@ export const ROUTE_PATHS = {
   CLUBS: '/clubs',
   CALENDAR: '/calendrier',
   RANKINGS: '/classements',
+  PLAYER_SPACE: '/joueurs',
   RESULTS: '/resultats',
   HISTORY: '/historique',
   PADEL_MAURITIUS: '/padel-mauritius',

@@ -8,6 +8,7 @@ import Regions       from '@/pages/Regions';
 import Clubs         from '@/pages/Clubs';
 import Calendrier    from '@/pages/Calendrier';
 import Classements   from '@/pages/Classements';
+import EspaceJoueur  from '@/pages/EspaceJoueur';
 import Resultats     from '@/pages/Resultats';
 import Historique    from '@/pages/Historique';
 import PadelMauritius from '@/pages/PadelMauritius';
@@ -42,6 +43,7 @@ function AppRoutes() {
       <Route path={ROUTE_PATHS.CLUBS}           element={<Clubs />} />
       <Route path={ROUTE_PATHS.CALENDAR}        element={<Calendrier />} />
       <Route path={ROUTE_PATHS.RANKINGS}        element={<Classements />} />
+      <Route path={ROUTE_PATHS.PLAYER_SPACE}    element={<EspaceJoueur />} />
       <Route path={ROUTE_PATHS.RESULTS}         element={<Resultats />} />
       <Route path={ROUTE_PATHS.HISTORY}         element={<Historique />} />
       <Route path={ROUTE_PATHS.PADEL_MAURITIUS} element={<PadelMauritius />} />
