@@ -149,3 +149,14 @@ using (
       and lower(coalesce(p.role, '')) in ('admin', 'superadmin')
   )
 );
+
+-- Table privileges are still required in addition to RLS policies.
+-- Public players can only submit pending requests. They cannot read or edit the queue.
+grant usage on schema public to anon, authenticated;
+grant insert on table public.player_registration_requests to anon, authenticated;
+
+-- Authenticated users need table privileges; RLS keeps the actual access limited to admin/superadmin.
+grant select, update, delete on table public.player_registration_requests to authenticated;
+
+-- Keep anonymous visitors write-only for this queue.
+revoke select, update, delete on table public.player_registration_requests from anon;
