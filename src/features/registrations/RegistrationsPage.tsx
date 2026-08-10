@@ -182,6 +182,23 @@ function pairKey(p1: string, p2: string): string {
   return [cleanNameKey(p1), cleanNameKey(p2)].sort().join('|');
 }
 
+function requestInboxKey(request: PlayerRegistrationRequest): string {
+  const tournamentKey = [
+    request.tournament_id,
+    request.tournament_key,
+    request.tournament_date,
+    request.category,
+    normalizeDivision(request.division ?? ''),
+    request.club_name,
+    request.tournament_name,
+  ]
+    .map(value => compactKey(value ?? ''))
+    .filter(Boolean)
+    .join('|');
+
+  return `${tournamentKey}::${pairKey(request.player1_name, request.player2_name)}`;
+}
+
 function seedKey(seed?: number | null): string {
   return seed == null ? '' : String(seed);
 }
@@ -566,17 +583,20 @@ export default function RegistrationsPage() {
     [playerRequests]
   );
 
-  const globalPendingRequests = useMemo(
-    () => allPlayerRequests.filter(r => (r.status ?? 'pending') === 'pending'),
-    [allPlayerRequests]
-  );
+  const globalPendingRequests = useMemo(() => {
+    const seen = new Set<string>();
+    return allPlayerRequests.filter(request => {
+      if ((request.status ?? 'pending') !== 'pending') return false;
+      const key = requestInboxKey(request);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [allPlayerRequests]);
 
   const recentGlobalRequests = useMemo(
-    () => [
-      ...globalPendingRequests,
-      ...allPlayerRequests.filter(r => (r.status ?? 'pending') !== 'pending'),
-    ].slice(0, 12),
-    [allPlayerRequests, globalPendingRequests]
+    () => globalPendingRequests.slice(0, 12),
+    [globalPendingRequests]
   );
 
   const findRequestTournament = useCallback((request: PlayerRegistrationRequest) => {
@@ -954,11 +974,11 @@ export default function RegistrationsPage() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
           <div>
             <h2 style={{ color: T.text, fontSize: 14, fontWeight: 800, margin: '0 0 3px', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Users size={16} color={globalPendingRequests.length ? T.warn : T.accent} /> Demandes recues
+              <Users size={16} color={globalPendingRequests.length ? T.warn : T.accent} /> Demandes a traiter
             </h2>
             <p style={{ color: T.muted, fontSize: 12, margin: 0 }}>
-              <span style={{ color: globalPendingRequests.length ? T.warn : T.accent, fontWeight: 900 }}>{globalPendingRequests.length}</span> a traiter maintenant -{' '}
-              {allPlayerRequests.length} demande(s) au total
+              <span style={{ color: globalPendingRequests.length ? T.warn : T.accent, fontWeight: 900 }}>{globalPendingRequests.length}</span> demande(s) en attente
+              {allPlayerRequests.length > globalPendingRequests.length ? ` - ${allPlayerRequests.length} demandes recues au total` : ''}
             </p>
           </div>
           <Btn onClick={loadAllPlayerRequests} variant="ghost" size="sm" disabled={loadingAllRequests}>
@@ -977,7 +997,7 @@ export default function RegistrationsPage() {
             padding: '12px 0',
             borderTop: `1px solid ${T.border}`,
           }}>
-            Aucune demande entrante pour le moment. Des qu un joueur envoie une demande depuis son espace, elle apparaitra ici.
+            Aucune demande en attente. Les demandes deja approuvees restent visibles dans le tournoi concerne.
           </div>
         ) : (
           <div style={{ display: 'grid', gap: 8, maxHeight: 230, overflowY: 'auto', paddingRight: 2 }}>
