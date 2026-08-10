@@ -540,32 +540,44 @@ export default function EspaceJoueur() {
           </div>
         )}
 
-        <div className="player-grid">
-          <div className="player-panel player-list">
+        <div className="player-grid player-grid-summary">
+          <div className="player-panel player-summary-card">
             <div className="section-title">
               <UserRound size={18} />
-              <span>Selection joueur</span>
+              <span>Parcours MPL</span>
             </div>
             {loadingRankings ? (
-              <p className="muted">Chargement des classements...</p>
-            ) : filteredProfiles.length ? (
-              filteredProfiles.map(profile => (
-                <button
-                  key={profile.key}
-                  type="button"
-                  className={`player-row ${selectedProfile?.key === profile.key ? 'active' : ''}`}
-                  onClick={() => setSelectedKey(profile.key)}
-                >
-                  <span className="rank">#{profile.bestRank}</span>
-                  <span>
-                    <strong>{profile.name}</strong>
-                    <small>{profile.divisions.join(' / ')}</small>
-                  </span>
-                  <b>{formatNumber(profile.bestPoints)}</b>
-                </button>
-              ))
+              <p className="muted">Chargement du profil...</p>
+            ) : selectedProfile ? (
+              <>
+                <div className="summary-player">
+                  <span className="summary-rank">#{selectedProfile.bestRank}</span>
+                  <div>
+                    <strong>{selectedProfile.name}</strong>
+                    <small>{selectedProfile.divisions.join(' / ')}</small>
+                  </div>
+                </div>
+                <div className="summary-status">
+                  <span><i /> {accountEmail ? 'Compte connecte' : 'Compte a connecter'}</span>
+                  <span><i /> {linkedPlayer ? 'Licence verifiee' : 'Licence a verifier'}</span>
+                  <span><i /> {selectedProfile.played || 0} tournois joues</span>
+                </div>
+                <div className="summary-divisions">
+                  {selectedProfile.rankings.map(ranking => (
+                    <span key={`${ranking.division}-${ranking.rank}`} style={{ borderColor: `${divisionTone[ranking.division]}55`, color: divisionTone[ranking.division] }}>
+                      {divisionLabels[ranking.division]} #{ranking.rank}
+                    </span>
+                  ))}
+                </div>
+                <a className="summary-action" href="#tournois-eligibles">
+                  Voir mes tournois compatibles <ArrowRight size={15} />
+                </a>
+                <p className="summary-help">
+                  Pour changer de profil, utilise la recherche en haut de page.
+                </p>
+              </>
             ) : (
-              <p className="muted">Aucun joueur trouve.</p>
+              <p className="muted">Recherche ton nom pour charger ton parcours MPL.</p>
             )}
           </div>
 
@@ -606,7 +618,7 @@ export default function EspaceJoueur() {
           </div>
         </div>
 
-        <div className="player-panel registration-panel">
+        <div id="tournois-eligibles" className="player-panel registration-panel">
           <div className="section-title split">
             <span><CalendarCheck size={18} /> Tournois a venir et eligibilite</span>
             <small>{tournamentsLoading ? 'Chargement...' : `${upcomingTournaments.length} suggestions`}</small>
@@ -790,7 +802,6 @@ export default function EspaceJoueur() {
         .tournament-card p,
         .tournament-card small,
         .profile-head p,
-        .player-row small,
         .roadmap-card span {
           color: #8b8b8b;
         }
@@ -1014,9 +1025,12 @@ export default function EspaceJoueur() {
         }
         .player-grid {
           display: grid;
-          grid-template-columns: 420px minmax(0, 1fr);
+          grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
           gap: 20px;
           margin-bottom: 20px;
+        }
+        .player-grid-summary {
+          align-items: stretch;
         }
         .section-title {
           display: flex;
@@ -1034,50 +1048,97 @@ export default function EspaceJoueur() {
           align-items: center;
           gap: 9px;
         }
-        .player-list {
+        .player-summary-card {
           display: flex;
           flex-direction: column;
-          gap: 10px;
+          gap: 16px;
+          border-color: rgba(245,158,11,0.26);
+          background:
+            radial-gradient(circle at 0% 0%, rgba(245,158,11,0.12), transparent 34%),
+            linear-gradient(180deg, rgba(20,20,20,0.92), rgba(13,13,13,0.92));
         }
-        .player-row {
-          width: 100%;
-          min-height: 64px;
+        .summary-player {
           display: grid;
-          grid-template-columns: 48px minmax(0, 1fr) auto;
-          gap: 12px;
+          grid-template-columns: 58px minmax(0, 1fr);
+          gap: 14px;
           align-items: center;
           border: 1px solid rgba(255,255,255,0.08);
-          background: rgba(255,255,255,0.03);
-          color: white;
-          border-radius: 12px;
-          padding: 10px;
-          cursor: pointer;
-          text-align: left;
+          border-radius: 14px;
+          background: rgba(255,255,255,0.035);
+          padding: 14px;
         }
-        .player-row.active {
-          border-color: rgba(74,213,105,0.55);
-          background:
-            linear-gradient(90deg, rgba(74,213,105,0.14), rgba(59,130,246,0.06)),
-            rgba(255,255,255,0.03);
-          box-shadow: inset 3px 0 0 #4ad569;
-        }
-        .player-row .rank {
+        .summary-rank {
+          display: grid;
+          place-items: center;
+          width: 48px;
+          height: 48px;
+          border-radius: 16px;
           color: #f59e0b;
+          background: rgba(245,158,11,0.12);
+          border: 1px solid rgba(245,158,11,0.24);
           font-weight: 900;
         }
-        .player-row span:nth-child(2) {
+        .summary-player strong {
+          display: block;
+          color: white;
+          font-size: 18px;
+          line-height: 1.15;
+          overflow-wrap: anywhere;
+        }
+        .summary-player small,
+        .summary-help {
+          color: #8b8b8b;
+          line-height: 1.45;
+        }
+        .summary-status {
+          display: grid;
+          gap: 10px;
+        }
+        .summary-status span {
           display: flex;
-          flex-direction: column;
-          gap: 4px;
-          min-width: 0;
+          align-items: center;
+          gap: 10px;
+          color: rgba(255,255,255,0.76);
+          font-size: 13px;
+          font-weight: 800;
         }
-        .player-row strong {
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
+        .summary-status i {
+          width: 7px;
+          height: 7px;
+          border-radius: 999px;
+          background: #4ad569;
+          box-shadow: 0 0 16px rgba(74,213,105,0.75);
         }
-        .player-row b {
+        .summary-divisions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+        .summary-divisions span {
+          border: 1px solid;
+          border-radius: 999px;
+          background: rgba(255,255,255,0.035);
+          padding: 7px 10px;
+          font-size: 12px;
+          font-weight: 900;
+        }
+        .summary-action {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          min-height: 44px;
+          margin-top: auto;
+          border-radius: 12px;
+          border: 1px solid rgba(74,213,105,0.38);
+          background: rgba(74,213,105,0.12);
           color: #4ad569;
+          text-decoration: none;
+          font-weight: 900;
+        }
+        .summary-help {
+          margin: -6px 0 0;
+          font-size: 12px;
         }
         .profile-head {
           display: flex;
@@ -1295,12 +1356,6 @@ export default function EspaceJoueur() {
           .player-panel {
             padding: 14px;
             border-radius: 14px;
-          }
-          .player-row {
-            grid-template-columns: 38px minmax(0, 1fr);
-          }
-          .player-row b {
-            grid-column: 2;
           }
           .search-panel {
             padding: 12px;
