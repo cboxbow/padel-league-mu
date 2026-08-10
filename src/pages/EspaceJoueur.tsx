@@ -76,6 +76,8 @@ type PairEligibility = {
   pairRankSum?: number;
 };
 
+type PlayerGender = 'M' | 'F' | 'unknown';
+
 const divisionLabels: Record<DivisionKey, string> = {
   men: 'Hommes',
   women: 'Dames',
@@ -261,6 +263,19 @@ function pairKeyForPlayers(playerA: string, playerB: string) {
   return [normalizeName(playerA), normalizeName(playerB)].sort().join('|');
 }
 
+function inferredPlayerGender(profile: PlayerProfile | undefined): PlayerGender {
+  if (!profile) return 'unknown';
+  if (profile.rankings.some(ranking => ranking.division === 'women')) return 'F';
+  if (profile.rankings.some(ranking => ranking.division === 'men')) return 'M';
+  return 'unknown';
+}
+
+function genderLabel(gender: PlayerGender) {
+  if (gender === 'M') return 'Homme';
+  if (gender === 'F') return 'Dame';
+  return 'genre non confirme';
+}
+
 function pairEligibilityFor(
   profile: PlayerProfile | undefined,
   partner: PlayerProfile | undefined,
@@ -281,10 +296,31 @@ function pairEligibilityFor(
   }
 
   if (targetDivision === 'mixed') {
+    const playerGender = inferredPlayerGender(profile);
+    const partnerGender = inferredPlayerGender(partner);
+
+    if (playerGender !== 'unknown' && partnerGender !== 'unknown' && playerGender === partnerGender) {
+      return {
+        label: 'Paire refusee',
+        tone: '#ef4444',
+        detail: `Un tournoi Mixte exige 1 Homme + 1 Dame. Ici: ${genderLabel(playerGender)} + ${genderLabel(partnerGender)}.`,
+        allowed: false,
+      };
+    }
+
+    if (playerGender === 'unknown' || partnerGender === 'unknown') {
+      return {
+        label: 'Genre a valider',
+        tone: '#f59e0b',
+        detail: 'Impossible de confirmer Homme + Dame automatiquement. L admin devra verifier avant acceptation.',
+        allowed: true,
+      };
+    }
+
     return {
-      label: 'Paire mixte a valider',
+      label: 'Paire mixte OK',
       tone: '#8b5cf6',
-      detail: 'Demande possible. L admin validera la compatibilite finale de la paire mixte.',
+      detail: 'Composition valide: 1 Homme + 1 Dame. L admin verifiera les licences et les places.',
       allowed: true,
     };
   }
@@ -461,11 +497,19 @@ export default function EspaceJoueur() {
   const partnerCandidates = useMemo(() => {
     const q = normalizeName(partnerQuery);
     if (!selectedProfile) return [];
+    const targetDivision = registrationDraft ? tournamentDivision(registrationDraft.tournament) : 'all';
+    const selectedGender = inferredPlayerGender(selectedProfile);
+
     return profiles
       .filter(profile => profile.key !== selectedProfile.key)
+      .filter(profile => {
+        if (targetDivision !== 'mixed' || selectedGender === 'unknown') return true;
+        const partnerGender = inferredPlayerGender(profile);
+        return partnerGender === 'unknown' || partnerGender !== selectedGender;
+      })
       .filter(profile => !q || profile.key.includes(q))
       .slice(0, 7);
-  }, [profiles, selectedProfile, partnerQuery]);
+  }, [profiles, selectedProfile, partnerQuery, registrationDraft]);
 
   const selectedPartner = useMemo(
     () => profiles.find(profile => profile.key === selectedPartnerKey),
