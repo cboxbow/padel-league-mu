@@ -122,6 +122,34 @@ function tournamentDivision(tournament: TournamentData): DivisionKey | 'all' {
   return 'all';
 }
 
+function isUuid(value?: string | null) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value ?? '');
+}
+
+function compactKey(value?: string | null) {
+  return (value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase();
+}
+
+function tournamentRequestKey(tournament: TournamentData) {
+  const targetDivision = tournamentDivision(tournament);
+  const division = targetDivision === 'all' ? tournament.division : divisionLabels[targetDivision];
+  return [
+    tournament.date,
+    tournament.category,
+    division,
+    tournament.club_name,
+    tournament.name,
+  ]
+    .map(compactKey)
+    .filter(Boolean)
+    .join('|');
+}
+
 function eligibilityFor(profile: PlayerProfile | undefined, tournament: TournamentData) {
   if (!profile) return { label: 'Profil requis', tone: '#a0a0a0', detail: 'Selectionne ton profil pour evaluer les conditions d acces.' };
 
@@ -563,7 +591,8 @@ export default function EspaceJoueur() {
 
     setSubmittingRequest(true);
     const { error } = await client.from('player_registration_requests').insert({
-      tournament_id: registrationDraft.tournament.id,
+      tournament_id: isUuid(registrationDraft.tournament.id) ? registrationDraft.tournament.id : null,
+      tournament_key: tournamentRequestKey(registrationDraft.tournament),
       tournament_name: registrationDraft.tournament.name,
       tournament_date: registrationDraft.tournament.date || null,
       category: registrationDraft.tournament.category,

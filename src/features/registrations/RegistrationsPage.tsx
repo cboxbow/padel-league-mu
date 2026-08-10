@@ -56,6 +56,7 @@ interface Registration {
 interface PlayerRegistrationRequest {
   id: string;
   tournament_id?: string | null;
+  tournament_key?: string | null;
   tournament_name: string;
   tournament_date?: string | null;
   category?: string | null;
@@ -130,6 +131,42 @@ function normalizeDivision(type?: string): string {
 
 function tournamentDivision(t?: Tournament): string {
   return normalizeDivision(t?.tournament_type ?? t?.division);
+}
+
+function compactKey(value?: string | null): string {
+  return (value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase();
+}
+
+function tournamentRequestKey(t?: Tournament | null): string {
+  if (!t) return '';
+  return [
+    t.tournament_date ?? t.date,
+    t.category,
+    divLabel(tournamentDivision(t)),
+    t.club_name,
+    t.name,
+  ]
+    .map(compactKey)
+    .filter(Boolean)
+    .join('|');
+}
+
+function sameTournamentRequest(request: PlayerRegistrationRequest, tournament?: Tournament | null): boolean {
+  if (!tournament) return false;
+  const requestKey = tournamentRequestKey(tournament);
+  if (request.tournament_key && requestKey && request.tournament_key === requestKey) return true;
+
+  const dateOk = compactKey(request.tournament_date) === compactKey(tournament.tournament_date ?? tournament.date);
+  const categoryOk = compactKey(request.category) === compactKey(tournament.category);
+  const divisionOk = compactKey(normalizeDivision(request.division ?? '')) === compactKey(tournamentDivision(tournament));
+  const clubOk = compactKey(request.club_name) === compactKey(tournament.club_name);
+
+  return Boolean(dateOk && categoryOk && divisionOk && clubOk);
 }
 
 function cleanNameKey(name: string): string {
@@ -425,6 +462,7 @@ export default function RegistrationsPage() {
       setPlayerRequests([]);
       return;
     }
+    const selectedTournament = tournaments.find(t => t.id === tournId);
     setLoadingRequests(true);
     setRequestMsg(null);
     if (demo || !supabase) {
@@ -435,8 +473,8 @@ export default function RegistrationsPage() {
     const { data, error } = await supabase
       .from('player_registration_requests')
       .select('*')
-      .eq('tournament_id', tournId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(500);
     if (error || !data) {
       setPlayerRequests([]);
       setRequestMsg({
@@ -446,10 +484,14 @@ export default function RegistrationsPage() {
           : error?.message ?? 'Demandes joueurs indisponibles.',
       });
     } else {
-      setPlayerRequests(data as PlayerRegistrationRequest[]);
+      const rows = (data as PlayerRegistrationRequest[]).filter(request =>
+        (request.tournament_id && request.tournament_id === tournId) ||
+        sameTournamentRequest(request, selectedTournament)
+      );
+      setPlayerRequests(rows);
     }
     setLoadingRequests(false);
-  }, [demo, supabase]);
+  }, [demo, supabase, tournaments]);
 
   useEffect(() => { loadTournaments(); }, [loadTournaments]);
   useEffect(() => {
@@ -575,8 +617,9 @@ export default function RegistrationsPage() {
   }, [formP1, formP2, formSeed, selectedTournId, registrationDivision, registrations, demo, supabase]);
 
   const handleApproveRequest = useCallback(async (request: PlayerRegistrationRequest) => {
-    if (!request.tournament_id) {
-      setRequestMsg({ type: 'error', text: 'Demande sans tournoi associe.' });
+    const targetTournamentId = request.tournament_id ?? selectedTournId;
+    if (!targetTournamentId) {
+      setRequestMsg({ type: 'error', text: 'Selectionnez le tournoi concerne avant de valider cette demande.' });
       return;
     }
     const requestPairKey = pairKey(request.player1_name, request.player2_name);
@@ -588,7 +631,7 @@ export default function RegistrationsPage() {
       if (!alreadyRegistered) {
         setRegistrations(prev => [...prev, {
           id: `request-${Date.now()}`,
-          tournament_id: request.tournament_id ?? selectedTournId,
+          tournament_id: targetTournamentId,
           player1_name: request.player1_name,
           player2_name: request.player2_name,
           division: normalizeDivision(request.division ?? registrationDivision),
@@ -603,7 +646,7 @@ export default function RegistrationsPage() {
 
     if (!alreadyRegistered) {
       const { error: insertError } = await supabase.from('registrations').insert([{
-        tournament_id: request.tournament_id,
+        tournament_id: targetTournamentId,
         player1_name: request.player1_name,
         player2_name: request.player2_name,
         seed: null,
@@ -626,8 +669,8 @@ export default function RegistrationsPage() {
     } else {
       setRequestMsg({ type: 'success', text: alreadyRegistered ? 'Paire deja inscrite. Demande marquee comme approuvee.' : 'Demande approuvee et inscription ajoutee.' });
     }
-    await loadRegistrations(request.tournament_id);
-    await loadPlayerRequests(request.tournament_id);
+    await loadRegistrations(targetTournamentId);
+    await loadPlayerRequests(targetTournamentId);
   }, [demo, supabase, registrations, registrationDivision, selectedTournId, loadRegistrations, loadPlayerRequests]);
 
   const handleRejectRequest = useCallback(async (request: PlayerRegistrationRequest) => {
@@ -645,8 +688,8 @@ export default function RegistrationsPage() {
       return;
     }
     setRequestMsg({ type: 'success', text: 'Demande refusee.' });
-    if (request.tournament_id) await loadPlayerRequests(request.tournament_id);
-  }, [demo, supabase, loadPlayerRequests]);
+    await loadPlayerRequests(request.tournament_id ?? selectedTournId);
+  }, [demo, supabase, selectedTournId, loadPlayerRequests]);
 
   // ── CSV parsing ───────────────────────────────────────────────────────────
   const handleFileRead = useCallback((file: File) => {

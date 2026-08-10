@@ -9,6 +9,7 @@ create table if not exists public.player_registration_requests (
   updated_at timestamptz not null default now(),
 
   tournament_id uuid,
+  tournament_key text,
   tournament_name text not null,
   tournament_date date,
   category text,
@@ -38,14 +39,21 @@ create table if not exists public.player_registration_requests (
   admin_note text
 );
 
+alter table public.player_registration_requests
+  add column if not exists tournament_key text;
+
+drop index if exists player_registration_requests_unique_pair;
 create unique index if not exists player_registration_requests_unique_pair
   on public.player_registration_requests (
-    coalesce(tournament_id, '00000000-0000-0000-0000-000000000000'::uuid),
+    coalesce(tournament_id::text, nullif(tournament_key, ''), tournament_name),
     pair_key
   );
 
 create index if not exists player_registration_requests_tournament_idx
   on public.player_registration_requests (tournament_id, status, created_at desc);
+
+create index if not exists player_registration_requests_tournament_key_idx
+  on public.player_registration_requests (tournament_key, status, created_at desc);
 
 create or replace function public.touch_player_registration_requests_updated_at()
 returns trigger
