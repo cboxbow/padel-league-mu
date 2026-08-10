@@ -375,7 +375,9 @@ export default function RegistrationsPage() {
   const [loadingTourns, setLoadingTourns]     = useState(false);
   const [loadingRegs,   setLoadingRegs]       = useState(false);
   const [playerRequests, setPlayerRequests]   = useState<PlayerRegistrationRequest[]>([]);
+  const [allPlayerRequests, setAllPlayerRequests] = useState<PlayerRegistrationRequest[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(false);
+  const [loadingAllRequests, setLoadingAllRequests] = useState(false);
   const [requestMsg, setRequestMsg]           = useState<{ type: MsgType; text: string } | null>(null);
 
   // Manual form
@@ -493,7 +495,28 @@ export default function RegistrationsPage() {
     setLoadingRequests(false);
   }, [demo, supabase, tournaments]);
 
+  const loadAllPlayerRequests = useCallback(async () => {
+    setLoadingAllRequests(true);
+    if (demo || !supabase) {
+      setAllPlayerRequests([]);
+      setLoadingAllRequests(false);
+      return;
+    }
+    const { data, error } = await supabase
+      .from('player_registration_requests')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(1000);
+    if (error || !data) {
+      setAllPlayerRequests([]);
+    } else {
+      setAllPlayerRequests(data as PlayerRegistrationRequest[]);
+    }
+    setLoadingAllRequests(false);
+  }, [demo, supabase]);
+
   useEffect(() => { loadTournaments(); }, [loadTournaments]);
+  useEffect(() => { loadAllPlayerRequests(); }, [loadAllPlayerRequests]);
   useEffect(() => {
     if (selectedTournId) {
       loadRegistrations(selectedTournId);
@@ -542,6 +565,42 @@ export default function RegistrationsPage() {
     () => playerRequests.filter(r => (r.status ?? 'pending') === 'pending'),
     [playerRequests]
   );
+
+  const globalPendingRequests = useMemo(
+    () => allPlayerRequests.filter(r => (r.status ?? 'pending') === 'pending'),
+    [allPlayerRequests]
+  );
+
+  const recentGlobalRequests = useMemo(
+    () => [
+      ...globalPendingRequests,
+      ...allPlayerRequests.filter(r => (r.status ?? 'pending') !== 'pending'),
+    ].slice(0, 12),
+    [allPlayerRequests, globalPendingRequests]
+  );
+
+  const findRequestTournament = useCallback((request: PlayerRegistrationRequest) => {
+    return tournaments.find(t =>
+      Boolean(request.tournament_id && t.id === request.tournament_id) ||
+      sameTournamentRequest(request, t)
+    );
+  }, [tournaments]);
+
+  const openRequestTournament = useCallback((request: PlayerRegistrationRequest) => {
+    const target = findRequestTournament(request);
+    if (!target) {
+      setRequestMsg({
+        type: 'warn',
+        text: `Tournoi introuvable pour ${request.tournament_name || 'cette demande'}. Controlez la date, le club et la categorie.`,
+      });
+      return;
+    }
+    setSelectedTournId(target.id);
+    setRequestMsg({
+      type: 'info',
+      text: `Tournoi ouvert: ${tournLabel(target)}.`,
+    });
+  }, [findRequestTournament]);
 
   // ── Manual add ────────────────────────────────────────────────────────────
   const handleAdd = useCallback(async () => {
@@ -671,7 +730,8 @@ export default function RegistrationsPage() {
     }
     await loadRegistrations(targetTournamentId);
     await loadPlayerRequests(targetTournamentId);
-  }, [demo, supabase, registrations, registrationDivision, selectedTournId, loadRegistrations, loadPlayerRequests]);
+    await loadAllPlayerRequests();
+  }, [demo, supabase, registrations, registrationDivision, selectedTournId, loadRegistrations, loadPlayerRequests, loadAllPlayerRequests]);
 
   const handleRejectRequest = useCallback(async (request: PlayerRegistrationRequest) => {
     if (demo || !supabase) {
@@ -689,7 +749,8 @@ export default function RegistrationsPage() {
     }
     setRequestMsg({ type: 'success', text: 'Demande refusee.' });
     await loadPlayerRequests(request.tournament_id ?? selectedTournId);
-  }, [demo, supabase, selectedTournId, loadPlayerRequests]);
+    await loadAllPlayerRequests();
+  }, [demo, supabase, selectedTournId, loadPlayerRequests, loadAllPlayerRequests]);
 
   // ── CSV parsing ───────────────────────────────────────────────────────────
   const handleFileRead = useCallback((file: File) => {
@@ -883,10 +944,93 @@ export default function RegistrationsPage() {
             </select>
             <ChevronDown size={14} color={T.muted} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
           </div>
-          <Btn onClick={() => { loadRegistrations(selectedTournId); loadPlayerRequests(selectedTournId); }} variant="ghost" size="sm">
+          <Btn onClick={() => { loadRegistrations(selectedTournId); loadPlayerRequests(selectedTournId); loadAllPlayerRequests(); }} variant="ghost" size="sm">
             <RefreshCw size={13} /> Actualiser
           </Btn>
         </div>
+      </GlassCard>
+
+      <GlassCard style={{ marginBottom: 20, padding: '18px 20px', borderColor: globalPendingRequests.length ? `${T.warn}55` : `${T.accent}33` }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
+          <div>
+            <h2 style={{ color: T.text, fontSize: 15, fontWeight: 800, margin: '0 0 5px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Users size={16} color={globalPendingRequests.length ? T.warn : T.accent} /> Demandes recues
+            </h2>
+            <p style={{ color: T.muted, fontSize: 12, margin: 0 }}>
+              <span style={{ color: globalPendingRequests.length ? T.warn : T.accent, fontWeight: 900 }}>{globalPendingRequests.length}</span> a traiter maintenant -{' '}
+              {allPlayerRequests.length} demande(s) au total
+            </p>
+          </div>
+          <Btn onClick={loadAllPlayerRequests} variant="ghost" size="sm" disabled={loadingAllRequests}>
+            <RefreshCw size={13} /> Recharger tout
+          </Btn>
+        </div>
+
+        {loadingAllRequests ? (
+          <div style={{ color: T.muted, fontSize: 13, padding: '16px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <RefreshCw size={15} style={{ animation: 'spin 1s linear infinite' }} /> Lecture des demandes entrantes...
+          </div>
+        ) : recentGlobalRequests.length === 0 ? (
+          <div style={{
+            color: T.muted,
+            fontSize: 13,
+            padding: '18px 0',
+            borderTop: `1px solid ${T.border}`,
+          }}>
+            Aucune demande entrante pour le moment. Des qu un joueur envoie une demande depuis son espace, elle apparaitra ici.
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gap: 10 }}>
+            {recentGlobalRequests.map(request => {
+              const target = findRequestTournament(request);
+              const isCurrent = Boolean(target && target.id === selectedTournId);
+              const isPending = (request.status ?? 'pending') === 'pending';
+              const statusColor = isPending ? T.warn : request.status === 'approved' ? T.accent : T.error;
+              const requestDate = request.tournament_date
+                ? new Date(request.tournament_date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
+                : '';
+              return (
+                <div
+                  key={request.id}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'minmax(220px, 1.2fr) minmax(220px, 1.4fr) auto',
+                    gap: 12,
+                    alignItems: 'center',
+                    background: isPending ? 'rgba(245,158,11,0.055)' : 'rgba(255,255,255,0.03)',
+                    border: `1px solid ${isPending ? T.warn + '44' : T.border}`,
+                    borderRadius: 12,
+                    padding: 12,
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ color: T.text, fontWeight: 850, fontSize: 13, marginBottom: 5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {request.player1_name} / {request.player2_name}
+                    </div>
+                    <div style={{ color: T.muted, fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {request.player1_email || 'Email non fourni'} - rang paire {request.pair_rank_sum ?? '-'}
+                    </div>
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ color: T.text, fontWeight: 750, fontSize: 13, marginBottom: 5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {target ? tournLabel(target) : request.tournament_name}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <Badge color={statusColor} bg={`${statusColor}18`}>{request.status ?? 'pending'}</Badge>
+                      <span style={{ color: T.muted, fontSize: 12 }}>
+                        {[request.category, divLabel(request.division ?? ''), requestDate].filter(Boolean).join(' - ')}
+                      </span>
+                    </div>
+                  </div>
+                  <Btn onClick={() => openRequestTournament(request)} variant={isCurrent ? 'accent' : 'warn'} size="sm" disabled={!target}>
+                    {isCurrent ? <Check size={12} /> : <Eye size={12} />}
+                    {isCurrent ? 'Ouvert' : 'Ouvrir'}
+                  </Btn>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </GlassCard>
 
       <GlassCard style={{ marginBottom: 20, padding: '18px 20px', borderColor: pendingRequests.length ? `${T.accent}44` : T.border }}>
