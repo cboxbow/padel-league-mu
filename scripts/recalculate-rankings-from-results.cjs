@@ -148,8 +148,9 @@ function rankNumber(row) {
 }
 
 function historicalToRankingInputs(row) {
-  const category = normalizeJuniorCategory(row.category || row.junior_category || '');
-  const division = normalizeRankingDivision(row.division, category, row.event_name);
+  const rawCategory = normalizeJuniorCategory(row.category || row.junior_category || '');
+  const division = normalizeRankingDivision(row.division, rawCategory, row.event_name);
+  const category = division === 'mixed' ? 'MIXED' : rawCategory;
   const date = cleanText(row.event_date).slice(0, 10);
   const clubName = normalizeClubName(row.club_name);
   const rank = rankNumber(row);
@@ -174,8 +175,9 @@ function historicalToRankingInputs(row) {
 }
 
 function resultToRankingInputs(row) {
-  const category = normalizeJuniorCategory(row.category);
-  const division = normalizeRankingDivision(row.division, category, row.tournament_name);
+  const rawCategory = normalizeJuniorCategory(row.category);
+  const division = normalizeRankingDivision(row.division, rawCategory, row.tournament_name);
+  const category = division === 'mixed' ? 'MIXED' : rawCategory;
   const date = cleanText(row.tournament_date).slice(0, 10);
   const clubName = normalizeClubName(row.club_name);
   const points = Math.ceil(Number(row.points) || 0);
@@ -222,7 +224,7 @@ function dedupeRankingInputs(rows) {
     const key = [
       row.event_date,
       row.division,
-      row.category,
+      row.division === 'mixed' ? 'MIXED' : row.category,
       compactEventName(row.club_name || row.event_name),
       normKey(row.player_name),
     ].join('|');
