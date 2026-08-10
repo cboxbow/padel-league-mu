@@ -63,6 +63,7 @@ type RegistrationDraft = {
   eligibilityDetail: string;
   nextStep: string;
   submitted?: boolean;
+  existingStatus?: string;
 };
 
 type PairEligibility = {
@@ -160,6 +161,11 @@ function tournamentRequestKey(tournament: TournamentData) {
     .map(compactKey)
     .filter(Boolean)
     .join('|');
+}
+
+function activeRequestStatus(status?: string | null) {
+  const value = (status ?? 'pending').toLowerCase();
+  return value === 'pending' || value === 'approved';
 }
 
 function eligibilityFor(profile: PlayerProfile | undefined, tournament: TournamentData) {
@@ -380,6 +386,7 @@ export default function EspaceJoueur() {
   const [partnerQuery, setPartnerQuery] = useState('');
   const [selectedPartnerKey, setSelectedPartnerKey] = useState('');
   const [submittingRequest, setSubmittingRequest] = useState(false);
+  const [checkingExistingRequest, setCheckingExistingRequest] = useState(false);
 
   const loadingRankings = men.loading || women.loading || junior.loading || mixed.loading;
   const liveSource = [men.source, women.source, junior.source, mixed.source, tournamentSource].includes('supabase')
@@ -567,7 +574,40 @@ export default function EspaceJoueur() {
     setAuthMessage('Session joueur fermee.');
   }
 
-  function prepareRegistration(tournament: TournamentData, label: string) {
+  async function findExistingRegistrationRequest(tournament: TournamentData, partner?: PlayerProfile) {
+    const client = getSupabaseClient();
+    if (!client || !selectedProfile) return null;
+
+    const key = tournamentRequestKey(tournament);
+    if (!key) return null;
+
+    const { data, error } = await client
+      .from('player_registration_requests')
+      .select('id,status,pair_key,player1_email,player1_key,tournament_key')
+      .eq('tournament_key', key)
+      .limit(80);
+
+    if (error || !data) return null;
+
+    const pair = partner ? pairKeyForPlayers(selectedProfile.name, partner.name) : '';
+    const email = accountEmail.trim().toLowerCase();
+    const rows = data as Array<{
+      status?: string | null;
+      pair_key?: string | null;
+      player1_email?: string | null;
+      player1_key?: string | null;
+    }>;
+
+    return rows.find(request => {
+      if (!activeRequestStatus(request.status)) return false;
+      const sameEmail = email && String(request.player1_email ?? '').trim().toLowerCase() === email;
+      const sameProfile = request.player1_key === selectedProfile.key;
+      const samePair = pair && request.pair_key === pair;
+      return Boolean(sameEmail || sameProfile || samePair);
+    }) ?? null;
+  }
+
+  async function prepareRegistration(tournament: TournamentData, label: string) {
     if (!accountEmail) {
       setAuthMessage('Connecte ton email joueur avant de preparer une inscription.');
       return;
@@ -585,14 +625,33 @@ export default function EspaceJoueur() {
     const partnerNote = 'Prochaine etape: choisis ton partenaire pour valider la paire.';
     setSelectedPartnerKey('');
     setPartnerQuery('');
-    setRegistrationDraft({
+    const nextDraft: RegistrationDraft = {
       player: selectedProfile.name,
       tournament,
       status: label,
       eligibilityDetail: eligibility.detail,
       nextStep: partnerNote,
-    });
+    };
+    setRegistrationDraft(nextDraft);
     setAuthMessage(`Pre-inscription preparee pour ${selectedProfile.name} - ${tournament.name}.${partnerNote}`);
+
+    setCheckingExistingRequest(true);
+    const existing = await findExistingRegistrationRequest(tournament);
+    setCheckingExistingRequest(false);
+    if (existing) {
+      const status = (existing.status ?? 'pending').toLowerCase();
+      const isApproved = status === 'approved';
+      setRegistrationDraft({
+        ...nextDraft,
+        submitted: true,
+        existingStatus: status,
+        status: isApproved ? 'Deja inscrit' : 'Demande deja envoyee',
+        nextStep: isApproved
+          ? 'Tu es deja inscrit sur ce tournoi. Une nouvelle demande n est pas necessaire.'
+          : 'Une demande est deja en attente pour ce tournoi. L admin MPL peut la traiter dans Inscriptions.',
+      });
+      setAuthMessage(isApproved ? 'Deja inscrit sur ce tournoi.' : 'Demande deja envoyee pour ce tournoi.');
+    }
   }
 
   async function submitRegistrationRequest() {
@@ -619,6 +678,24 @@ export default function EspaceJoueur() {
     const partnerRanking = rankingForDivision(selectedPartner, targetDivision);
 
     setSubmittingRequest(true);
+    const existing = await findExistingRegistrationRequest(registrationDraft.tournament, selectedPartner);
+    if (existing) {
+      const status = (existing.status ?? 'pending').toLowerCase();
+      const isApproved = status === 'approved';
+      setSubmittingRequest(false);
+      setRegistrationDraft(prev => prev ? {
+        ...prev,
+        submitted: true,
+        existingStatus: status,
+        status: isApproved ? 'Deja inscrit' : 'Demande deja envoyee',
+        nextStep: isApproved
+          ? 'Tu es deja inscrit sur ce tournoi. Une nouvelle demande n est pas necessaire.'
+          : 'Une demande active existe deja pour ce tournoi. Attends la validation admin.',
+      } : prev);
+      setAuthMessage(isApproved ? 'Deja inscrit sur ce tournoi.' : 'Demande deja envoyee pour ce tournoi.');
+      return;
+    }
+
     const { error } = await client.from('player_registration_requests').insert({
       tournament_id: isUuid(registrationDraft.tournament.id) ? registrationDraft.tournament.id : null,
       tournament_key: tournamentRequestKey(registrationDraft.tournament),
@@ -796,7 +873,13 @@ export default function EspaceJoueur() {
             <div className="draft-head">
               <div>
                 <span className={`source-pill ${registrationDraft.submitted ? 'source-supabase' : 'source-csv'}`}>
-                  {registrationDraft.submitted ? 'Demande envoyee' : 'Demande en preparation'}
+                  {registrationDraft.existingStatus === 'approved'
+                    ? 'Deja inscrit'
+                    : registrationDraft.submitted
+                      ? 'Demande envoyee'
+                      : checkingExistingRequest
+                        ? 'Controle en cours'
+                        : 'Demande en preparation'}
                 </span>
                 <h3>{registrationDraft.tournament.name}</h3>
                 <p>{registrationDraft.player} - {registrationDraft.status}</p>
@@ -862,11 +945,11 @@ export default function EspaceJoueur() {
                   <button
                     type="button"
                     className="registration-button send"
-                    disabled={!draftPairCheck.allowed || submittingRequest}
+                    disabled={!draftPairCheck.allowed || submittingRequest || checkingExistingRequest}
                     onClick={submitRegistrationRequest}
                   >
                     <Send size={15} />
-                    {submittingRequest ? 'Envoi...' : 'Envoyer a l admin'}
+                    {checkingExistingRequest ? 'Controle...' : submittingRequest ? 'Envoi...' : 'Envoyer a l admin'}
                   </button>
                 </div>
               </div>
@@ -981,11 +1064,13 @@ export default function EspaceJoueur() {
                   <button
                     type="button"
                     className="registration-button"
-                    disabled={!accountEmail || !canPrepareRegistration(eligibility.label)}
+                    disabled={!accountEmail || !canPrepareRegistration(eligibility.label) || checkingExistingRequest}
                     onClick={() => prepareRegistration(tournament, eligibility.label)}
                   >
                     {!accountEmail
                       ? 'Connexion requise'
+                      : checkingExistingRequest
+                        ? 'Controle...'
                       : canPrepareRegistration(eligibility.label)
                         ? 'Preparer inscription'
                         : 'Non disponible'}

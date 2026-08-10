@@ -919,7 +919,7 @@ export default function RegistrationsPage() {
       </div>
 
       {/* ── Tournament selector ── */}
-      <GlassCard style={{ marginBottom: 20, padding: '16px 20px' }}>
+      <GlassCard style={{ marginBottom: 12, padding: '12px 16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
           <label style={{ color: T.muted, fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap' }}>Tournoi :</label>
           <div style={{ position: 'relative', flex: 1, minWidth: 260 }}>
@@ -950,10 +950,10 @@ export default function RegistrationsPage() {
         </div>
       </GlassCard>
 
-      <GlassCard style={{ marginBottom: 20, padding: '18px 20px', borderColor: globalPendingRequests.length ? `${T.warn}55` : `${T.accent}33` }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
+      <GlassCard style={{ marginBottom: 12, padding: '12px 16px', borderColor: globalPendingRequests.length ? `${T.warn}55` : `${T.accent}33` }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
           <div>
-            <h2 style={{ color: T.text, fontSize: 15, fontWeight: 800, margin: '0 0 5px', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h2 style={{ color: T.text, fontSize: 14, fontWeight: 800, margin: '0 0 3px', display: 'flex', alignItems: 'center', gap: 8 }}>
               <Users size={16} color={globalPendingRequests.length ? T.warn : T.accent} /> Demandes recues
             </h2>
             <p style={{ color: T.muted, fontSize: 12, margin: 0 }}>
@@ -967,20 +967,20 @@ export default function RegistrationsPage() {
         </div>
 
         {loadingAllRequests ? (
-          <div style={{ color: T.muted, fontSize: 13, padding: '16px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ color: T.muted, fontSize: 13, padding: '12px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
             <RefreshCw size={15} style={{ animation: 'spin 1s linear infinite' }} /> Lecture des demandes entrantes...
           </div>
         ) : recentGlobalRequests.length === 0 ? (
           <div style={{
             color: T.muted,
             fontSize: 13,
-            padding: '18px 0',
+            padding: '12px 0',
             borderTop: `1px solid ${T.border}`,
           }}>
             Aucune demande entrante pour le moment. Des qu un joueur envoie une demande depuis son espace, elle apparaitra ici.
           </div>
         ) : (
-          <div style={{ display: 'grid', gap: 10 }}>
+          <div style={{ display: 'grid', gap: 8, maxHeight: 230, overflowY: 'auto', paddingRight: 2 }}>
             {recentGlobalRequests.map(request => {
               const target = findRequestTournament(request);
               const isCurrent = Boolean(target && target.id === selectedTournId);
@@ -994,25 +994,25 @@ export default function RegistrationsPage() {
                   key={request.id}
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'minmax(220px, 1.2fr) minmax(220px, 1.4fr) auto',
-                    gap: 12,
+                    gridTemplateColumns: 'minmax(210px, 1fr) minmax(260px, 1.35fr) auto',
+                    gap: 10,
                     alignItems: 'center',
                     background: isPending ? 'rgba(245,158,11,0.055)' : 'rgba(255,255,255,0.03)',
                     border: `1px solid ${isPending ? T.warn + '44' : T.border}`,
-                    borderRadius: 12,
-                    padding: 12,
+                    borderRadius: 10,
+                    padding: '9px 10px',
                   }}
                 >
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ color: T.text, fontWeight: 850, fontSize: 13, marginBottom: 5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div style={{ color: T.text, fontWeight: 850, fontSize: 12.5, marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {request.player1_name} / {request.player2_name}
                     </div>
-                    <div style={{ color: T.muted, fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div style={{ color: T.muted, fontSize: 11.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {request.player1_email || 'Email non fourni'} - rang paire {request.pair_rank_sum ?? '-'}
                     </div>
                   </div>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ color: T.text, fontWeight: 750, fontSize: 13, marginBottom: 5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div style={{ color: T.text, fontWeight: 750, fontSize: 12.5, marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {target ? tournLabel(target) : request.tournament_name}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -1033,8 +1033,8 @@ export default function RegistrationsPage() {
         )}
       </GlassCard>
 
-      <GlassCard style={{ marginBottom: 20, padding: '18px 20px', borderColor: pendingRequests.length ? `${T.accent}44` : T.border }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
+      <GlassCard style={{ marginBottom: 16, padding: '12px 16px', borderColor: pendingRequests.length ? `${T.accent}44` : T.border }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
           <div>
             <h2 style={{ color: T.text, fontSize: 14, fontWeight: 800, margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 8 }}>
               <Users size={15} color={T.accent} /> Demandes joueurs
@@ -1058,7 +1058,7 @@ export default function RegistrationsPage() {
             Aucune demande joueur pour ce tournoi. Les demandes envoyees depuis l Espace Joueur apparaitront ici.
           </div>
         ) : (
-          <div style={{ display: 'grid', gap: 10 }}>
+          <div style={{ display: 'grid', gap: 8, maxHeight: 190, overflowY: 'auto', paddingRight: 2 }}>
             {playerRequests.map(request => {
               const isPending = (request.status ?? 'pending') === 'pending';
               const statusColor = isPending ? T.warn : request.status === 'approved' ? T.accent : T.error;
@@ -1068,13 +1068,13 @@ export default function RegistrationsPage() {
                   key={request.id}
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'minmax(0,1.4fr) minmax(0,1fr) auto',
-                    gap: 12,
+                    gridTemplateColumns: 'minmax(0,1.4fr) minmax(0,0.9fr) auto',
+                    gap: 10,
                     alignItems: 'center',
                     background: 'rgba(255,255,255,0.035)',
                     border: `1px solid ${isPending ? T.warn + '33' : T.border}`,
-                    borderRadius: 12,
-                    padding: 12,
+                    borderRadius: 10,
+                    padding: '9px 10px',
                   }}
                 >
                   <div style={{ minWidth: 0 }}>
