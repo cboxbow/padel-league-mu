@@ -103,7 +103,7 @@ function tournamentDivision(tournament: TournamentData): DivisionKey | 'all' {
 }
 
 function eligibilityFor(profile: PlayerProfile | undefined, tournament: TournamentData) {
-  if (!profile) return { label: 'Choisis un joueur', tone: '#a0a0a0', detail: 'Selectionne ton profil pour evaluer ce tournoi.' };
+  if (!profile) return { label: 'Profil requis', tone: '#a0a0a0', detail: 'Selectionne ton profil pour evaluer les conditions d acces.' };
 
   const targetDivision = tournamentDivision(tournament);
   const hasTargetDivision = targetDivision === 'all' || profile.rankings.some(r => r.division === targetDivision);
@@ -119,7 +119,7 @@ function eligibilityFor(profile: PlayerProfile | undefined, tournament: Tourname
   }
 
   if (targetDivision === 'mixed') {
-    return { label: 'Partenaire requis', tone: '#8b5cf6', detail: 'Inscription mixte avec validation de la paire.' };
+    return { label: 'Paire mixte', tone: '#8b5cf6', detail: 'Ouvert avec partenaire compatible et validation de la paire.' };
   }
 
   if (targetDivision === 'women' && hasMenRanking && !hasWomenRanking) {
@@ -136,24 +136,24 @@ function eligibilityFor(profile: PlayerProfile | undefined, tournament: Tourname
 
     if (individualLimit && bestRankForDivision && bestRankForDivision < individualLimit) {
       return {
-        label: 'Non eligible',
+        label: 'Hors seuil',
         tone: '#ef4444',
-        detail: `Rang individuel trop eleve pour cette categorie: minimum #${individualLimit}, rang actuel #${bestRankForDivision}.`,
+        detail: `Cette categorie est reservee aux joueurs classes #${individualLimit} ou au-dela. Rang actuel: #${bestRankForDivision}.`,
       };
     }
 
     if (individualLimit && bestRankForDivision && bestRankForDivision >= individualLimit) {
       return {
-        label: 'Profil OK',
+        label: 'Indiv. OK',
         tone: '#4ad569',
-        detail: `Rang individuel #${bestRankForDivision} valide. La paire doit cumuler au moins #${pairLimit}.`,
+        detail: `Rang individuel #${bestRankForDivision} valide. La paire devra respecter le cumul minimum #${pairLimit}.`,
       };
     }
 
     if (pairLimit && !individualLimit) {
       const partnerNeeded = bestRankForDivision ? Math.max(1, pairLimit - bestRankForDivision) : pairLimit;
       return {
-        label: 'Paire a valider',
+        label: 'Paire requise',
         tone: '#f59e0b',
         detail: bestRankForDivision
           ? `Cumul paire minimum #${pairLimit}. Avec ton rang #${bestRankForDivision}, partenaire requis #${partnerNeeded} ou au-dela.`
@@ -162,7 +162,7 @@ function eligibilityFor(profile: PlayerProfile | undefined, tournament: Tourname
     }
 
     return {
-      label: 'Non eligible',
+      label: 'A verifier',
       tone: '#ef4444',
       detail: individualLimit
         ? `Rang requis: Top ${individualLimit} individuel. Rang actuel #${bestRankForDivision ?? '-'}.`
@@ -182,7 +182,7 @@ function eligibilityFor(profile: PlayerProfile | undefined, tournament: Tourname
 }
 
 function canPrepareRegistration(label: string) {
-  return !['Non eligible', 'Termine', 'Choisis un joueur'].includes(label);
+  return !['Non eligible', 'Hors seuil', 'Termine', 'Profil requis'].includes(label);
 }
 
 export default function EspaceJoueur() {
@@ -208,6 +208,12 @@ export default function EspaceJoueur() {
   const [authMessage, setAuthMessage] = useState('');
   const [linkedPlayer, setLinkedPlayer] = useState<PlayerAccountRow | null>(null);
   const [linkMessage, setLinkMessage] = useState('');
+  const [registrationDraft, setRegistrationDraft] = useState<{
+    player: string;
+    tournament: string;
+    status: string;
+    nextStep: string;
+  } | null>(null);
 
   const loadingRankings = men.loading || women.loading || junior.loading || mixed.loading;
   const liveSource = [men.source, women.source, junior.source, mixed.source, tournamentSource].includes('supabase')
@@ -373,9 +379,15 @@ export default function EspaceJoueur() {
       return;
     }
 
-    const partnerNote = label === 'Partenaire requis' || label === 'Paire a valider'
+    const partnerNote = label === 'Paire mixte' || label === 'Paire requise' || label === 'A verifier'
       ? ' Prochaine etape: choix du partenaire et validation de la paire.'
       : '';
+    setRegistrationDraft({
+      player: selectedProfile.name,
+      tournament: tournament.name,
+      status: label,
+      nextStep: partnerNote.trim() || 'Prochaine etape: confirmation des informations joueur.',
+    });
     setAuthMessage(`Pre-inscription preparee pour ${selectedProfile.name} - ${tournament.name}.${partnerNote}`);
   }
 
@@ -383,20 +395,30 @@ export default function EspaceJoueur() {
     <Layout>
       <section className="player-space">
         <div className="player-hero">
-          <div>
+          <div className="hero-copy">
             <div className="eyebrow"><Sparkles size={14} /> Espace Joueur MPL</div>
-            <h1>Ton profil. Tes points. Tes tournois.</h1>
-            <p>
-              Une premiere couche immersive pour consulter ta datasheet joueur, verifier ton classement Top 8
-              et preparer l'inscription intelligente aux tournois MPL.
-            </p>
+            <h1>Ton espace MPL</h1>
+            <p>Profil joueur, Ranking Top 8, historique et eligibilite tournoi dans un seul espace.</p>
+            <div className="hero-flow">
+              <span><i /> Profil</span>
+              <span><i /> Top 8</span>
+              <span><i /> Eligibilite</span>
+              <span><i /> Inscription</span>
+            </div>
           </div>
-          <div className="hero-status">
-            <span className={`source-pill source-${liveSource}`}>
-              {liveSource === 'supabase' ? 'Donnees live' : liveSource === 'csv' ? 'Donnees CSV' : 'Mode local'}
-            </span>
-            <strong>{formatNumber(profiles.length)}</strong>
-            <span>profils detectes</span>
+          <div className="hero-metrics">
+            <div>
+              <span className={`source-pill source-${liveSource}`}>
+                {liveSource === 'supabase' ? 'Donnees live' : liveSource === 'csv' ? 'Donnees CSV' : 'Mode local'}
+              </span>
+              <strong>{formatNumber(profiles.length)}</strong>
+              <small>profils detectes</small>
+            </div>
+            <div>
+              <span className="source-pill source-supabase">Top 8</span>
+              <strong>12M</strong>
+              <small>regle active</small>
+            </div>
           </div>
         </div>
 
@@ -433,18 +455,17 @@ export default function EspaceJoueur() {
           <div className="account-copy">
             <div className="section-title">
               <LockKeyhole size={18} />
-              <span>Compte joueur</span>
+              <span>Acces joueur</span>
             </div>
-            <h2>Connecte ton profil MPL</h2>
+            <h2>{accountEmail ? 'Profil MPL connecte' : 'Connecte ton profil MPL'}</h2>
             <p>
-              Cette phase prepare l'espace personnel: email verifie, profil joueur associe,
-              licence controlee et inscription tournoi securisee avec les regles MPL.
+              Verifie ton email et ta licence pour preparer une demande d inscription avec les regles MPL.
             </p>
             <div className="account-steps">
               <span className={accountEmail ? 'done' : ''}>Email controle</span>
               <span className={linkedPlayer?.license_no ? 'done' : ''}>Licence verifiee</span>
               <span className={linkedPlayer ? 'done' : ''}>Profil associe</span>
-              <span>Inscriptions phase 3</span>
+              <span className={accountEmail ? 'current' : ''}>Inscription guidee</span>
             </div>
           </div>
 
@@ -502,6 +523,22 @@ export default function EspaceJoueur() {
             {authMessage && <p className="auth-message">{authMessage}</p>}
           </div>
         </div>
+
+        {registrationDraft && (
+          <div className="player-panel draft-panel">
+            <div>
+              <span className="source-pill source-supabase">Demande preparee</span>
+              <h3>{registrationDraft.tournament}</h3>
+              <p>{registrationDraft.player} - {registrationDraft.status}</p>
+            </div>
+            <div>
+              <small>{registrationDraft.nextStep}</small>
+              <button type="button" className="registration-button" onClick={() => setRegistrationDraft(null)}>
+                Modifier le choix
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="player-grid">
           <div className="player-panel player-list">
@@ -569,10 +606,15 @@ export default function EspaceJoueur() {
           </div>
         </div>
 
-        <div className="player-panel">
+        <div className="player-panel registration-panel">
           <div className="section-title split">
             <span><CalendarCheck size={18} /> Tournois a venir et eligibilite</span>
             <small>{tournamentsLoading ? 'Chargement...' : `${upcomingTournaments.length} suggestions`}</small>
+          </div>
+          <div className="registration-intro">
+            <span><i /> Les opens restent ouverts aux licencies</span>
+            <span><i /> Les categories M25/M50/M100/M250 appliquent les seuils MPL</span>
+            <span><i /> La paire sera controlee a l etape suivante</span>
           </div>
           <div className="tournament-grid">
             {upcomingTournaments.map(tournament => {
@@ -584,7 +626,7 @@ export default function EspaceJoueur() {
                     <StatusBadge status={tournament.status} />
                   </div>
                   <h3>{tournament.name}</h3>
-                  <p>{humanDate(tournament.date)} · {tournament.region} · {tournament.club_name}</p>
+                  <p>{humanDate(tournament.date)} - {tournament.region} - {tournament.club_name}</p>
                   <div className="eligibility" style={{ borderColor: `${eligibility.tone}55`, color: eligibility.tone }}>
                     <CheckCircle2 size={15} />
                     <strong>{eligibility.label}</strong>
@@ -631,14 +673,30 @@ export default function EspaceJoueur() {
         .player-space {
           max-width: 1280px;
           margin: 0 auto;
-          padding: 72px 24px 84px;
+          padding: 54px 24px 76px;
+          position: relative;
+        }
+        .player-space::before {
+          content: '';
+          position: absolute;
+          top: 26px;
+          right: 6px;
+          width: 300px;
+          height: 220px;
+          pointer-events: none;
+          opacity: 0.34;
+          background-image: radial-gradient(circle, rgba(74,213,105,0.35) 0 4px, transparent 5px);
+          background-size: 28px 28px;
+          mask-image: linear-gradient(90deg, transparent, black 30%, black 70%, transparent);
         }
         .player-hero {
           display: grid;
-          grid-template-columns: minmax(0, 1fr) 240px;
-          gap: 28px;
-          align-items: end;
-          margin-bottom: 28px;
+          grid-template-columns: minmax(0, 1fr) minmax(300px, 420px);
+          gap: 24px;
+          align-items: center;
+          margin-bottom: 22px;
+          position: relative;
+          z-index: 1;
         }
         .eyebrow {
           display: inline-flex;
@@ -660,40 +718,74 @@ export default function EspaceJoueur() {
           background: transparent;
         }
         .player-hero h1 {
-          margin: 18px 0 10px;
-          font-size: clamp(42px, 8vw, 86px);
-          line-height: 0.92;
+          margin: 14px 0 8px;
+          font-size: clamp(46px, 6vw, 72px);
+          line-height: 0.96;
           letter-spacing: 0;
         }
         .player-hero p {
-          max-width: 760px;
+          max-width: 620px;
           color: #a0a0a0;
-          font-size: 18px;
-          line-height: 1.55;
+          font-size: 17px;
+          line-height: 1.48;
           margin: 0;
         }
-        .hero-status,
+        .hero-flow {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin-top: 18px;
+        }
+        .hero-flow span,
+        .registration-intro span {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          color: rgba(255,255,255,0.72);
+          font-size: 13px;
+          font-weight: 800;
+        }
+        .hero-flow i,
+        .registration-intro i {
+          width: 7px;
+          height: 7px;
+          border-radius: 999px;
+          background: #4ad569;
+          box-shadow: 0 0 18px rgba(74,213,105,0.8);
+        }
+        .hero-metrics,
         .player-panel,
         .roadmap-card {
-          background: rgba(18,18,18,0.86);
+          background: linear-gradient(180deg, rgba(20,20,20,0.92), rgba(13,13,13,0.92));
           border: 1px solid rgba(74,213,105,0.18);
-          border-radius: 18px;
-          box-shadow: 0 24px 70px rgba(0,0,0,0.28);
+          border-radius: 16px;
+          box-shadow: 0 22px 60px rgba(0,0,0,0.24);
         }
-        .hero-status {
-          padding: 22px;
-          min-height: 150px;
+        .hero-metrics {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+          padding: 12px;
+        }
+        .hero-metrics div {
+          min-height: 118px;
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 12px;
+          background:
+            radial-gradient(circle at 100% 0%, rgba(74,213,105,0.12), transparent 38%),
+            rgba(255,255,255,0.025);
+          padding: 16px;
           display: flex;
           flex-direction: column;
           justify-content: center;
           gap: 8px;
         }
-        .hero-status strong {
+        .hero-metrics strong {
           color: #3b82f6;
-          font-size: 42px;
+          font-size: 38px;
           line-height: 1;
         }
-        .hero-status span:last-child,
+        .hero-metrics small,
         .muted,
         .tournament-card p,
         .tournament-card small,
@@ -712,7 +804,7 @@ export default function EspaceJoueur() {
         .source-supabase { color: #4ad569; background: rgba(74,213,105,0.12); }
         .source-csv { color: #f59e0b; background: rgba(245,158,11,0.12); }
         .source-local { color: #ef4444; background: rgba(239,68,68,0.12); }
-        .player-panel { padding: 20px; }
+        .player-panel { padding: 18px; }
         .account-panel {
           display: grid;
           grid-template-columns: minmax(0, 1fr) 360px;
@@ -723,7 +815,7 @@ export default function EspaceJoueur() {
         }
         .account-copy h2 {
           margin: 8px 0 8px;
-          font-size: 30px;
+          font-size: 28px;
           line-height: 1.05;
         }
         .account-copy p {
@@ -751,6 +843,11 @@ export default function EspaceJoueur() {
           color: #4ad569;
           border-color: rgba(74,213,105,0.36);
           background: rgba(74,213,105,0.12);
+        }
+        .account-steps span.current {
+          color: #f59e0b;
+          border-color: rgba(245,158,11,0.34);
+          background: rgba(245,158,11,0.1);
         }
         .account-box {
           display: flex;
@@ -831,6 +928,32 @@ export default function EspaceJoueur() {
           color: white;
           border: 1px solid rgba(255,255,255,0.12);
         }
+        .draft-panel {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+          gap: 16px;
+          align-items: center;
+          margin-bottom: 20px;
+          border-color: rgba(245,158,11,0.34);
+          background:
+            radial-gradient(circle at 100% 0%, rgba(245,158,11,0.14), transparent 38%),
+            linear-gradient(180deg, rgba(20,20,20,0.94), rgba(13,13,13,0.94));
+        }
+        .draft-panel h3 {
+          margin: 10px 0 6px;
+          font-size: 22px;
+          line-height: 1.15;
+        }
+        .draft-panel p {
+          margin: 0;
+          color: #a0a0a0;
+        }
+        .draft-panel small {
+          display: block;
+          margin-bottom: 12px;
+          color: #c8c8c8;
+          line-height: 1.5;
+        }
         .auth-message {
           margin: 0;
           color: #f59e0b;
@@ -840,9 +963,10 @@ export default function EspaceJoueur() {
         .search-panel {
           display: grid;
           grid-template-columns: minmax(0, 1fr) auto;
-          gap: 14px;
+          gap: 12px;
           align-items: center;
-          margin-bottom: 20px;
+          margin-bottom: 18px;
+          padding: 14px;
         }
         .search-box {
           display: flex;
@@ -865,15 +989,19 @@ export default function EspaceJoueur() {
         .division-tabs {
           display: flex;
           flex-wrap: wrap;
-          gap: 8px;
+          gap: 6px;
+          padding: 4px;
+          border-radius: 14px;
+          background: rgba(255,255,255,0.025);
+          border: 1px solid rgba(255,255,255,0.06);
         }
         .division-tabs button,
         .outline-link {
           border: 1px solid rgba(255,255,255,0.12);
           background: rgba(255,255,255,0.04);
           color: rgba(255,255,255,0.76);
-          border-radius: 12px;
-          padding: 13px 16px;
+          border-radius: 10px;
+          padding: 11px 14px;
           font-weight: 800;
           cursor: pointer;
           text-decoration: none;
@@ -927,8 +1055,11 @@ export default function EspaceJoueur() {
           text-align: left;
         }
         .player-row.active {
-          border-color: rgba(59,130,246,0.55);
-          background: rgba(59,130,246,0.1);
+          border-color: rgba(74,213,105,0.55);
+          background:
+            linear-gradient(90deg, rgba(74,213,105,0.14), rgba(59,130,246,0.06)),
+            rgba(255,255,255,0.03);
+          box-shadow: inset 3px 0 0 #4ad569;
         }
         .player-row .rank {
           color: #f59e0b;
@@ -1013,12 +1144,39 @@ export default function EspaceJoueur() {
           grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 14px;
         }
+        .registration-panel {
+          position: relative;
+          overflow: hidden;
+        }
+        .registration-panel::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          background: radial-gradient(circle at 85% 0%, rgba(74,213,105,0.08), transparent 35%);
+        }
+        .registration-panel > * {
+          position: relative;
+          z-index: 1;
+        }
+        .registration-intro {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 12px 18px;
+          margin: -4px 0 16px;
+          padding: 12px 14px;
+          border: 1px solid rgba(255,255,255,0.07);
+          border-radius: 12px;
+          background: rgba(255,255,255,0.025);
+        }
         .tournament-card {
           border: 1px solid rgba(255,255,255,0.1);
-          background: rgba(255,255,255,0.035);
-          border-radius: 14px;
+          background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.02));
+          border-radius: 12px;
           padding: 16px;
           min-height: 205px;
+          display: flex;
+          flex-direction: column;
         }
         .tournament-top {
           display: flex;
@@ -1039,7 +1197,7 @@ export default function EspaceJoueur() {
           border: 1px solid;
           border-radius: 999px;
           padding: 7px 10px;
-          margin: 14px 0 10px;
+          margin: auto 0 10px;
           background: rgba(255,255,255,0.03);
         }
         .eligibility + small {
@@ -1081,18 +1239,22 @@ export default function EspaceJoueur() {
         }
         @media (max-width: 900px) {
           .player-space {
-            padding: 42px 14px 60px;
+            padding: 34px 14px 60px;
           }
           .player-hero,
           .search-panel,
           .account-panel,
+          .draft-panel,
           .player-grid,
           .tournament-grid,
           .roadmap-grid {
             grid-template-columns: 1fr;
           }
           .player-hero h1 {
-            font-size: 48px;
+            font-size: 44px;
+          }
+          .hero-metrics {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
           }
           .division-tabs {
             display: grid;
@@ -1108,21 +1270,52 @@ export default function EspaceJoueur() {
           }
         }
         @media (max-width: 520px) {
+          .player-space::before {
+            width: 190px;
+            height: 180px;
+            opacity: 0.24;
+          }
           .player-hero h1 {
-            font-size: 38px;
+            font-size: 36px;
+          }
+          .player-hero p {
+            font-size: 15px;
+          }
+          .hero-metrics,
+          .stat-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+          .hero-metrics div {
+            min-height: 96px;
+            padding: 13px;
+          }
+          .hero-metrics strong {
+            font-size: 30px;
           }
           .player-panel {
             padding: 14px;
             border-radius: 14px;
-          }
-          .stat-grid {
-            grid-template-columns: 1fr;
           }
           .player-row {
             grid-template-columns: 38px minmax(0, 1fr);
           }
           .player-row b {
             grid-column: 2;
+          }
+          .search-panel {
+            padding: 12px;
+          }
+          .division-tabs {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+          .division-tabs button {
+            padding: 10px 8px;
+          }
+          .account-panel {
+            gap: 14px;
+          }
+          .tournament-card {
+            min-height: 0;
           }
         }
       `}</style>
