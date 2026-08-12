@@ -207,34 +207,6 @@ function LeaguePreview() {
   );
 }
 
-function FeaturedTournament() {
-  return (
-    <section style={{ padding: '24px', background: '#070a0d', position: 'relative' }}>
-      <a
-        href="/tournaments/m1000-cana-2026"
-        aria-label="Ouvrir le tournoi MPL M1000 CANA 2026"
-        style={{
-          display: 'grid', gridTemplateColumns: 'minmax(0,1.15fr) minmax(280px,.85fr)',
-          maxWidth: '1200px', minHeight: '420px', margin: '0 auto', overflow: 'hidden',
-          textDecoration: 'none', color: 'white', border: '1px solid rgba(162,208,109,.28)',
-          borderRadius: '18px', background: '#05090d', boxShadow: '0 30px 80px rgba(0,0,0,.36)',
-        }}
-      >
-        <div style={{ padding: 'clamp(34px,6vw,72px)', display: 'flex', flexDirection: 'column', justifyContent: 'center', position: 'relative', zIndex: 1 }}>
-          <span style={{ color: '#a2d06d', fontSize: '11px', fontWeight: 900, letterSpacing: '2px' }}>TOURNOI EN VEDETTE · 13—15 AOÛT 2026</span>
-          <h2 style={{ margin: '22px 0 12px', fontSize: 'clamp(44px,7vw,82px)', lineHeight: .88, letterSpacing: '-4px', fontStyle: 'italic' }}>M1000<br />CANA</h2>
-          <p style={{ color: '#aebbc6', maxWidth: '520px', lineHeight: 1.7, margin: '8px 0 28px' }}>Scores en direct, programme, groupes, tableaux hommes et dames, classements et résultats officiels.</p>
-          <span style={{ alignSelf: 'flex-start', padding: '14px 20px', background: '#a2d06d', color: '#071008', fontWeight: 900, fontSize: '12px', letterSpacing: '1px' }}>SUIVRE LE TOURNOI →</span>
-        </div>
-        <div style={{ minHeight: '320px', position: 'relative', backgroundImage: "linear-gradient(90deg,#05090d 0%,transparent 32%), url('/tournaments/m1000-cana-2026/og-cana-green.png')", backgroundSize: 'cover', backgroundPosition: 'center' }}>
-          <div style={{ position: 'absolute', right: 22, top: 22, padding: '8px 12px', background: 'rgba(5,9,13,.82)', border: '1px solid rgba(162,208,109,.42)', color: '#a2d06d', fontSize: '10px', fontWeight: 900, letterSpacing: '1px' }}>OFFICIAL TOURNAMENT HUB</div>
-        </div>
-      </a>
-      <style>{`@media(max-width:760px){section>a[aria-label="Ouvrir le tournoi MPL M1000 CANA 2026"]{grid-template-columns:1fr!important}section>a[aria-label="Ouvrir le tournoi MPL M1000 CANA 2026"]>div:last-child{min-height:260px;grid-row:1}}`}</style>
-    </section>
-  );
-}
-
 // ── Regions Preview ───────────────────────────────────────────────────────────
 function RegionsPreview() {
   const { t, lang } = useI18n();
@@ -313,7 +285,6 @@ export default function Home() {
   return (
     <Layout>
       <HeroSection />
-      <FeaturedTournament />
       <LeaguePreview />
       <RegionsPreview />
     </Layout>

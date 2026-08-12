@@ -2,15 +2,5 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist-public",
   "installCommand": "npm install",
-  "framework": "vite",
-  "rewrites": [
-    {
-      "source": "/tournaments/m1000-cana-2026",
-      "destination": "https://mpl-m1000-cana-2026.vercel.app/tournaments/m1000-cana-2026"
-    },
-    {
-      "source": "/tournaments/m1000-cana-2026/:path*",
-      "destination": "https://mpl-m1000-cana-2026.vercel.app/tournaments/m1000-cana-2026/:path*"
-    }
-  ]
+  "framework": "vite"
 }
