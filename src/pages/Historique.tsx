@@ -163,7 +163,24 @@ function normalizeClubName(value: unknown): string {
 }
 
 function normalizeName(value: unknown): string {
-  return cleanText(value).replace(/\s+/g, ' ').toUpperCase();
+  const cleaned = cleanText(value).replace(/\s+/g, ' ').toUpperCase();
+  const aliases: Record<string, string> = {
+    'DALLE GRAVE TIPPI': 'TIPPI DALLE-GRAVE',
+    'TIPPI DALLE GRAVE': 'TIPPI DALLE-GRAVE',
+    'DANE DOHERTY BIGARA': 'DANE DOHERTY-BIGARA',
+    'SOOHINESH DIP': 'DIP SOOHINESH',
+    'ROBERT LARRY': 'LARRY ROBERT',
+    'SHEIKH ALI NASSIM': 'NASSIM SHEIKH ALI',
+    'SHONA LI QUERY': 'SHONA-LI QUERY',
+    'ZAKARIA AFIF': 'AFIF ZAKARIA',
+    'JOHAN ESPITALIER NOEL': 'JOHAN ESPITALIER-NOEL',
+  };
+  const key = cleaned
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim();
+  return aliases[key] || cleaned;
 }
 
 function playerKey(value: unknown): string {

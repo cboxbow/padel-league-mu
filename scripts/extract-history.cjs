@@ -34,6 +34,35 @@ function clean(value) {
 function norm(value) {
   return clean(value).toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
 }
+function playerAliasKey(value) {
+  return clean(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+const playerNameAliases = new Map([
+  ['DALLE GRAVE TIPPI', 'TIPPI DALLE-GRAVE'],
+  ['TIPPI DALLE GRAVE', 'TIPPI DALLE-GRAVE'],
+  ['DANE DOHERTY BIGARA', 'DANE DOHERTY-BIGARA'],
+  ['DIP SOOHINESH', 'DIP SOOHINESH'],
+  ['SOOHINESH DIP', 'DIP SOOHINESH'],
+  ['LARRY ROBERT', 'LARRY ROBERT'],
+  ['ROBERT LARRY', 'LARRY ROBERT'],
+  ['SHEIKH ALI NASSIM', 'NASSIM SHEIKH ALI'],
+  ['NASSIM SHEIKH ALI', 'NASSIM SHEIKH ALI'],
+  ['SHONA LI QUERY', 'SHONA-LI QUERY'],
+  ['AFIF ZAKARIA', 'AFIF ZAKARIA'],
+  ['ZAKARIA AFIF', 'AFIF ZAKARIA'],
+  ['JOHAN ESPITALIER NOEL', 'JOHAN ESPITALIER-NOEL'],
+]);
+function canonicalPlayerName(value) {
+  const cleaned = clean(value).toUpperCase();
+  if (!cleaned) return '';
+  return playerNameAliases.get(playerAliasKey(cleaned)) || cleaned;
+}
 function toNumber(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   const text = clean(value).replace(/,/g, '').replace(/\s/g, '');
@@ -526,7 +555,7 @@ function extractRankingSnapshots() {
       const { division, juniorCategory } = detectDivision(sheetName);
       for (let r = headerRow + 1; r < rows.length; r += 1) {
         const row = rows[r];
-        const playerName = clean(row[playerIdx]).toUpperCase();
+        const playerName = canonicalPlayerName(row[playerIdx]);
         const rank = parseRank(row[rankIdx]);
         const totalPoints = roundUpPoints(row[pointsIdx]);
         if (!playerName || playerName === 'PLAYERS' || !rank.min || totalPoints <= 0) continue;
@@ -579,8 +608,8 @@ function extractTournamentResults() {
       if (!eventResultSourceIsCanonical(fileName, meta)) continue;
       for (let r = headerRow + 1; r < rows.length; r += 1) {
         const row = rows[r];
-        const player1 = clean(row[p1Idx]).toUpperCase();
-        const player2 = p2Idx >= 0 ? clean(row[p2Idx]).toUpperCase() : '';
+        const player1 = canonicalPlayerName(row[p1Idx]);
+        const player2 = p2Idx >= 0 ? canonicalPlayerName(row[p2Idx]) : '';
         const points = roundUpPoints(row[pointsIdx]);
         if (!player1 || points <= 0) continue;
         const rank = parseRank(row[rankIdx]);
