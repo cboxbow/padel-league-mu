@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { getSupabaseClient, getSupabaseRestUrl, isSupabaseConnected, safeSupabaseQuery } from '@/lib/supabase';
 import { normalizeJuniorCategory, normalizeTournamentDisplayName } from '@/lib/tournamentNames';
+import { applyCancelledTournamentStatus } from '@/lib/cancelledTournaments';
 import { MPL_CLUBS, MPL_TOURNAMENTS } from '@/data/mpl2026';
 // MOCK_RANKINGS_* conservés pour compatibilité (non utilisés directement)
 import type { Division } from '@/lib/index';
@@ -291,7 +292,7 @@ export function useTournaments(filters?: {
           const normalized: TournamentData[] = rows.map(r => {
             const date = ((r.tournament_date ?? r.date) as string) ?? '';
             const rawStatus = (r.status as string) ?? '';
-            return {
+            return applyCancelledTournamentStatus({
               id:               r.id               as string,
               name:             normalizeTournamentDisplayName(r.name as string, r.club_name as string),
               club_id:          r.club_id          as string,
@@ -307,11 +308,11 @@ export function useTournaments(filters?: {
               teams_registered: (r.teams_registered ?? 0) as number,
               participants_count: undefined as number | undefined,
               has_results:      false,
-            };
+            });
           });
           normalized.sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''));
 
-          const localOfficial = (MPL_TOURNAMENTS as TournamentData[]).map(t => ({
+          const localOfficial = (MPL_TOURNAMENTS as TournamentData[]).map(t => applyCancelledTournamentStatus({
             ...t,
             status: computeTournamentStatus(t.date, t.status),
           }));
@@ -429,7 +430,7 @@ export function useTournaments(filters?: {
   }, []);
 
   const tournaments = useMemo<TournamentData[]>(() => {
-    let result: TournamentData[] = dbData ?? (MPL_TOURNAMENTS as TournamentData[]).map(t => ({
+    let result: TournamentData[] = dbData ?? (MPL_TOURNAMENTS as TournamentData[]).map(t => applyCancelledTournamentStatus({
       ...t,
       status: computeTournamentStatus(t.date, t.status),
     }));
@@ -470,6 +471,7 @@ export function useTournamentStats() {
     total:     tournaments.length,
     upcoming:  tournaments.filter(t => t.status === 'upcoming').length,
     completed: tournaments.filter(t => t.status === 'completed').length,
+    cancelled: tournaments.filter(t => t.status === 'cancelled').length,
     open:      tournaments.filter(t => t.status === 'open').length,
     byRegion:  {
       Nord:   tournaments.filter(t => t.region === 'Nord').length,

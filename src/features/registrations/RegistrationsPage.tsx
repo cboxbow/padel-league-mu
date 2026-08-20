@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { GlassCard } from '@/components/Layout';
 import { getSupabaseClient, isSupabaseConnected } from '@/lib/supabase';
+import { applyCancelledTournamentStatus } from '@/lib/cancelledTournaments';
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  DESIGN TOKENS
@@ -425,7 +426,7 @@ export default function RegistrationsPage() {
     setLoadingTourns(true);
     if (demo || !supabase) {
       // Mode démo : charger les mocks MAIS ne jamais présélectionner un ID non-UUID
-      setTournaments(MOCK_TOURNAMENTS);
+      setTournaments(MOCK_TOURNAMENTS.map(applyCancelledTournamentStatus).filter(t => t.status !== 'cancelled'));
       setSelectedTournId(''); // Laisser vide — l'utilisateur choisit
       setLoadingTourns(false);
       return;
@@ -440,7 +441,10 @@ export default function RegistrationsPage() {
       setSelectedTournId('');
     } else {
       // Dédupliquer par id
-      const unique = Array.from(new Map((data as Tournament[]).map(t => [t.id, t])).values());
+      const unique = Array.from(new Map((data as Tournament[])
+        .map(applyCancelledTournamentStatus)
+        .filter(t => t.status !== 'cancelled')
+        .map(t => [t.id, t])).values());
       setTournaments(unique);
       const defaultId = pickDefaultTournament(unique);
       if (defaultId) {

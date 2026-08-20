@@ -9,6 +9,7 @@ import { GlassCard } from '@/components/Layout';
 import { getSupabaseClient, isSupabaseConnected, safeSupabaseQuery } from '@/lib/supabase';
 import { computeTournamentStatus } from '@/hooks/useData';
 import { MPL_TOURNAMENTS } from '@/data/mpl2026';
+import { applyCancelledTournamentStatus } from '@/lib/cancelledTournaments';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Division = 'MEN' | 'WOMEN' | 'JUNIOR' | 'MIXTE';
@@ -544,11 +545,12 @@ export default function RankingsAdminPage() {
     const enriched = allTournois.map(t => {
       const d   = ((t.tournament_date ?? t.date) as string) ?? '';
       const typ = ((t.tournament_type ?? t.type) as string ?? '').toUpperCase();
-      return {
+      return applyCancelledTournamentStatus({
+        ...t,
         status: computeTournamentStatus(d, t.status as string),
         type:   typ,
         date:   d,
-      };
+      });
     });
     const total     = enriched.length;
     const completed = enriched.filter(t => t.status === 'completed').length;

@@ -8,6 +8,7 @@ import {
 import { getSupabaseClient, isSupabaseConnected } from '@/lib/supabase';
 import { normalizeJuniorCategory, normalizeTournamentDisplayName } from '@/lib/tournamentNames';
 import { computeTournamentStatus } from '@/hooks/useData';
+import { isCancelledTournament } from '@/lib/cancelledTournaments';
 import { getPoints, getBracketIndex, POINTS_BRACKETS } from '@/lib/pointsAllocation';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1618,6 +1619,7 @@ export default function ResultsAdminPage() {
   //   2. Sa date est passée (< aujourd'hui) selon computeTournamentStatus
   const completedTourns = useMemo(() => tournaments
     .filter(t => {
+      if ((t.status ?? '').toString().toLowerCase() === 'cancelled' || isCancelledTournament(t)) return false;
       const d = (t.date ?? t.tournament_date ?? '').toString();
       const autoStat = computeTournamentStatus(d, t.status);
       return autoStat === 'completed';

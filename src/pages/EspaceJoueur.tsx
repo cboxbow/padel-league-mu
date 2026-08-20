@@ -182,6 +182,10 @@ function eligibilityFor(profile: PlayerProfile | undefined, tournament: Tourname
     .map(r => r.rank)
     .sort((a, b) => a - b)[0];
 
+  if (tournament.status === 'cancelled') {
+    return { label: 'Annule', tone: '#ef4444', detail: 'Tournoi annule selon le calendrier officiel MPL.' };
+  }
+
   if (tournament.status === 'completed') {
     return { label: 'Termine', tone: '#a0a0a0', detail: 'Resultats disponibles si publies.' };
   }
@@ -250,7 +254,7 @@ function eligibilityFor(profile: PlayerProfile | undefined, tournament: Tourname
 }
 
 function canPrepareRegistration(label: string) {
-  return !['Non eligible', 'Hors seuil', 'Termine', 'Profil requis'].includes(label);
+  return !['Non eligible', 'Hors seuil', 'Termine', 'Annule', 'Profil requis'].includes(label);
 }
 
 function rankingForDivision(profile: PlayerProfile | undefined, division: DivisionKey | 'all') {
@@ -283,6 +287,9 @@ function pairEligibilityFor(
 ): PairEligibility {
   if (!profile || !tournament) {
     return { label: 'Profil requis', tone: '#a0a0a0', detail: 'Selectionne ton profil avant de verifier la paire.', allowed: false };
+  }
+  if (tournament.status === 'cancelled') {
+    return { label: 'Tournoi annule', tone: '#ef4444', detail: 'Ce tournoi est annule selon le calendrier officiel MPL.', allowed: false };
   }
   if (!partner) {
     return { label: 'Partenaire requis', tone: '#f59e0b', detail: 'Choisis ton partenaire pour confirmer l eligibilite de la paire.', allowed: false };
@@ -486,6 +493,7 @@ export default function EspaceJoueur() {
 
     return tournaments
       .filter(t => tournamentDateValue(t) >= today.getTime())
+      .filter(t => t.status !== 'cancelled')
       .sort((a, b) => tournamentDateValue(a) - tournamentDateValue(b))
       .slice(0, 6);
   }, [tournaments]);

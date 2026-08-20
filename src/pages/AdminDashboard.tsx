@@ -25,6 +25,7 @@ import { MOCK_CLUBS, MOCK_TOURNAMENTS } from '@/data/index';
 import type { Region, TournamentCategory, Division } from '@/lib/index';
 import { inferGender, inferDivision } from '@/data/rankingLookup';
 import { normalizeJuniorCategory, normalizeTournamentDisplayName } from '@/lib/tournamentNames';
+import { applyCancelledTournamentStatus } from '@/lib/cancelledTournaments';
 
 // ── Error Boundary pour isoler les crashes de sous-pages ─────────────────────
 class AdminErrorBoundary extends Component<
@@ -1357,7 +1358,7 @@ function tournType(t: TournRow): string {
 }
 function autoStatus(t: TournRow): string {
   // Déléguer à la fonction partagée qui implémente les règles MPL officielles
-  return computeTournamentStatus(tournDate(t), t.status);
+  return applyCancelledTournamentStatus({ ...t, date: tournDate(t), type: tournType(t), status: computeTournamentStatus(tournDate(t), t.status) }).status ?? 'upcoming';
 }
 
 function TournamentsAdminPage() {
@@ -2034,11 +2035,16 @@ function DashboardPage() {
     if (!allTournois.length) return null;
 
     // Enrichir les statuts
-    const enriched = allTournois.map(t => ({
-      ...t,
-      _date: (t as any).tournament_date ?? (t as any).date ?? '',
-      _status: computeTournamentStatus((t as any).tournament_date ?? (t as any).date ?? '', t.status),
-    }));
+    const enriched = allTournois.map(t => {
+      const date = (t as any).tournament_date ?? (t as any).date ?? '';
+      const normalized = applyCancelledTournamentStatus({
+        ...t,
+        date,
+        type: (t as any).tournament_type ?? (t as any).type ?? '',
+        status: computeTournamentStatus(date, t.status),
+      });
+      return { ...normalized, _date: date, _status: normalized.status ?? 'upcoming' };
+    });
 
     // Trier par date croissante
     const sorted = [...enriched].sort((a, b) => a._date.localeCompare(b._date));
@@ -2055,8 +2061,8 @@ function DashboardPage() {
       const satStr = sat.toISOString().slice(0, 10);
       const sunStr = sun.toISOString().slice(0, 10);
 
-      const satTournois = sorted.filter(t => t._date === satStr);
-      const sunTournois = sorted.filter(t => t._date === sunStr);
+      const satTournois = sorted.filter(t => t._date === satStr && t._status !== 'cancelled');
+      const sunTournois = sorted.filter(t => t._date === sunStr && t._status !== 'cancelled');
 
       if (satTournois.length > 0 || sunTournois.length > 0) {
         return { sat, sun, satStr, sunStr, satTournois, sunTournois };
@@ -2097,10 +2103,16 @@ function DashboardPage() {
   const activityVisible = showAllActivity ? recentActivity : recentActivity.slice(0, 10);
 
   // ── Stats dynamiques ──────────────────────────────────────────────────────────
-  const enrichedAll = useMemo(() => allTournois.map(t => ({
-    ...t,
-    _status: computeTournamentStatus((t as any).tournament_date ?? (t as any).date ?? '', t.status),
-  })), [allTournois]);
+  const enrichedAll = useMemo(() => allTournois.map(t => {
+    const date = (t as any).tournament_date ?? (t as any).date ?? '';
+    const normalized = applyCancelledTournamentStatus({
+      ...t,
+      date,
+      type: (t as any).tournament_type ?? (t as any).type ?? '',
+      status: computeTournamentStatus(date, t.status),
+    });
+    return { ...normalized, _status: normalized.status ?? 'upcoming' };
+  }), [allTournois]);
 
   const statsCompleted = enrichedAll.filter(t => t._status === 'completed').length || 88;
   const statsUpcoming  = enrichedAll.filter(t => ['upcoming','open','draw'].includes(t._status)).length || 10;
