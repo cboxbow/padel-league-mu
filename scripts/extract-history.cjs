@@ -6,12 +6,18 @@ const XLSX = require('xlsx');
 const projectRoot = path.resolve(__dirname, '..');
 const sourceDir = path.resolve(projectRoot, '..');
 const outDir = path.join(projectRoot, 'exports', 'history');
+const officialLatestRankingFile = 'Padel League - RANKINGS 17 august.xlsx';
 const rankingFiles = [
   'Padel League - RANKINGS - DEC 23.xlsx',
   'Padel League - RANKINGS - DEC 24.xlsx',
   'Padel League - RANKINGS - DEC 25.xlsx',
   'Padel League - RANKINGS - JUN 26.xlsx',
+  officialLatestRankingFile,
 ];
+const existingRankingFiles = rankingFiles.filter((fileName) => fs.existsSync(path.join(sourceDir, fileName)));
+const canonicalResultFiles = fs.existsSync(path.join(sourceDir, officialLatestRankingFile))
+  ? [officialLatestRankingFile]
+  : existingRankingFiles;
 const calendarFile = 'CALENDRIER MPL 2026.xlsx';
 const historicalCalendarRoots = [
   { year: 2025, root: 'W:/PADEL LEAGUE/0 CALENDRIER 2025' },
@@ -49,10 +55,12 @@ function parseRank(value) {
   return { label: text, min: nums[0] || null, max: nums.length > 1 ? nums[nums.length - 1] : (nums[0] || null) };
 }
 function parseYearFromFile(fileName) {
+  if (/17\s*AUGUST/i.test(fileName)) return 2026;
   const match = fileName.match(/(?:DEC|JUN)\s+(\d{2})/i);
   return match ? 2000 + Number(match[1]) : null;
 }
 function snapshotLabelFromFile(fileName) {
+  if (/17\s*AUGUST/i.test(fileName)) return 'AUG 2026';
   const match = fileName.match(/(DEC|JUN)\s+(\d{2})/i);
   return match ? match[1].toUpperCase() + ' 20' + match[2] : fileName.replace(/\.xlsx$/i, '');
 }
@@ -363,6 +371,7 @@ function manualCalendarFallback(sheetName, meta) {
     [/\bM50\b.*OXYGEN.*FEB.*26/, '2026-02-21', 'Oxygen Moka', 'CENTRE'],
     [/\bM250\b.*OXYGEN.*APR.*26/, '2026-04-11', 'Oxygen Moka', 'CENTRE'],
     [/\bM25\b.*OXYGEN.*MAY.*26/, '2026-05-16', 'Oxygen Moka', 'CENTRE'],
+    [/\bM100\b.*OXYGEN.*JUL.*26/, '2026-07-18', 'Oxygen Moka', 'CENTRE'],
     [/\bM500\b.*RM GB.*JUN.*U15/, '2026-06-13', 'RM Club Grand Baie', 'NORD'],
     [/\bM500\b.*ISLA.*JUN.*U15/, '2026-05-09', 'Isla Padel Grand Baie', 'NORD'],
   ];
@@ -500,7 +509,7 @@ function insertSql(table, rows, columns, chunkSize = 350) {
 }
 function extractRankingSnapshots() {
   const out = [];
-  for (const fileName of rankingFiles) {
+  for (const fileName of existingRankingFiles) {
     const workbook = XLSX.readFile(path.join(sourceDir, fileName), { cellDates: false });
     const snapshotYear = parseYearFromFile(fileName);
     for (const sheetName of workbook.SheetNames) {
@@ -533,6 +542,7 @@ function eventResultSourceYear(fileName) {
   return year === 2026 ? 2026 : year;
 }
 function eventResultSourceIsCanonical(fileName, meta) {
+  if (canonicalResultFiles.includes(officialLatestRankingFile)) return fileName === officialLatestRankingFile;
   const sourceYear = eventResultSourceYear(fileName);
   return Boolean(sourceYear && meta.season === sourceYear);
 }
@@ -551,7 +561,7 @@ function eventResultDedupeKey(row) {
 function extractTournamentResults() {
   const out = [];
   const seen = new Set();
-  for (const fileName of rankingFiles) {
+  for (const fileName of canonicalResultFiles) {
     const workbook = XLSX.readFile(path.join(sourceDir, fileName), { cellDates: false });
     for (const sheetName of workbook.SheetNames) {
       if (/^RANKING/i.test(sheetName)) continue;
@@ -649,11 +659,14 @@ const snapshotColumns = ['id', 'source_file', 'snapshot_year', 'snapshot_label',
 const resultColumns = ['id', 'source_file', 'sheet_name', 'event_key', 'event_name', 'event_year', 'season', 'category', 'division', 'junior_category', 'club_name', 'event_date', 'region', 'rank_label', 'rank_min', 'rank_max', 'team_name', 'player1_name', 'player2_name', 'points'];
 writeCsv('historical_ranking_snapshots.csv', snapshots, snapshotColumns);
 writeCsv('historical_tournament_results.csv', results, resultColumns);
+fs.writeFileSync(path.join(outDir, 'historical_ranking_snapshots.json'), JSON.stringify(snapshots, null, 2), 'utf8');
+fs.writeFileSync(path.join(outDir, 'historical_tournament_results.json'), JSON.stringify(results, null, 2), 'utf8');
 const integrityAudit = writeIntegrityAudit(results);
-const sql = ['begin;', "delete from public.historical_ranking_snapshots where source_file in ('Padel League - RANKINGS - DEC 23.xlsx', 'Padel League - RANKINGS - DEC 24.xlsx', 'Padel League - RANKINGS - DEC 25.xlsx', 'Padel League - RANKINGS - JUN 26.xlsx');", "delete from public.historical_tournament_results where source_file in ('Padel League - RANKINGS - DEC 23.xlsx', 'Padel League - RANKINGS - DEC 24.xlsx', 'Padel League - RANKINGS - DEC 25.xlsx', 'Padel League - RANKINGS - JUN 26.xlsx');", insertSql('historical_ranking_snapshots', snapshots, snapshotColumns), insertSql('historical_tournament_results', results, resultColumns), 'commit;'].filter(Boolean).join('\n\n');
+const sourceFilesSql = existingRankingFiles.map(sqlValue).join(', ');
+const sql = ['begin;', `delete from public.historical_ranking_snapshots where source_file in (${sourceFilesSql});`, `delete from public.historical_tournament_results where source_file in (${sourceFilesSql});`, insertSql('historical_ranking_snapshots', snapshots, snapshotColumns), insertSql('historical_tournament_results', results, resultColumns), 'commit;'].filter(Boolean).join('\n\n');
 fs.writeFileSync(path.join(outDir, 'historical_import.sql'), sql, 'utf8');
 const uniquePlayers = new Set();
 for (const row of results) { if (row.player1_name) uniquePlayers.add(row.player1_name); if (row.player2_name) uniquePlayers.add(row.player2_name); }
-const summary = { sourceDir, generatedAt: new Date().toISOString(), strategy: 'Event details are imported from the canonical workbook for each season: DEC23 for 2023, DEC24 for 2024, DEC25 for 2025, JUN26 for 2026. Older repeated sheets inside later workbooks are skipped to avoid duplicated tournaments. All four files are still imported as ranking snapshots.', snapshots: { rows: snapshots.length, byYear: countBy(snapshots, 'snapshot_year'), byDivision: countBy(snapshots, 'division') }, tournamentResults: { rows: results.length, uniquePlayers: uniquePlayers.size, bySourceFile: countBy(results, 'source_file'), bySeason: countBy(results, 'season'), byDivision: countBy(results, 'division'), byCategory: countBy(results, 'category'), withCalendarDate: results.filter((row) => row.event_date).length, withClub: results.filter((row) => row.club_name).length }, integrityAudit };
+const summary = { sourceDir, generatedAt: new Date().toISOString(), strategy: `Ranking snapshots are imported from every available ranking workbook. Tournament result details are imported only from ${canonicalResultFiles.join(', ')} so the current official workbook controls the live Top 8 calculation and older duplicated event sheets do not pollute the database. Calendar dates still override sheet/file names.`, snapshots: { rows: snapshots.length, byYear: countBy(snapshots, 'snapshot_year'), byDivision: countBy(snapshots, 'division') }, tournamentResults: { rows: results.length, uniquePlayers: uniquePlayers.size, bySourceFile: countBy(results, 'source_file'), bySeason: countBy(results, 'season'), byDivision: countBy(results, 'division'), byCategory: countBy(results, 'category'), withCalendarDate: results.filter((row) => row.event_date).length, withClub: results.filter((row) => row.club_name).length }, integrityAudit };
 fs.writeFileSync(path.join(outDir, 'historical_summary.json'), JSON.stringify(summary, null, 2), 'utf8');
 console.log(JSON.stringify(summary, null, 2));
