@@ -444,8 +444,8 @@ function parseEventMeta(sheetName) {
   const yearTokens = sheetName.match(/(?:20)?\d{2}/g) || [];
   const season = yearTokens.map((y) => Number(y.length === 2 ? `20${y}` : y)).filter((y) => y >= 2023 && y <= 2026).pop() || 2025;
   const eventName = clean(sheetName);
-  const eventKey = norm(`${season} ${division} ${category} ${eventName}`).toLowerCase().replace(/\s+/g, '-');
-  const baseMeta = { eventName, eventKey, eventYear: season, season, category, division, juniorCategory };
+  const sheetEventKey = norm(`${season} ${division} ${category} ${eventName}`).toLowerCase().replace(/\s+/g, '-');
+  const baseMeta = { eventName, eventKey: sheetEventKey, eventYear: season, season, category, division, juniorCategory };
   const matchedCalendarEvent = findCalendarEvent(sheetName, baseMeta, calendarEvents);
   const fallbackCalendarEvent = manualCalendarFallback(sheetName, baseMeta);
   const calendarEvent = matchedCalendarEvent?.event_date ? matchedCalendarEvent : (fallbackCalendarEvent || matchedCalendarEvent);
@@ -458,7 +458,10 @@ function parseEventMeta(sheetName) {
   }
   const eventDate = calendarEvent?.event_date || '';
   const region = calendarEvent?.region || '';
-  return { ...baseMeta, clubName, eventDate, region };
+  const calendarEventKey = eventDate
+    ? norm(`${eventDate} ${division} ${category} ${clubName}`).toLowerCase().replace(/\s+/g, '-')
+    : sheetEventKey;
+  return { ...baseMeta, eventKey: calendarEventKey, clubName, eventDate, region };
 }
 function findHeaderRow(rows, required) {
   for (let i = 0; i < Math.min(rows.length, 20); i += 1) {
@@ -536,8 +539,8 @@ function eventResultSourceIsCanonical(fileName, meta) {
 function eventResultDedupeKey(row) {
   const players = [row.player1_name, row.player2_name].filter(Boolean).sort().join('|');
   return [
-    row.season,
-    norm(row.sheet_name),
+    row.event_date || row.season,
+    norm(row.event_key || row.sheet_name),
     row.division,
     row.category,
     row.rank_label,

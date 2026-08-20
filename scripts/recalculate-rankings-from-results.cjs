@@ -35,6 +35,25 @@ function compactEventName(value) {
   return normKey(value).replace(/\s+/g, '');
 }
 
+function categoryKey(value) {
+  const raw = normalizeJuniorCategory(value);
+  return normKey(raw).replace(/\s+/g, '');
+}
+
+function isPlaceholderText(value) {
+  const text = cleanText(value);
+  return !text || text === '-' || text === '?' || /^#?-?$/.test(text);
+}
+
+function eventIdentity(row) {
+  const date = cleanText(row.event_date).slice(0, 10);
+  const club = compactEventName(normalizeClubName(row.club_name) || row.club_name || row.event_name);
+  const division = normalizeRankingDivision(row.division, row.category, row.event_name);
+  const category = division === 'mixed' ? 'MIXED' : categoryKey(row.category);
+  if (date && club && category) return [date, club, division, category].join('|');
+  return compactEventName(row.event_key || row.event_name || row.id);
+}
+
 function normalizeJuniorCategory(category) {
   const value = cleanText(category).toUpperCase().replace(/\s+/g, ' ');
   if (value === 'U10') return 'U11';
@@ -159,6 +178,7 @@ function historicalToRankingInputs(row) {
   const player2 = cleanText(row.player2_name);
   const base = {
     id: row.id,
+    event_key: row.event_key,
     event_name: normalizeTournamentDisplayName(row.event_name, clubName),
     event_date: date,
     category,
@@ -205,13 +225,15 @@ function dedupeRankingInputs(rows) {
   const hasReliableIdentity = (row) => {
     const partner = cleanText(row.partner_name);
     const rank = Number(row.rank);
-    return Boolean(partner && normKey(partner) !== normKey(row.player_name)) && Number.isFinite(rank) && rank > 0 && rank < 999;
+    return Boolean(!isPlaceholderText(partner) && normKey(partner) !== normKey(row.player_name)) && Number.isFinite(rank) && rank > 0 && rank < 999;
   };
+  const isGhostRow = (row) => !hasReliableIdentity(row) && (isPlaceholderText(row.partner_name) || !Number.isFinite(Number(row.rank)) || Number(row.rank) >= 999);
   const qualityScore = (row) => {
     let score = 0;
     if (hasReliableIdentity(row)) score += 100;
-    if (cleanText(row.partner_name)) score += 12;
+    if (!isPlaceholderText(row.partner_name)) score += 12;
     if (Number(row.rank) > 0 && Number(row.rank) < 999) score += 8;
+    if (cleanText(row.event_key)) score += 6;
     if (cleanText(row.id)) score += 2;
     if (cleanText(row.club_name)) score += 2;
     if (cleanText(row.event_date)) score += 2;
@@ -222,10 +244,9 @@ function dedupeRankingInputs(rows) {
   for (const row of rows) {
     if (!cleanText(row.player_name) || !cleanText(row.event_date) || !Math.ceil(Number(row.points) || 0)) continue;
     const key = [
-      row.event_date,
+      eventIdentity(row),
       row.division,
       row.division === 'mixed' ? 'MIXED' : row.category,
-      compactEventName(row.club_name || row.event_name),
       normKey(row.player_name),
     ].join('|');
     const existing = byKey.get(key);
@@ -237,6 +258,11 @@ function dedupeRankingInputs(rows) {
     const existingQuality = qualityScore(existing);
     const rowReliable = hasReliableIdentity(row);
     const existingReliable = hasReliableIdentity(existing);
+    if (isGhostRow(row) && existingReliable) continue;
+    if (rowReliable && isGhostRow(existing)) {
+      byKey.set(key, row);
+      continue;
+    }
     const samePoints = Math.ceil(Number(row.points) || 0) === Math.ceil(Number(existing.points) || 0);
     if (
       (rowReliable && !existingReliable) ||
