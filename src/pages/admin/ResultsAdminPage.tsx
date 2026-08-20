@@ -1443,6 +1443,13 @@ export default function ResultsAdminPage() {
   const [recalcBusy,   setRecalcBusy]  = useState(false);
   const [recalcMessage,setRecalcMessage] = useState('');
   const [recalcOk,     setRecalcOk]    = useState(false);
+  const [rankingDirty, setRankingDirty] = useState(false);
+
+  const markRankingsDirty = useCallback((reason = 'Resultats modifies') => {
+    setRankingDirty(true);
+    setRecalcOk(false);
+    setRecalcMessage(`${reason} - classements a republier.`);
+  }, []);
 
   // ── Chargement ──────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -1529,6 +1536,7 @@ export default function ResultsAdminPage() {
     const hist = historicalPayload({ id: row._source === 'historical' ? row.id : savedId, _source: row._source, ...payload });
     const { error: histErr } = await sb.from('historical_tournament_results').upsert(hist, { onConflict: 'id' });
     if (histErr) { setError(histErr.message); return false; }
+    markRankingsDirty(isEdit ? 'Resultat modifie' : 'Resultat ajoute');
     await load(); return true;
   };
 
@@ -1555,6 +1563,7 @@ export default function ResultsAdminPage() {
         setError(e?.message ?? histError?.message ?? 'Erreur import resultats');
       } else ok += batch.length;
     }
+    if (ok > 0) markRankingsDirty(`${ok} resultats importes`);
     await load(); return { ok, fail };
   };
 
@@ -1569,7 +1578,10 @@ export default function ResultsAdminPage() {
       sb.from('historical_tournament_results').delete().eq('id', id),
     ]);
     const e = legacyDelete.error ?? historicalDelete.error;
-    if (e) setError(e.message); else await load();
+    if (e) setError(e.message); else {
+      markRankingsDirty('Resultat supprime');
+      await load();
+    }
   };
 
   const handlePublishRankings = async () => {
@@ -1589,6 +1601,7 @@ export default function ResultsAdminPage() {
       setRecalcMessage(
         `Classements recalcules: ${summary.totalPlayers} joueurs, ${summary.totalDetails} details, periode ${summary.period.startIso} -> ${summary.period.endIso}.`
       );
+      setRankingDirty(false);
       await load();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1693,14 +1706,15 @@ export default function ResultsAdminPage() {
         <div style={{ display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap' }}>
           <button onClick={handlePublishRankings} disabled={recalcBusy || !isSupabaseConnected()} style={{
             display:'flex',alignItems:'center',gap:'6px',
-            background: recalcBusy ? 'rgba(74,213,105,0.08)' : 'rgba(74,213,105,0.12)',
-            color: recalcBusy ? '#86efac' : '#4ad569',
-            border:'1px solid rgba(74,213,105,0.28)',
+            background: rankingDirty ? 'rgba(245,158,11,0.18)' : (recalcBusy ? 'rgba(74,213,105,0.08)' : 'rgba(74,213,105,0.12)'),
+            color: rankingDirty ? '#fbbf24' : (recalcBusy ? '#86efac' : '#4ad569'),
+            border:`1px solid ${rankingDirty ? 'rgba(245,158,11,0.42)' : 'rgba(74,213,105,0.28)'}`,
             borderRadius:'8px',padding:'8px 12px',
             cursor: recalcBusy ? 'wait' : 'pointer',fontSize:'12px',fontWeight:700,
+            boxShadow: rankingDirty ? '0 0 0 1px rgba(245,158,11,0.16), 0 0 22px rgba(245,158,11,0.12)' : 'none',
             opacity: !isSupabaseConnected() ? 0.45 : 1,
           }}>
-            <BarChart3 size={13}/>{recalcBusy ? 'Recalcul...' : 'Publier classements'}
+            <BarChart3 size={13}/>{recalcBusy ? 'Recalcul...' : (rankingDirty ? 'Publier maintenant' : 'Publier classements')}
           </button>
           <button onClick={load} style={{ display:'flex',alignItems:'center',gap:'5px',background:'rgba(255,255,255,0.04)',color:'#888',border:'1px solid rgba(255,255,255,0.08)',borderRadius:'8px',padding:'8px 12px',cursor:'pointer',fontSize:'12px' }}>
             <RefreshCw size={12}/> Actualiser
@@ -1715,15 +1729,28 @@ export default function ResultsAdminPage() {
         </div>
       )}
 
-      {recalcMessage && (
+      {rankingDirty && !recalcBusy && (
         <div style={{
-          background: recalcOk ? 'rgba(74,213,105,0.08)' : 'rgba(59,130,246,0.08)',
-          color: recalcOk ? '#4ad569' : '#60a5fa',
+          background:'rgba(245,158,11,0.08)',
+          color:'#fbbf24',
           borderRadius:'10px',padding:'10px 14px',marginBottom:'16px',
           fontSize:'12px',display:'flex',alignItems:'center',gap:'8px',
-          border:`1px solid ${recalcOk ? 'rgba(74,213,105,0.22)' : 'rgba(59,130,246,0.22)'}`,
+          border:'1px solid rgba(245,158,11,0.24)',
         }}>
-          {recalcBusy ? <RefreshCw size={14} style={{ animation:'spin 1s linear infinite' }}/> : <CheckCircle size={14}/>}
+          <AlertCircle size={14}/>
+          Resultats modifies - cliquez sur Publier classements pour recalculer les points joueurs.
+        </div>
+      )}
+
+      {recalcMessage && (
+        <div style={{
+          background: rankingDirty ? 'rgba(245,158,11,0.08)' : (recalcOk ? 'rgba(74,213,105,0.08)' : 'rgba(59,130,246,0.08)'),
+          color: rankingDirty ? '#fbbf24' : (recalcOk ? '#4ad569' : '#60a5fa'),
+          borderRadius:'10px',padding:'10px 14px',marginBottom:'16px',
+          fontSize:'12px',display:'flex',alignItems:'center',gap:'8px',
+          border:`1px solid ${rankingDirty ? 'rgba(245,158,11,0.24)' : (recalcOk ? 'rgba(74,213,105,0.22)' : 'rgba(59,130,246,0.22)')}`,
+        }}>
+          {recalcBusy ? <RefreshCw size={14} style={{ animation:'spin 1s linear infinite' }}/> : (rankingDirty ? <AlertCircle size={14}/> : <CheckCircle size={14}/>)}
           {recalcMessage}
         </div>
       )}
