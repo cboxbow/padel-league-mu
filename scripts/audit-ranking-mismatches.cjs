@@ -24,6 +24,10 @@ function normKey(value) {
     .trim();
 }
 
+function compactEventName(value) {
+  return normKey(value).replace(/\s+/g, '');
+}
+
 function normalizeDivision(value, category) {
   const raw = cleanText(value).toLowerCase();
   if (['men', 'hommes', 'h', 'mens'].includes(raw)) return 'men';
@@ -36,7 +40,9 @@ function normalizeDivision(value, category) {
   return raw || 'men';
 }
 
-function normalizeRankingDivision(value, category) {
+function normalizeRankingDivision(value, category, eventName = '') {
+  const inferred = inferDivisionFromEventName(eventName);
+  if (inferred) return inferred;
   const normalized = normalizeDivision(value, category);
   return DIVS.includes(normalized) ? normalized : 'men';
 }
@@ -52,6 +58,16 @@ function normalizeJuniorCategory(category) {
   return cleanText(category);
 }
 
+function categoryKey(value) {
+  const raw = normalizeJuniorCategory(value);
+  return normKey(raw).replace(/\s+/g, '');
+}
+
+function isPlaceholderText(value) {
+  const text = cleanText(value);
+  return !text || text === '-' || text === '?' || /^#?-?$/.test(text);
+}
+
 function normalizeClubName(value) {
   const name = cleanText(value);
   if (!name) return '';
@@ -63,6 +79,24 @@ function normalizeClubName(value) {
     .replace(/I Padel RM/gi, 'I Padel by RM')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function inferDivisionFromEventName(eventName) {
+  const event = ` ${normKey(eventName)} `;
+  if (/\b(JUNIOR|U10|U11|U12|U13|U14|U15)\b/.test(event)) return 'junior';
+  if (/\b(MIXED|MIXTE)\b/.test(event)) return 'mixed';
+  if (/\b(WOMEN|WOME|WOM|DAMES|DAME|FEMMES|FEMME)\b/.test(event)) return 'women';
+  if (/\b(MEN|HOMMES|HOMME)\b/.test(event)) return 'men';
+  return '';
+}
+
+function eventIdentity(row) {
+  const date = cleanText(row.event_date).slice(0, 10);
+  const club = compactEventName(normalizeClubName(row.club_name) || row.club_name || row.event_name);
+  const division = normalizeRankingDivision(row.division, row.category, row.event_name);
+  const category = division === 'mixed' ? 'MIXED' : categoryKey(row.category);
+  if (date && club && category) return [date, club, division, category].join('|');
+  return compactEventName(row.event_key || row.event_name || row.id);
 }
 
 function computeFixedMauritiusPeriod() {
@@ -89,7 +123,7 @@ function rankNumber(row) {
 
 function historicalToInputs(row, source) {
   const category = normalizeJuniorCategory(row.category || row.junior_category || '');
-  const division = normalizeRankingDivision(row.division, category);
+  const division = normalizeRankingDivision(row.division, category, row.event_name);
   const date = cleanText(row.event_date).slice(0, 10);
   const clubName = normalizeClubName(row.club_name);
   const rank = rankNumber(row);
@@ -98,6 +132,8 @@ function historicalToInputs(row, source) {
   const player2 = cleanText(row.player2_name);
   const base = {
     source,
+    id: row.id,
+    event_key: row.event_key,
     event_name: cleanText(row.event_name),
     event_date: date,
     category,
@@ -114,7 +150,7 @@ function historicalToInputs(row, source) {
 
 function legacyToInputs(row) {
   const category = normalizeJuniorCategory(row.category);
-  const division = normalizeRankingDivision(row.division, category);
+  const division = normalizeRankingDivision(row.division, category, row.tournament_name);
   const date = cleanText(row.tournament_date).slice(0, 10);
   const clubName = normalizeClubName(row.club_name);
   const rank = Number(row.rank ?? 999);
@@ -138,22 +174,54 @@ function legacyToInputs(row) {
 }
 
 function dedupeInputs(rows) {
-  const seen = new Set();
-  const out = [];
+  const byKey = new Map();
+  const hasReliableIdentity = (row) => {
+    const partner = cleanText(row.partner_name);
+    const rank = Number(row.rank);
+    return Boolean(!isPlaceholderText(partner) && normKey(partner) !== normKey(row.player_name)) && Number.isFinite(rank) && rank > 0 && rank < 999;
+  };
+  const isGhostRow = (row) => !hasReliableIdentity(row) && (isPlaceholderText(row.partner_name) || !Number.isFinite(Number(row.rank)) || Number(row.rank) >= 999);
+  const qualityScore = (row) => {
+    let score = 0;
+    if (hasReliableIdentity(row)) score += 100;
+    if (!isPlaceholderText(row.partner_name)) score += 12;
+    if (Number(row.rank) > 0 && Number(row.rank) < 999) score += 8;
+    if (cleanText(row.event_key)) score += 6;
+    if (cleanText(row.id)) score += 2;
+    if (cleanText(row.club_name)) score += 2;
+    if (cleanText(row.event_date)) score += 2;
+    if (row.source === 'historical') score += 1;
+    return score;
+  };
   for (const row of rows) {
+    if (!cleanText(row.player_name) || !cleanText(row.event_date) || !Math.ceil(Number(row.points) || 0)) continue;
     const key = [
-      row.event_date,
+      eventIdentity(row),
       row.division,
-      row.category,
+      row.division === 'mixed' ? 'MIXED' : row.category,
       normKey(row.player_name),
-      normKey(row.partner_name),
-      row.points,
     ].join('|');
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(row);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, row);
+      continue;
+    }
+    const rowReliable = hasReliableIdentity(row);
+    const existingReliable = hasReliableIdentity(existing);
+    if (isGhostRow(row) && existingReliable) continue;
+    if (rowReliable && isGhostRow(existing)) {
+      byKey.set(key, row);
+      continue;
+    }
+    if (
+      (rowReliable && !existingReliable) ||
+      qualityScore(row) > qualityScore(existing) ||
+      (qualityScore(row) === qualityScore(existing) && Number(row.points) > Number(existing.points))
+    ) {
+      byKey.set(key, row);
+    }
   }
-  return out;
+  return Array.from(byKey.values());
 }
 
 function sumTop8(rows) {
@@ -184,7 +252,7 @@ async function main() {
   });
   const period = computeFixedMauritiusPeriod();
   const historicalColumns = [
-    'id','event_name','event_year','season','category','division','junior_category','club_name','event_date',
+    'id','event_key','event_name','event_year','season','category','division','junior_category','club_name','event_date',
     'rank_label','rank_min','rank_max','player1_name','player2_name','points',
   ].join(',');
   const rankings = await fetchAll(supabase, 'rankings', 'player_name,rank,points,division,tournaments_played', (q) => q.order('division').order('rank'));
