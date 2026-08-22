@@ -23,11 +23,9 @@ type CancelledTournamentRule = {
 };
 
 export const CANCELLED_TOURNAMENTS_2026: CancelledTournamentRule[] = [
-  { date: '2026-02-14', club: 'Mont Choisy Golf', category: 'M50', divisions: ['men', 'women'] },
+  // Calendar Update 2026: active events stay visible; only obsolete/replaced rows are hidden.
   { date: '2026-03-01', club: 'I Padel by RM Hennessy', category: 'JUNIOR', divisions: ['junior'] },
-  { date: '2026-03-15', club: 'Oxygen Moka', category: 'M100', divisions: ['men', 'women'] },
   { date: '2026-04-04', club: 'Club Med Albion', category: 'MIXED', divisions: ['mixed'] },
-  { date: '2026-04-11', club: 'SPARC Cascavelle', category: 'M50', divisions: ['men', 'women'] },
   { date: '2026-04-25', club: 'Club Med Albion', category: 'M25', divisions: ['men'] },
   { date: '2026-04-25', club: 'RM Club Tamarin', category: 'JUNIOR', divisions: ['junior'] },
   { date: '2026-05-16', club: 'Moka Rangers', category: 'M50', divisions: ['men', 'women'] },
@@ -36,7 +34,6 @@ export const CANCELLED_TOURNAMENTS_2026: CancelledTournamentRule[] = [
   { date: '2026-06-06', club: 'Cana Beau Plan', category: 'JUNIOR', divisions: ['junior'] },
   { date: '2026-06-07', club: 'Studio by RM Azuri', category: 'M100', divisions: ['men'] },
   { date: '2026-06-20', club: 'Moka Rangers', category: 'M250', divisions: ['men', 'women'] },
-  { date: '2026-06-20', club: 'Oxygen Moka', category: 'M50', divisions: ['men'] },
   { date: '2026-06-27', club: 'Club Med Albion', category: 'JUNIOR', divisions: ['junior'] },
   { date: '2026-07-25', club: 'Moka Rangers', category: 'M25', divisions: ['men', 'women'] },
   { date: '2026-07-25', club: 'Urban Sport Black River', category: 'JUNIOR', divisions: ['junior'] },
@@ -45,11 +42,9 @@ export const CANCELLED_TOURNAMENTS_2026: CancelledTournamentRule[] = [
   { date: '2026-08-29', club: 'Club Med Albion', category: 'M25', divisions: ['men', 'women'] },
   { date: '2026-09-26', club: 'Club Med Albion', category: 'M50', divisions: ['men', 'women'] },
   { date: '2026-10-03', club: 'Terres Brunes Sports & Leisure', category: 'M250', divisions: ['men', 'women'] },
-  { date: '2026-10-10', club: 'Moka Rangers', category: 'M100', divisions: ['men', 'women'] },
   { date: '2026-10-17', club: 'Urban Sport Grand Baie', category: 'JUNIOR', divisions: ['junior'] },
   { date: '2026-10-31', club: 'Club Med Albion', category: 'M100', divisions: ['men', 'women'] },
   { date: '2026-11-07', club: 'Labourdonnais Mapou', category: 'JUNIOR', divisions: ['junior'] },
-  { date: '2026-11-21', club: 'Club Med Albion', category: 'M250', divisions: ['men', 'women'] },
   { date: '2026-12-05', club: 'Studio by RM Azuri', category: 'JUNIOR', divisions: ['junior'] },
   { date: '2026-12-26', club: 'Club Med Albion', category: 'M25', divisions: ['men', 'women'] },
 ];
@@ -80,6 +75,7 @@ function normalizeClub(value: unknown): string {
   if (text.includes('SPARC')) return 'SPARC CASCAVELLE';
   if (text.includes('AZURI')) return 'STUDIO BY RM AZURI';
   if (text.includes('OXYGEN')) return 'OXYGEN MOKA';
+  if (text.includes('SYNERGY')) return 'MOKA RANGERS';
   if (text.includes('MOKA RANGERS')) return 'MOKA RANGERS';
   if (text.includes('MONT CHOISY')) return 'MONT CHOISY GOLF';
   if (text.includes('URBAN SPORT BLACK RIVER') || text.includes('URBAN BR')) return 'URBAN SPORT BLACK RIVER';
