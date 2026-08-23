@@ -75,13 +75,6 @@ function RegionEmblem({ region, color, bg }: { region: LocalRegion; color: strin
     Centre: LocateFixed,
   }[region];
 
-  const coordinates = {
-    Nord: 'NORD',
-    Ouest: 'OUEST',
-    Est: 'EST',
-    Centre: 'CENT',
-  }[region];
-
   return (
     <div
       aria-hidden="true"
@@ -120,20 +113,31 @@ function RegionEmblem({ region, color, bg }: { region: LocalRegion; color: strin
         }}
       />
       <Icon size={24} strokeWidth={1.8} color={color} />
-      <span
-        style={{
-          position: 'absolute',
-          bottom: '8px',
-          left: '10px',
-          fontSize: '8px',
-          fontFamily: 'JetBrains Mono, monospace',
-          color: '#b9c2cf',
-          letterSpacing: '1.1px',
-          fontWeight: 800,
-        }}
-      >
-        {coordinates}
-      </span>
+    </div>
+  );
+}
+
+function RegionCardLabel({ region, color, bg }: { region: LocalRegion; color: string; bg: string }) {
+  return (
+    <div
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minWidth: '96px',
+        padding: '7px 16px',
+        borderRadius: '999px',
+        background: `linear-gradient(135deg, ${bg}, rgba(255,255,255,0.035))`,
+        border: `1px solid ${color}45`,
+        boxShadow: `0 10px 26px ${color}14`,
+        color,
+        fontSize: '15px',
+        fontWeight: 850,
+        lineHeight: 1,
+        textAlign: 'center',
+      }}
+    >
+      {region}
     </div>
   );
 }
@@ -213,9 +217,9 @@ export default function Regions() {
                   >
                     {/* Header */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-                      <div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                         <RegionEmblem region={region} color={cfg.color} bg={cfg.bg} />
-                        <RegionBadge region={region as Region} />
+                        <RegionCardLabel region={region} color={cfg.color} bg={cfg.bg} />
                       </div>
                       <div style={{
                         width: '28px', height: '28px', borderRadius: '50%',
