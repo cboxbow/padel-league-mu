@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
+import { Compass, LocateFixed, Sunrise, Waves } from 'lucide-react';
 import { DotWaveBackground } from '@/components/DotWaveBackground';
 import { Layout, GlassCard, RegionBadge } from '@/components/Layout';
 import { useI18n } from '@/hooks/useI18n';
@@ -13,12 +14,10 @@ const REGIONS_DATA: Record<'Nord' | 'Ouest' | 'Est' | 'Centre', {
   tournaments: number;
   description_fr: string;
   description_en: string;
-  flag: string;
   clubs_list: string[];
 }> = {
   Nord: {
     clubs: 7, courts: 28, tournaments: 99,
-    flag: '🏖',
     description_fr: `La région Nord est la plus active de la MPL 2026 avec 7 clubs. Elle regroupe Grand Baie, Beau Plan, Mont Choisy et Pointe aux Canonniers. Avec 28 terrains et ${MPL_STATS.by_region.Nord} tournois programmés, c'est le cœur battant du padel mauricien.`,
     description_en: `The North region is the most active in MPL 2026 with 7 clubs. It includes Grand Baie, Beau Plan, Mont Choisy and Pointe aux Canonniers. With 28 courts and ${MPL_STATS.by_region.Nord} tournaments scheduled, it is the beating heart of Mauritian padel.`,
     clubs_list: [
@@ -33,7 +32,6 @@ const REGIONS_DATA: Record<'Nord' | 'Ouest' | 'Est' | 'Centre', {
   },
   Ouest: {
     clubs: 6, courts: 21, tournaments: 85,
-    flag: '🏙',
     description_fr: "La région Ouest regroupe Albion, Black River, Cascavelle et Tamarin. Avec 6 clubs et 21 terrains, elle accueille notamment le MPL Masters M1000 et se distingue par la densité de ses infrastructures padel.",
     description_en: "The West region includes Albion, Black River, Cascavelle and Tamarin. With 6 clubs and 21 courts, it hosts the MPL Masters M1000 and stands out for the density of its padel infrastructure.",
     clubs_list: [
@@ -47,7 +45,6 @@ const REGIONS_DATA: Record<'Nord' | 'Ouest' | 'Est' | 'Centre', {
   },
   Centre: {
     clubs: 4, courts: 13, tournaments: 53,
-    flag: '🌴',
     description_fr: `La région Centre regroupe Hennessy, Port Chambly et Moka. Ses 4 clubs et 13 terrains proposent ${MPL_STATS.by_region.Centre} tournois sur la saison. Véritable hub central de l'île, elle connecte les régions nord et sud.`,
     description_en: `The Centre region covers Hennessy, Port Chambly and Moka. Its 4 clubs and 13 courts host ${MPL_STATS.by_region.Centre} tournaments per season. A true central hub of the island, it connects the north and south regions.`,
     clubs_list: [
@@ -59,7 +56,6 @@ const REGIONS_DATA: Record<'Nord' | 'Ouest' | 'Est' | 'Centre', {
   },
   Est: {
     clubs: 1, courts: 3, tournaments: 15,
-    flag: '🌅',
     description_fr: `La région Est est représentée par le Studio by RM Azuri, situé dans la magnifique baie d'Azuri. 3 terrains et ${MPL_STATS.by_region.Est} tournois au programme 2026 pour cette région en plein développement côté Est de l'île.`,
     description_en: `The East region is represented by Studio by RM Azuri, located in the beautiful Azuri bay. 3 courts and ${MPL_STATS.by_region.Est} tournaments on the 2026 schedule for this rapidly developing region on the east side of the island.`,
     clubs_list: [
@@ -70,6 +66,77 @@ const REGIONS_DATA: Record<'Nord' | 'Ouest' | 'Est' | 'Centre', {
 
 type LocalRegion = 'Nord' | 'Ouest' | 'Est' | 'Centre';
 const REGION_ORDER: LocalRegion[] = ['Nord', 'Ouest', 'Est', 'Centre'];
+
+function RegionEmblem({ region, color, bg }: { region: LocalRegion; color: string; bg: string }) {
+  const Icon = {
+    Nord: Compass,
+    Ouest: Waves,
+    Est: Sunrise,
+    Centre: LocateFixed,
+  }[region];
+
+  const coordinates = {
+    Nord: 'NORD',
+    Ouest: 'OUEST',
+    Est: 'EST',
+    Centre: 'CENT',
+  }[region];
+
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        width: '72px',
+        height: '72px',
+        borderRadius: '18px',
+        position: 'relative',
+        display: 'grid',
+        placeItems: 'center',
+        overflow: 'hidden',
+        marginBottom: '10px',
+        background: `linear-gradient(145deg, ${bg}, rgba(255,255,255,0.025))`,
+        border: `1px solid ${color}45`,
+        boxShadow: `0 18px 42px ${color}12, inset 0 1px 0 rgba(255,255,255,0.08)`,
+      }}
+    >
+      <span
+        style={{
+          position: 'absolute',
+          width: '46px',
+          height: '46px',
+          borderRadius: '999px',
+          border: `1px solid ${color}28`,
+          opacity: 0.95,
+        }}
+      />
+      <span
+        style={{
+          position: 'absolute',
+          inset: '8px',
+          borderTop: `2px solid ${color}`,
+          borderRight: `2px solid ${color}55`,
+          borderRadius: '16px',
+          opacity: 0.7,
+        }}
+      />
+      <Icon size={24} strokeWidth={1.8} color={color} />
+      <span
+        style={{
+          position: 'absolute',
+          bottom: '8px',
+          left: '10px',
+          fontSize: '8px',
+          fontFamily: 'JetBrains Mono, monospace',
+          color: '#b9c2cf',
+          letterSpacing: '1.1px',
+          fontWeight: 800,
+        }}
+      >
+        {coordinates}
+      </span>
+    </div>
+  );
+}
 
 export default function Regions() {
   const { t, lang } = useI18n();
@@ -147,7 +214,7 @@ export default function Regions() {
                     {/* Header */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
                       <div>
-                        <div style={{ fontSize: '40px', marginBottom: '8px' }}>{data.flag}</div>
+                        <RegionEmblem region={region} color={cfg.color} bg={cfg.bg} />
                         <RegionBadge region={region as Region} />
                       </div>
                       <div style={{
@@ -261,12 +328,12 @@ export default function Regions() {
 
               {/* Sud */}
               <circle cx="200" cy="285" r="48"
-                fill={              active === 'Centre' ? `${REGION_CONFIG.Est.color}25` : 'rgba(239,68,68,0.07)'}
-                stroke={REGION_CONFIG.Est.color} strokeWidth={active === 'Centre' ? 2 : 1}
+                fill={active === 'Centre' ? `${REGION_CONFIG.Centre.color}25` : 'rgba(139,92,246,0.07)'}
+                stroke={REGION_CONFIG.Centre.color} strokeWidth={active === 'Centre' ? 2 : 1}
                 style={{ cursor: 'pointer', transition: 'all 0.3s' }}
                 onClick={() => setActive(active === 'Centre' ? null : 'Centre')}
               />
-              <text x="200" y="278" textAnchor="middle" fill={REGION_CONFIG.Est.color} fontSize="13" fontWeight="700">Centre</text>
+              <text x="200" y="278" textAnchor="middle" fill={REGION_CONFIG.Centre.color} fontSize="13" fontWeight="700">Centre</text>
               <text x="200" y="293" textAnchor="middle" fill="#888" fontSize="10">{REGIONS_DATA.Centre.clubs}c / {REGIONS_DATA.Centre.courts}t</text>
 
               {/* Lignes de connexion */}
