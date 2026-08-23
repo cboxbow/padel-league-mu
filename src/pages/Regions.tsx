@@ -4,6 +4,7 @@ import { Compass, ExternalLink, LocateFixed, MapPin, Sunrise, Waves } from 'luci
 import { DotWaveBackground } from '@/components/DotWaveBackground';
 import { Layout, GlassCard, RegionBadge } from '@/components/Layout';
 import { useI18n } from '@/hooks/useI18n';
+import { MPL_CLUBS } from '@/data/mpl2026';
 import { REGION_CONFIG, MPL_STATS } from '@/lib/index';
 import type { Region } from '@/lib/index';
 
@@ -174,7 +175,18 @@ type ClubCluster = {
   y: number;
 };
 
-const CLUB_LOCATIONS: ClubLocation[] = [
+const normalizeClubName = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+const officialClubByName = new Map(MPL_CLUBS.map((club) => [normalizeClubName(club.name), club]));
+
+const CLUB_LOCATION_SEEDS: ClubLocation[] = [
   { name: 'Caña Beau Plan', zone: 'Nord', place: 'Beau Plan', locationKey: 'beau-plan', lat: -20.086, lng: 57.562, courts: 4, events: 18 },
   { name: 'Urban Sport Grand Baie', zone: 'Nord', place: 'Grand Baie', locationKey: 'grand-baie', lat: -20.014, lng: 57.584, courts: 6, events: 20 },
   { name: 'RM Club Grand Baie', zone: 'Nord', place: 'Grand Baie', locationKey: 'grand-baie', lat: -20.014, lng: 57.584, courts: 4, events: 18 },
@@ -194,6 +206,36 @@ const CLUB_LOCATIONS: ClubLocation[] = [
   { name: 'Moka Rangers', zone: 'Centre', place: 'Moka', locationKey: 'moka', lat: -20.219, lng: 57.502, courts: 2, events: 8 },
   { name: 'Studio by RM Azuri', zone: 'Est', place: 'Azuri', locationKey: 'azuri', lat: -20.084, lng: 57.708, courts: 3, events: 15 },
 ];
+
+const CLUB_LOCATIONS: ClubLocation[] = CLUB_LOCATION_SEEDS.map((club) => {
+  const officialClub = officialClubByName.get(normalizeClubName(club.name));
+
+  return {
+    ...club,
+    courts: officialClub?.courts ?? club.courts,
+    events: officialClub?.total_events ?? club.events,
+  };
+});
+
+function getOfficialRegionStats(region: LocalRegion) {
+  const clubs = REGIONS_DATA[region].clubs_list
+    .map((name) => officialClubByName.get(normalizeClubName(name)))
+    .filter((club): club is (typeof MPL_CLUBS)[number] => Boolean(club));
+
+  if (!clubs.length) {
+    return {
+      clubs: REGIONS_DATA[region].clubs,
+      courts: REGIONS_DATA[region].courts,
+      tournaments: REGIONS_DATA[region].tournaments,
+    };
+  }
+
+  return {
+    clubs: clubs.length,
+    courts: clubs.reduce((sum, club) => sum + club.courts, 0),
+    tournaments: clubs.reduce((sum, club) => sum + club.total_events, 0),
+  };
+}
 
 const MAP_BOUNDS = {
   minLat: -20.56,
@@ -533,6 +575,7 @@ export default function Regions() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
             {REGION_ORDER.map((region, i) => {
               const data = REGIONS_DATA[region];
+              const stats = getOfficialRegionStats(region);
               const cfg  = REGION_CONFIG[region as Region] ?? { color: '#4ad569', bg: 'rgba(74,213,105,0.12)' };
               const isOpen = active === region;
               return (
@@ -573,9 +616,9 @@ export default function Regions() {
                     {/* Stats mini */}
                     <div style={{ display: 'flex', gap: '20px', marginBottom: '16px' }}>
                       {[
-                        { v: data.clubs,       l: t.regions.clubs_label },
-                        { v: data.courts,      l: t.regions.courts_label },
-                        { v: data.tournaments, l: t.regions.tournaments_label },
+                        { v: stats.clubs,       l: t.regions.clubs_label },
+                        { v: stats.courts,      l: t.regions.courts_label },
+                        { v: stats.tournaments, l: t.regions.tournaments_label },
                       ].map(s => (
                         <div key={s.l} style={{ textAlign: 'center' }}>
                           <div style={{ fontSize: '22px', fontWeight: 800, color: cfg.color, lineHeight: 1, fontFamily: 'JetBrains Mono,monospace' }}>{s.v}</div>
