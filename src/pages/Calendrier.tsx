@@ -794,70 +794,6 @@ export default function Calendrier() {
             </div>
           </GlassCard>
 
-          {/* ── Calendriers officiels en image ── */}
-          <GlassCard style={{
-            padding: 'clamp(16px, 2.3vw, 24px)',
-            marginBottom: '22px',
-            border: '1px solid rgba(74,213,105,0.35)',
-            background: 'linear-gradient(180deg, rgba(74,213,105,0.055), rgba(255,255,255,0.025))',
-            overflow: 'hidden',
-          }}>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
-              gap: '18px',
-              marginBottom: '18px',
-              flexWrap: 'wrap',
-            }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '9px', color: '#4ad569', fontSize: '12px', fontWeight: 900, letterSpacing: '0.6px', textTransform: 'uppercase' }}>
-                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#4ad569', boxShadow: '0 0 12px rgba(74,213,105,0.7)' }} />
-                  {lang === 'fr' ? 'Calendriers officiels' : 'Official calendars'}
-                </div>
-                <p style={{ margin: '7px 0 0', color: '#9a9a9a', fontSize: '14px', lineHeight: 1.5, maxWidth: '680px' }}>
-                  {lang === 'fr'
-                    ? 'Consulte les calendriers par niveau : ouvre l’image en grand ou telecharge le PDF officiel.'
-                    : 'Click an image to open the calendar full size, or download the official PDF.'}
-                </p>
-              </div>
-              <span style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                color: '#9a9a9a',
-                fontSize: '12px',
-                whiteSpace: 'nowrap',
-                border: '1px solid rgba(255,255,255,0.09)',
-                borderRadius: '999px',
-                padding: '7px 10px',
-                background: 'rgba(0,0,0,0.18)',
-              }}>
-                <Calendar size={14} color="#4ad569" />
-                {OFFICIAL_CALENDARS.length} {lang === 'fr' ? 'calendriers' : 'calendars'}
-              </span>
-            </div>
-
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))',
-              gap: isMobile ? '12px' : '14px',
-              width: '100%',
-              maxWidth: '100%',
-              overflowX: 'hidden',
-            }}>
-              {OFFICIAL_CALENDARS.map(item => (
-                <OfficialCalendarCard
-                  key={item.id}
-                  item={item}
-                  lang={lang}
-                  isMobile={isMobile}
-                  onOpen={() => setSelectedCalendar(item)}
-                />
-              ))}
-            </div>
-          </GlassCard>
-
           {/* ── Compteur résultats ── */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
@@ -1147,6 +1083,70 @@ export default function Calendrier() {
               </span>
             </div>
           )}
+
+          {/* ── Calendriers officiels en image ── */}
+          <GlassCard style={{
+            padding: 'clamp(16px, 2.3vw, 24px)',
+            marginTop: '26px',
+            border: '1px solid rgba(74,213,105,0.35)',
+            background: 'linear-gradient(180deg, rgba(74,213,105,0.055), rgba(255,255,255,0.025))',
+            overflow: 'hidden',
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              gap: '18px',
+              marginBottom: '18px',
+              flexWrap: 'wrap',
+            }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '9px', color: '#4ad569', fontSize: '12px', fontWeight: 900, letterSpacing: '0.6px', textTransform: 'uppercase' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#4ad569', boxShadow: '0 0 12px rgba(74,213,105,0.7)' }} />
+                  {lang === 'fr' ? 'Calendriers officiels' : 'Official calendars'}
+                </div>
+                <p style={{ margin: '7px 0 0', color: '#9a9a9a', fontSize: '14px', lineHeight: 1.5, maxWidth: '680px' }}>
+                  {lang === 'fr'
+                    ? 'Consulte les calendriers par niveau : ouvre l’image en grand ou telecharge le PDF officiel.'
+                    : 'Click an image to open the calendar full size, or download the official PDF.'}
+                </p>
+              </div>
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                color: '#9a9a9a',
+                fontSize: '12px',
+                whiteSpace: 'nowrap',
+                border: '1px solid rgba(255,255,255,0.09)',
+                borderRadius: '999px',
+                padding: '7px 10px',
+                background: 'rgba(0,0,0,0.18)',
+              }}>
+                <Calendar size={14} color="#4ad569" />
+                {OFFICIAL_CALENDARS.length} {lang === 'fr' ? 'calendriers' : 'calendars'}
+              </span>
+            </div>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))',
+              gap: isMobile ? '12px' : '14px',
+              width: '100%',
+              maxWidth: '100%',
+              overflowX: 'hidden',
+            }}>
+              {OFFICIAL_CALENDARS.map(item => (
+                <OfficialCalendarCard
+                  key={item.id}
+                  item={item}
+                  lang={lang}
+                  isMobile={isMobile}
+                  onOpen={() => setSelectedCalendar(item)}
+                />
+              ))}
+            </div>
+          </GlassCard>
 
         </div>
       </section>
