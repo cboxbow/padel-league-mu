@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, MapPin, Trophy, Filter, Search, X, ChevronUp, ChevronDown, RefreshCw, Award, Maximize2, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Layout, GlassCard } from '@/components/Layout';
@@ -240,10 +240,26 @@ function SortBtn({ field, current, dir, onSort }: {
   );
 }
 
-function OfficialCalendarCard({ item, lang, onOpen }: {
+function useIsMobile(breakpoint = 640) {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth <= breakpoint : false
+  );
+
+  useEffect(() => {
+    const update = () => setIsMobile(window.innerWidth <= breakpoint);
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, [breakpoint]);
+
+  return isMobile;
+}
+
+function OfficialCalendarCard({ item, lang, onOpen, isMobile = false }: {
   item: OfficialCalendarAsset;
   lang: string;
   onOpen: () => void;
+  isMobile?: boolean;
 }) {
   const title = lang === 'fr' ? item.titleFr : item.titleEn;
   const subtitle = lang === 'fr' ? item.subtitleFr : item.subtitleEn;
@@ -260,13 +276,16 @@ function OfficialCalendarCard({ item, lang, onOpen }: {
         minHeight: '100%',
         display: 'flex',
         flexDirection: 'column',
+        width: '100%',
+        maxWidth: '100%',
+        boxSizing: 'border-box',
       }}
     >
       <button
         onClick={onOpen}
         aria-label={`${lang === 'fr' ? 'Ouvrir' : 'Open'} ${title}`}
         style={{
-          height: '162px',
+          height: isMobile ? '134px' : '162px',
           width: '100%',
           background: '#0f0f0f',
           border: 'none',
@@ -284,10 +303,10 @@ function OfficialCalendarCard({ item, lang, onOpen }: {
           style={{
             width: '100%',
             height: '100%',
-            objectFit: 'cover',
+            objectFit: isMobile ? 'contain' : 'cover',
             objectPosition: 'top center',
             opacity: 0.94,
-            transform: 'scale(1.01)',
+            transform: isMobile ? 'none' : 'scale(1.01)',
           }}
         />
         <span style={{
@@ -313,7 +332,7 @@ function OfficialCalendarCard({ item, lang, onOpen }: {
           position: 'absolute',
           right: 11,
           bottom: 10,
-          display: 'inline-flex',
+          display: isMobile ? 'none' : 'inline-flex',
           alignItems: 'center',
           gap: '6px',
           color: 'white',
@@ -327,18 +346,18 @@ function OfficialCalendarCard({ item, lang, onOpen }: {
           <Maximize2 size={13} /> {lang === 'fr' ? 'Agrandir' : 'Expand'}
         </span>
       </button>
-      <div style={{ padding: '14px 14px 15px', display: 'flex', flexDirection: 'column', flex: 1 }}>
-        <div style={{ fontSize: '16px', fontWeight: 950, marginBottom: '4px', letterSpacing: '0' }}>
+      <div style={{ padding: isMobile ? '12px' : '14px 14px 15px', display: 'flex', flexDirection: 'column', flex: 1 }}>
+        <div style={{ fontSize: isMobile ? '15px' : '16px', fontWeight: 950, marginBottom: '4px', letterSpacing: '0' }}>
           {title}
         </div>
-        <div style={{ color: '#9a9a9a', fontSize: '13px', lineHeight: 1.45, minHeight: '38px' }}>
+        <div style={{ color: '#9a9a9a', fontSize: isMobile ? '12px' : '13px', lineHeight: 1.45, minHeight: isMobile ? 'auto' : '38px' }}>
           {subtitle}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '14px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: isMobile ? '11px' : '14px' }}>
           <button
             onClick={onOpen}
             style={{
-              minHeight: '36px',
+              minHeight: isMobile ? '34px' : '36px',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -347,19 +366,19 @@ function OfficialCalendarCard({ item, lang, onOpen }: {
               border: `1px solid ${item.accent}55`,
               background: `${item.accent}16`,
               color: item.accent,
-              fontSize: '13px',
+              fontSize: isMobile ? '12px' : '13px',
               fontWeight: 900,
               cursor: 'pointer',
             }}
           >
-            <Maximize2 size={14} /> {lang === 'fr' ? 'Ouvrir' : 'Open'}
+            <Maximize2 size={isMobile ? 13 : 14} /> {lang === 'fr' ? 'Ouvrir' : 'Open'}
           </button>
           <a
             href={item.pdf}
             target="_blank"
             rel="noreferrer"
             style={{
-              minHeight: '36px',
+              minHeight: isMobile ? '34px' : '36px',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -368,12 +387,12 @@ function OfficialCalendarCard({ item, lang, onOpen }: {
               border: '1px solid rgba(255,255,255,0.11)',
               background: 'rgba(255,255,255,0.045)',
               color: '#d0d0d0',
-              fontSize: '13px',
+              fontSize: isMobile ? '12px' : '13px',
               fontWeight: 850,
               textDecoration: 'none',
             }}
           >
-            <Download size={14} /> PDF
+            <Download size={isMobile ? 13 : 14} /> PDF
           </a>
         </div>
       </div>
@@ -522,6 +541,7 @@ function CalendarLightbox({ item, list, lang, onClose, onSelect }: {
 export default function Calendrier() {
   const { lang } = useI18n();
   const useNav = useNavigate();
+  const isMobile = useIsMobile();
   useSeo({
     title: "Calendrier des Tournois Padel Maurice 2026",
     description: "Calendrier complet des tournois de padel à Maurice 2026. Tous les niveaux : M25, M50, M100, M250, M500, M1000, Mixed, Junior. Inscriptions en ligne.",
@@ -780,6 +800,7 @@ export default function Calendrier() {
             marginBottom: '22px',
             border: '1px solid rgba(74,213,105,0.35)',
             background: 'linear-gradient(180deg, rgba(74,213,105,0.055), rgba(255,255,255,0.025))',
+            overflow: 'hidden',
           }}>
             <div style={{
               display: 'flex',
@@ -819,14 +840,18 @@ export default function Calendrier() {
 
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))',
-              gap: '14px',
+              gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))',
+              gap: isMobile ? '12px' : '14px',
+              width: '100%',
+              maxWidth: '100%',
+              overflowX: 'hidden',
             }}>
               {OFFICIAL_CALENDARS.map(item => (
                 <OfficialCalendarCard
                   key={item.id}
                   item={item}
                   lang={lang}
+                  isMobile={isMobile}
                   onOpen={() => setSelectedCalendar(item)}
                 />
               ))}
