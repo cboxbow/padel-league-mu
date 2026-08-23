@@ -146,17 +146,22 @@ function RegionMapNode({
   region,
   x,
   y,
+  labelX,
+  labelY,
   active,
   onClick,
 }: {
   region: LocalRegion;
   x: number;
   y: number;
+  labelX: number;
+  labelY: number;
   active: boolean;
   onClick: () => void;
 }) {
   const data = REGIONS_DATA[region];
   const cfg = REGION_CONFIG[region as Region];
+  const anchor = labelX < x - 10 ? 'end' : labelX > x + 10 ? 'start' : 'middle';
 
   return (
     <g
@@ -171,22 +176,28 @@ function RegionMapNode({
       <circle
         cx={x}
         cy={y}
-        r={active ? 47 : 41}
-        fill={active ? `${cfg.color}25` : 'rgba(10,10,10,0.58)'}
+        r={active ? 31 : 25}
+        fill={active ? `${cfg.color}22` : 'rgba(5, 15, 22, 0.42)'}
         stroke={cfg.color}
-        strokeWidth={active ? 2.6 : 1.25}
-        filter={active ? `drop-shadow(0 0 16px ${cfg.color}55)` : `drop-shadow(0 0 8px ${cfg.color}22)`}
+        strokeWidth={active ? 3 : 2.1}
+        filter={active ? `drop-shadow(0 0 18px ${cfg.color}66)` : `drop-shadow(0 0 9px ${cfg.color}30)`}
         style={{ transition: 'all 0.25s ease' }}
       />
-      <circle cx={x} cy={y} r="5" fill={cfg.color} />
-      <text x={x} y={y - 18} textAnchor="middle" fill={cfg.color} fontSize="13" fontWeight="850">
+      <circle cx={x} cy={y} r="4.5" fill={cfg.color} />
+      <line
+        x1={x}
+        y1={y}
+        x2={labelX}
+        y2={labelY - 11}
+        stroke={cfg.color}
+        strokeWidth="1.2"
+        strokeOpacity={active ? 0.55 : 0.28}
+      />
+      <text x={labelX} y={labelY} textAnchor={anchor} fill={cfg.color} fontSize="18" fontWeight="950" letterSpacing="1.5">
         {region}
       </text>
-      <text x={x} y={y + 22} textAnchor="middle" fill="#d8dde6" fontSize="11" fontWeight="750">
-        {data.clubs} clubs
-      </text>
-      <text x={x} y={y + 36} textAnchor="middle" fill="#7d8794" fontSize="9" fontWeight="650">
-        {data.courts} terrains
+      <text x={labelX} y={labelY + 22} textAnchor={anchor} fill="#d8dde6" fontSize="15" fontWeight="760">
+        {data.clubs}c / {data.courts}t
       </text>
     </g>
   );
@@ -364,40 +375,46 @@ export default function Regions() {
 
             <div style={{
               width: '100%',
-              maxWidth: '440px',
+              maxWidth: '560px',
               margin: '0 auto',
-              borderRadius: '26px',
-              padding: '10px',
-              background: 'radial-gradient(circle at 50% 40%, rgba(74,213,105,0.09), rgba(255,255,255,0.015) 58%, transparent 74%)',
+              borderRadius: '28px',
+              padding: 'clamp(2px,1vw,10px)',
+              background: 'radial-gradient(circle at 50% 42%, rgba(34,211,238,0.10), rgba(74,213,105,0.045) 42%, rgba(255,255,255,0.012) 68%, transparent 78%)',
             }}>
-              <svg viewBox="0 0 400 360" style={{ width: '100%', display: 'block' }}>
+              <svg viewBox="0 0 520 620" style={{ width: '100%', display: 'block' }}>
                 <defs>
-                  <linearGradient id="mauritius-map-fill" x1="110" y1="25" x2="285" y2="330" gradientUnits="userSpaceOnUse">
-                    <stop stopColor="rgba(255,255,255,0.09)" />
-                    <stop offset="0.55" stopColor="rgba(74,213,105,0.055)" />
+                  <linearGradient id="mauritius-map-fill" x1="145" y1="54" x2="396" y2="554" gradientUnits="userSpaceOnUse">
+                    <stop stopColor="rgba(14,165,233,0.14)" />
+                    <stop offset="0.48" stopColor="rgba(6,95,70,0.18)" />
                     <stop offset="1" stopColor="rgba(255,255,255,0.025)" />
                   </linearGradient>
+                  <filter id="map-cyan-glow" x="-30%" y="-30%" width="160%" height="160%">
+                    <feGaussianBlur stdDeviation="3.5" result="blur" />
+                    <feMerge>
+                      <feMergeNode in="blur" />
+                      <feMergeNode in="SourceGraphic" />
+                    </feMerge>
+                  </filter>
                 </defs>
 
                 <path
-                  d="M226 22C270 47 305 78 326 119C348 162 346 211 324 254C302 297 263 328 215 336C169 344 121 324 91 288C61 252 51 204 61 159C72 112 103 77 143 50C169 32 199 17 226 22Z"
+                  d="M323 55L363 70L390 88L397 117L382 146L397 193L421 232L447 238L463 250L468 275L463 308L484 326L496 361L493 403L478 464L487 502L473 547L451 579L409 594L358 607L306 618L257 616L212 607L184 592L151 600L123 579L86 536L112 529L139 533L165 526L176 479L171 449L159 439L164 395L164 354L177 313L199 274L236 247L275 236L300 218L305 176L326 134L350 103L336 93L316 96L292 116L263 116L245 104L260 85L296 72Z"
                   fill="url(#mauritius-map-fill)"
-                  stroke="rgba(255,255,255,0.16)"
-                  strokeWidth="1.2"
+                  stroke="#34d6ff"
+                  strokeWidth="3.2"
+                  strokeLinejoin="round"
+                  filter="url(#map-cyan-glow)"
                 />
                 <path
-                  d="M214 43C249 66 275 94 290 130C307 169 304 211 285 247C266 283 234 306 196 313C159 320 121 303 98 273C75 244 68 205 78 169C88 132 112 103 145 78C167 61 193 39 214 43Z"
+                  d="M321 77L355 90L374 105L363 133L378 185L407 224L431 229L441 240L445 262L441 295L462 315L473 356L469 397L456 455L466 499L452 536L428 562L394 576L350 588L303 598L262 596L224 587L192 572L160 581L135 560L107 529L130 524L155 527L177 515L186 473L183 443L174 430L181 389L181 356L192 320L213 288L247 265L285 254L315 231L322 182L341 143L360 115L342 112L318 125L286 124L261 111L274 95Z"
                   fill="none"
-                  stroke="rgba(74,213,105,0.08)"
-                  strokeWidth="1"
+                  stroke="rgba(52,214,255,0.16)"
+                  strokeWidth="1.1"
                 />
-                <line x1="202" y1="86" x2="202" y2="270" stroke="rgba(255,255,255,0.07)" strokeWidth="1" strokeDasharray="5,7" />
-                <line x1="122" y1="184" x2="282" y2="184" stroke="rgba(255,255,255,0.07)" strokeWidth="1" strokeDasharray="5,7" />
-
-                <RegionMapNode region="Nord" x={202} y={92} active={active === 'Nord'} onClick={() => setActive(active === 'Nord' ? null : 'Nord')} />
-                <RegionMapNode region="Ouest" x={122} y={185} active={active === 'Ouest'} onClick={() => setActive(active === 'Ouest' ? null : 'Ouest')} />
-                <RegionMapNode region="Est" x={284} y={185} active={active === 'Est'} onClick={() => setActive(active === 'Est' ? null : 'Est')} />
-                <RegionMapNode region="Centre" x={202} y={270} active={active === 'Centre'} onClick={() => setActive(active === 'Centre' ? null : 'Centre')} />
+                <RegionMapNode region="Nord" x={318} y={117} labelX={318} labelY={66} active={active === 'Nord'} onClick={() => setActive(active === 'Nord' ? null : 'Nord')} />
+                <RegionMapNode region="Ouest" x={181} y={327} labelX={104} labelY={316} active={active === 'Ouest'} onClick={() => setActive(active === 'Ouest' ? null : 'Ouest')} />
+                <RegionMapNode region="Est" x={424} y={268} labelX={474} labelY={258} active={active === 'Est'} onClick={() => setActive(active === 'Est' ? null : 'Est')} />
+                <RegionMapNode region="Centre" x={253} y={276} labelX={253} labelY={216} active={active === 'Centre'} onClick={() => setActive(active === 'Centre' ? null : 'Centre')} />
               </svg>
             </div>
 
