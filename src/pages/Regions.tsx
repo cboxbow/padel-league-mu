@@ -426,13 +426,12 @@ function ClubsMap({ lang }: { lang: string }) {
                   }}
                   style={{ cursor: 'pointer', outline: 'none' }}
                 >
-                  <circle cx={cluster.x} cy={cluster.y} r={radius + 9} fill={color} opacity={active ? 0.18 : 0.09} />
-                  <circle cx={cluster.x} cy={cluster.y} r={radius} fill={color} fillOpacity={active ? 0.92 : 0.76} stroke={active ? '#ffffff' : color} strokeWidth={active ? 2.2 : 1.5} />
+                  <circle cx={cluster.x} cy={cluster.y} r={radius + 8} fill={color} opacity={active ? 0.18 : 0.08} />
+                  <circle cx={cluster.x} cy={cluster.y} r={radius} fill={color} fillOpacity={active ? 0.9 : 0.72} stroke={active ? '#ffffff' : color} strokeWidth={active ? 2.2 : 1.5} />
                   {cluster.clubs.length > 1 && (
-                    <>
-                      <circle cx={cluster.x} cy={cluster.y} r={Math.max(10, radius - 7)} fill="rgba(5,10,18,0.44)" />
-                      <text x={cluster.x} y={cluster.y + 5} textAnchor="middle" fill="white" fontSize="17" fontWeight="950">{cluster.clubs.length}</text>
-                    </>
+                    <text x={cluster.x} y={cluster.y + 5} textAnchor="middle" fill="white" fontSize="17" fontWeight="950">
+                      {cluster.clubs.length}
+                    </text>
                   )}
                 </g>
               );
@@ -465,11 +464,6 @@ function ClubsMap({ lang }: { lang: string }) {
               </div>
               <h3 style={{ color: 'white', margin: '7px 0 0', fontSize: '24px', lineHeight: 1.05 }}>{selected.place}</h3>
             </div>
-            {selected.clubs.length > 1 && (
-              <span style={{ color: 'white', background: `${ZONE_COLORS[selected.zone]}24`, border: `1px solid ${ZONE_COLORS[selected.zone]}55`, padding: '8px 11px', borderRadius: '999px', fontWeight: 900 }}>
-                {selected.clubs.length} clubs
-              </span>
-            )}
           </div>
 
           <div className="clubs-map-stats">
