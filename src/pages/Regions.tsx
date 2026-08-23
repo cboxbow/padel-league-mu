@@ -142,6 +142,56 @@ function RegionCardLabel({ region, color, bg }: { region: LocalRegion; color: st
   );
 }
 
+function RegionMapNode({
+  region,
+  x,
+  y,
+  active,
+  onClick,
+}: {
+  region: LocalRegion;
+  x: number;
+  y: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const data = REGIONS_DATA[region];
+  const cfg = REGION_CONFIG[region as Region];
+
+  return (
+    <g
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') onClick();
+      }}
+      style={{ cursor: 'pointer', outline: 'none' }}
+    >
+      <circle
+        cx={x}
+        cy={y}
+        r={active ? 47 : 41}
+        fill={active ? `${cfg.color}25` : 'rgba(10,10,10,0.58)'}
+        stroke={cfg.color}
+        strokeWidth={active ? 2.6 : 1.25}
+        filter={active ? `drop-shadow(0 0 16px ${cfg.color}55)` : `drop-shadow(0 0 8px ${cfg.color}22)`}
+        style={{ transition: 'all 0.25s ease' }}
+      />
+      <circle cx={x} cy={y} r="5" fill={cfg.color} />
+      <text x={x} y={y - 18} textAnchor="middle" fill={cfg.color} fontSize="13" fontWeight="850">
+        {region}
+      </text>
+      <text x={x} y={y + 22} textAnchor="middle" fill="#d8dde6" fontSize="11" fontWeight="750">
+        {data.clubs} clubs
+      </text>
+      <text x={x} y={y + 36} textAnchor="middle" fill="#7d8794" fontSize="9" fontWeight="650">
+        {data.courts} terrains
+      </text>
+    </g>
+  );
+}
+
 export default function Regions() {
   const { t, lang } = useI18n();
   const [active, setActive] = useState<LocalRegion | null>(null);
@@ -283,70 +333,76 @@ export default function Regions() {
         </div>
       </section>
 
-      {/* ── CARTE SCHÉMATIQUE ── */}
-      <section style={{ padding: '0 24px 80px' }}>
+      {/* ── CARTE INTERACTIVE ── */}
+      <section style={{ padding: '0 24px 72px' }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto', minWidth: '320px' }}>
-          <GlassCard style={{ padding: '48px', textAlign: 'center' }}>
-            <h2 style={{ color: 'white', fontWeight: 800, fontSize: 'clamp(20px,2.5vw,28px)', marginBottom: '12px' }}>
+          <GlassCard style={{ padding: 'clamp(24px,5vw,44px)', textAlign: 'center', overflow: 'hidden' }}>
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '6px 12px',
+              borderRadius: '999px',
+              background: 'rgba(74,213,105,0.08)',
+              border: '1px solid rgba(74,213,105,0.22)',
+              color: '#4ad569',
+              fontSize: '11px',
+              fontWeight: 800,
+              letterSpacing: '0.8px',
+              textTransform: 'uppercase',
+              marginBottom: '14px',
+            }}>
+              <span style={{ width: '6px', height: '6px', borderRadius: '999px', background: '#4ad569', boxShadow: '0 0 14px #4ad569' }} />
+              {lang === 'fr' ? 'Carte interactive' : 'Interactive map'}
+            </div>
+            <h2 style={{ color: 'white', fontWeight: 900, fontSize: 'clamp(22px,4vw,34px)', margin: '0 0 10px', lineHeight: 1.05 }}>
               {lang === 'fr' ? "Carte de l'Île Maurice" : 'Map of Mauritius Island'}
             </h2>
-            <p style={{ color: '#a0a0a0', marginBottom: '40px', fontSize: '14px' }}>
-              {lang === 'fr' ? 'Distribution des clubs par région géographique' : 'Distribution of clubs by geographic region'}
+            <p style={{ color: '#9ca3af', margin: '0 auto 22px', fontSize: '14px', maxWidth: '460px', lineHeight: 1.55 }}>
+              {lang === 'fr' ? 'Explorez les clubs, terrains et tournois par zone.' : 'Explore clubs, courts and tournaments by zone.'}
             </p>
 
-            {/* SVG schématique de Maurice */}
-            <svg viewBox="0 0 400 360" style={{ width: '100%', maxWidth: '420px', margin: '0 auto', display: 'block' }}>
-              {/* Contour simplifié de l'île */}
-              <path d="M200,20 L290,60 L360,120 L380,200 L340,280 L260,330 L180,340 L110,310 L60,250 L40,180 L60,100 L120,50 Z"
-                fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.1)" strokeWidth="1"/>
+            <div style={{
+              width: '100%',
+              maxWidth: '440px',
+              margin: '0 auto',
+              borderRadius: '26px',
+              padding: '10px',
+              background: 'radial-gradient(circle at 50% 40%, rgba(74,213,105,0.09), rgba(255,255,255,0.015) 58%, transparent 74%)',
+            }}>
+              <svg viewBox="0 0 400 360" style={{ width: '100%', display: 'block' }}>
+                <defs>
+                  <linearGradient id="mauritius-map-fill" x1="110" y1="25" x2="285" y2="330" gradientUnits="userSpaceOnUse">
+                    <stop stopColor="rgba(255,255,255,0.09)" />
+                    <stop offset="0.55" stopColor="rgba(74,213,105,0.055)" />
+                    <stop offset="1" stopColor="rgba(255,255,255,0.025)" />
+                  </linearGradient>
+                </defs>
 
-              {/* Nord */}
-              <circle cx="200" cy="90" r="48"
-                fill={active === 'Nord' ? `${REGION_CONFIG.Nord.color}25` : 'rgba(74,213,105,0.07)'}
-                stroke={REGION_CONFIG.Nord.color} strokeWidth={active === 'Nord' ? 2 : 1}
-                style={{ cursor: 'pointer', transition: 'all 0.3s' }}
-                onClick={() => setActive(active === 'Nord' ? null : 'Nord')}
-              />
-              <text x="200" y="83" textAnchor="middle" fill={REGION_CONFIG.Nord.color} fontSize="13" fontWeight="700">Nord</text>
-              <text x="200" y="98" textAnchor="middle" fill="#888" fontSize="10">{REGIONS_DATA.Nord.clubs}c / {REGIONS_DATA.Nord.courts}t</text>
+                <path
+                  d="M226 22C270 47 305 78 326 119C348 162 346 211 324 254C302 297 263 328 215 336C169 344 121 324 91 288C61 252 51 204 61 159C72 112 103 77 143 50C169 32 199 17 226 22Z"
+                  fill="url(#mauritius-map-fill)"
+                  stroke="rgba(255,255,255,0.16)"
+                  strokeWidth="1.2"
+                />
+                <path
+                  d="M214 43C249 66 275 94 290 130C307 169 304 211 285 247C266 283 234 306 196 313C159 320 121 303 98 273C75 244 68 205 78 169C88 132 112 103 145 78C167 61 193 39 214 43Z"
+                  fill="none"
+                  stroke="rgba(74,213,105,0.08)"
+                  strokeWidth="1"
+                />
+                <line x1="202" y1="86" x2="202" y2="270" stroke="rgba(255,255,255,0.07)" strokeWidth="1" strokeDasharray="5,7" />
+                <line x1="122" y1="184" x2="282" y2="184" stroke="rgba(255,255,255,0.07)" strokeWidth="1" strokeDasharray="5,7" />
 
-              {/* Ouest */}
-              <circle cx="115" cy="195" r="48"
-                fill={active === 'Ouest' ? `${REGION_CONFIG.Ouest.color}25` : 'rgba(59,130,246,0.07)'}
-                stroke={REGION_CONFIG.Ouest.color} strokeWidth={active === 'Ouest' ? 2 : 1}
-                style={{ cursor: 'pointer', transition: 'all 0.3s' }}
-                onClick={() => setActive(active === 'Ouest' ? null : 'Ouest')}
-              />
-              <text x="115" y="188" textAnchor="middle" fill={REGION_CONFIG.Ouest.color} fontSize="13" fontWeight="700">Ouest</text>
-              <text x="115" y="203" textAnchor="middle" fill="#888" fontSize="10">{REGIONS_DATA.Ouest.clubs}c / {REGIONS_DATA.Ouest.courts}t</text>
+                <RegionMapNode region="Nord" x={202} y={92} active={active === 'Nord'} onClick={() => setActive(active === 'Nord' ? null : 'Nord')} />
+                <RegionMapNode region="Ouest" x={122} y={185} active={active === 'Ouest'} onClick={() => setActive(active === 'Ouest' ? null : 'Ouest')} />
+                <RegionMapNode region="Est" x={284} y={185} active={active === 'Est'} onClick={() => setActive(active === 'Est' ? null : 'Est')} />
+                <RegionMapNode region="Centre" x={202} y={270} active={active === 'Centre'} onClick={() => setActive(active === 'Centre' ? null : 'Centre')} />
+              </svg>
+            </div>
 
-              {/* Est */}
-              <circle cx="290" cy="195" r="48"
-                fill={active === 'Est' ? `${REGION_CONFIG.Est.color}25` : 'rgba(245,158,11,0.07)'}
-                stroke={REGION_CONFIG.Est.color} strokeWidth={active === 'Est' ? 2 : 1}
-                style={{ cursor: 'pointer', transition: 'all 0.3s' }}
-                onClick={() => setActive(active === 'Est' ? null : 'Est')}
-              />
-              <text x="290" y="188" textAnchor="middle" fill={REGION_CONFIG.Est.color} fontSize="13" fontWeight="700">Est</text>
-              <text x="290" y="203" textAnchor="middle" fill="#888" fontSize="10">{REGIONS_DATA.Est.clubs}c / {REGIONS_DATA.Est.courts}t</text>
-
-              {/* Sud */}
-              <circle cx="200" cy="285" r="48"
-                fill={active === 'Centre' ? `${REGION_CONFIG.Centre.color}25` : 'rgba(139,92,246,0.07)'}
-                stroke={REGION_CONFIG.Centre.color} strokeWidth={active === 'Centre' ? 2 : 1}
-                style={{ cursor: 'pointer', transition: 'all 0.3s' }}
-                onClick={() => setActive(active === 'Centre' ? null : 'Centre')}
-              />
-              <text x="200" y="278" textAnchor="middle" fill={REGION_CONFIG.Centre.color} fontSize="13" fontWeight="700">Centre</text>
-              <text x="200" y="293" textAnchor="middle" fill="#888" fontSize="10">{REGIONS_DATA.Centre.clubs}c / {REGIONS_DATA.Centre.courts}t</text>
-
-              {/* Lignes de connexion */}
-              <line x1="200" y1="135" x2="200" y2="240" stroke="rgba(255,255,255,0.06)" strokeWidth="1" strokeDasharray="4,4"/>
-              <line x1="160" y1="165" x2="250" y2="165" stroke="rgba(255,255,255,0.06)" strokeWidth="1" strokeDasharray="4,4"/>
-            </svg>
-
-            <p style={{ color: '#555', fontSize: '12px', marginTop: '16px' }}>
-              {lang === 'fr' ? 'Cliquez sur une région pour la sélectionner' : 'Click on a region to select it'}
+            <p style={{ color: '#707987', fontSize: '12px', margin: '10px 0 0', fontWeight: 650 }}>
+              {lang === 'fr' ? 'Touchez une zone pour ouvrir le détail de la région.' : 'Tap a zone to open region details.'}
             </p>
           </GlassCard>
         </div>
