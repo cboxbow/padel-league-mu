@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, MapPin, Trophy, Filter, Search, X, ChevronUp, ChevronDown, RefreshCw, Award } from 'lucide-react';
+import { Calendar, MapPin, Trophy, Filter, Search, X, ChevronUp, ChevronDown, RefreshCw, Award, Maximize2, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Layout, GlassCard } from '@/components/Layout';
 import { DotWaveBackground } from '@/components/DotWaveBackground';
 import { useI18n } from '@/hooks/useI18n';
@@ -75,6 +75,28 @@ const STATUS_CONFIG: Record<string, { label_fr: string; label_en: string; color:
 
 type SortField = 'date' | 'name' | 'region' | 'category' | 'max_teams' | 'teams_registered' | 'status';
 type SortDir   = 'asc' | 'desc';
+
+type OfficialCalendarAsset = {
+  id: string;
+  titleFr: string;
+  titleEn: string;
+  subtitleFr: string;
+  subtitleEn: string;
+  tag: string;
+  accent: string;
+  image: string;
+  pdf: string;
+};
+
+const OFFICIAL_CALENDARS: OfficialCalendarAsset[] = [
+  { id: 'm25', tag: 'M25', accent: '#60a5fa', titleFr: 'Calendrier M25', titleEn: 'M25 Calendar', subtitleFr: 'Challengers et opens locaux', subtitleEn: 'Local challengers and opens', image: '/calendar-update/m25-calendar.jpg', pdf: '/calendar-update/m25-calendar.pdf' },
+  { id: 'm50', tag: 'M50', accent: '#34d399', titleFr: 'Calendrier M50', titleEn: 'M50 Calendar', subtitleFr: 'Tournois ouverts et progression', subtitleEn: 'Open tournaments and progression', image: '/calendar-update/m50-calendar.jpg', pdf: '/calendar-update/m50-calendar.pdf' },
+  { id: 'm100', tag: 'M100', accent: '#fbbf24', titleFr: 'Calendrier M100', titleEn: 'M100 Calendar', subtitleFr: 'Niveau intermediaire et ranking', subtitleEn: 'Intermediate ranking events', image: '/calendar-update/m100-calendar.jpg', pdf: '/calendar-update/m100-calendar.pdf' },
+  { id: 'm250', tag: 'M250', accent: '#f97316', titleFr: 'Calendrier M250', titleEn: 'M250 Calendar', subtitleFr: 'Evenements majeurs du circuit', subtitleEn: 'Major circuit events', image: '/calendar-update/m250-calendar.jpg', pdf: '/calendar-update/m250-calendar.pdf' },
+  { id: 'm500', tag: 'M500', accent: '#e879f9', titleFr: 'Calendrier M500', titleEn: 'M500 Calendar', subtitleFr: 'Tournois premium MPL', subtitleEn: 'Premium MPL tournaments', image: '/calendar-update/m500-calendar.jpg', pdf: '/calendar-update/m500-calendar.pdf' },
+  { id: 'mixed', tag: 'MIXED', accent: '#a78bfa', titleFr: 'Calendrier Mixte', titleEn: 'Mixed Calendar', subtitleFr: 'Open mixed et paires mixtes', subtitleEn: 'Mixed opens and mixed pairs', image: '/calendar-update/mixed-calendar.jpg', pdf: '/calendar-update/mixed-calendar.pdf' },
+  { id: 'junior', tag: 'JUNIOR', accent: '#fb923c', titleFr: 'Calendrier Junior', titleEn: 'Junior Calendar', subtitleFr: 'U11, U13 et U15', subtitleEn: 'U11, U13 and U15', image: '/calendar-update/junior-calendar.jpg', pdf: '/calendar-update/junior-calendar.pdf' },
+];
 
 // ── Composants utilitaires ────────────────────────────────────────────────────
 function FilterPill({ label, active, color, bg, onClick }: {
@@ -218,6 +240,217 @@ function SortBtn({ field, current, dir, onSort }: {
   );
 }
 
+function OfficialCalendarCard({ item, lang, onOpen }: {
+  item: OfficialCalendarAsset;
+  lang: string;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      onClick={onOpen}
+      style={{
+        minWidth: '170px',
+        textAlign: 'left',
+        border: `1px solid ${item.accent}33`,
+        borderRadius: '12px',
+        background: `linear-gradient(180deg, ${item.accent}12, rgba(255,255,255,0.035))`,
+        padding: 0,
+        overflow: 'hidden',
+        cursor: 'pointer',
+        color: 'white',
+        boxShadow: `0 14px 34px ${item.accent}08`,
+      }}
+    >
+      <div style={{
+        height: '118px',
+        background: '#0f0f0f',
+        borderBottom: `1px solid ${item.accent}22`,
+        position: 'relative',
+        overflow: 'hidden',
+      }}>
+        <img
+          src={item.image}
+          alt={lang === 'fr' ? item.titleFr : item.titleEn}
+          loading="lazy"
+          style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center', opacity: 0.92 }}
+        />
+        <span style={{
+          position: 'absolute',
+          top: 10,
+          left: 10,
+          background: `${item.accent}22`,
+          border: `1px solid ${item.accent}55`,
+          color: item.accent,
+          borderRadius: '999px',
+          padding: '4px 9px',
+          fontSize: '11px',
+          fontWeight: 900,
+          letterSpacing: '0.4px',
+        }}>{item.tag}</span>
+      </div>
+      <div style={{ padding: '12px 12px 13px' }}>
+        <div style={{ fontSize: '14px', fontWeight: 900, marginBottom: '3px' }}>
+          {lang === 'fr' ? item.titleFr : item.titleEn}
+        </div>
+        <div style={{ color: '#8a8a8a', fontSize: '12px', lineHeight: 1.35, minHeight: '32px' }}>
+          {lang === 'fr' ? item.subtitleFr : item.subtitleEn}
+        </div>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '11px' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#4ad569', fontSize: '12px', fontWeight: 800 }}>
+            <Maximize2 size={13} /> {lang === 'fr' ? 'Voir' : 'View'}
+          </span>
+          <a
+            href={item.pdf}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#a0a0a0', fontSize: '12px', fontWeight: 700, textDecoration: 'none' }}
+          >
+            <Download size={13} /> PDF
+          </a>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function CalendarLightbox({ item, list, lang, onClose, onSelect }: {
+  item: OfficialCalendarAsset;
+  list: OfficialCalendarAsset[];
+  lang: string;
+  onClose: () => void;
+  onSelect: (item: OfficialCalendarAsset) => void;
+}) {
+  const index = list.findIndex(calendar => calendar.id === item.id);
+  const go = (delta: number) => {
+    const nextIndex = (index + delta + list.length) % list.length;
+    onSelect(list[nextIndex]);
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 80,
+        background: 'rgba(0,0,0,0.86)',
+        backdropFilter: 'blur(10px)',
+        padding: 'clamp(12px, 3vw, 34px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 'min(1180px, 96vw)',
+          maxHeight: '92vh',
+          border: `1px solid ${item.accent}44`,
+          borderRadius: '18px',
+          background: 'linear-gradient(180deg, #111 0%, #070707 100%)',
+          boxShadow: `0 28px 80px rgba(0,0,0,0.65), 0 0 0 1px ${item.accent}16`,
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '12px',
+          padding: '14px 16px',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+        }}>
+          <div>
+            <span style={{ color: item.accent, fontSize: '12px', fontWeight: 900, letterSpacing: '0.8px' }}>{item.tag}</span>
+            <h2 style={{ margin: '3px 0 0', color: 'white', fontSize: 'clamp(18px, 3vw, 26px)', fontWeight: 900 }}>
+              {lang === 'fr' ? item.titleFr : item.titleEn}
+            </h2>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <a href={item.pdf} target="_blank" rel="noreferrer" style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '7px',
+              padding: '9px 12px',
+              borderRadius: '10px',
+              background: 'rgba(255,255,255,0.06)',
+              color: '#d8d8d8',
+              border: '1px solid rgba(255,255,255,0.1)',
+              textDecoration: 'none',
+              fontSize: '13px',
+              fontWeight: 800,
+            }}>
+              <Download size={15} /> PDF
+            </a>
+            <button onClick={onClose} style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: '12px',
+              border: '1px solid rgba(255,255,255,0.12)',
+              background: 'rgba(255,255,255,0.06)',
+              color: '#bdbdbd',
+              cursor: 'pointer',
+            }}>
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        <div style={{ position: 'relative', overflow: 'auto', padding: '14px', WebkitOverflowScrolling: 'touch' }}>
+          <button onClick={() => go(-1)} style={{
+            position: 'sticky',
+            left: 0,
+            top: '45%',
+            zIndex: 2,
+            width: '38px',
+            height: '38px',
+            borderRadius: '999px',
+            border: '1px solid rgba(255,255,255,0.12)',
+            background: 'rgba(10,10,10,0.72)',
+            color: 'white',
+            cursor: 'pointer',
+            float: 'left',
+          }}><ChevronLeft size={20} /></button>
+          <button onClick={() => go(1)} style={{
+            position: 'sticky',
+            right: 0,
+            top: '45%',
+            zIndex: 2,
+            width: '38px',
+            height: '38px',
+            borderRadius: '999px',
+            border: '1px solid rgba(255,255,255,0.12)',
+            background: 'rgba(10,10,10,0.72)',
+            color: 'white',
+            cursor: 'pointer',
+            float: 'right',
+          }}><ChevronRight size={20} /></button>
+          <img
+            src={item.image}
+            alt={lang === 'fr' ? item.titleFr : item.titleEn}
+            style={{
+              display: 'block',
+              width: '100%',
+              minWidth: 'min(760px, 100%)',
+              maxWidth: '1060px',
+              margin: '0 auto',
+              borderRadius: '12px',
+              border: '1px solid rgba(255,255,255,0.08)',
+              background: '#050505',
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Page principale ────────────────────────────────────────────────────────────
 export default function Calendrier() {
   const { lang } = useI18n();
@@ -238,6 +471,7 @@ export default function Calendrier() {
   const [page,     setPage]     = useState(1);
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDir,   setSortDir]   = useState<SortDir>('asc');
+  const [selectedCalendar, setSelectedCalendar] = useState<OfficialCalendarAsset | null>(null);
   const PER_PAGE = 30;
 
   const { tournaments, loading } = useTournaments({ region, category, status, month });
@@ -470,6 +704,48 @@ export default function Calendrier() {
                 })}
               </div>
 
+            </div>
+          </GlassCard>
+
+          {/* ── Calendriers officiels en image ── */}
+          <GlassCard style={{ padding: '16px 18px', marginBottom: '20px' }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              gap: '14px',
+              marginBottom: '14px',
+              flexWrap: 'wrap',
+            }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '9px', color: '#4ad569', fontSize: '12px', fontWeight: 900, letterSpacing: '0.6px', textTransform: 'uppercase' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#4ad569', boxShadow: '0 0 12px rgba(74,213,105,0.7)' }} />
+                  {lang === 'fr' ? 'Calendriers officiels' : 'Official calendars'}
+                </div>
+                <p style={{ margin: '6px 0 0', color: '#8a8a8a', fontSize: '13px' }}>
+                  {lang === 'fr'
+                    ? 'Clique sur une image pour ouvrir le calendrier en grand, ou telecharge le PDF officiel.'
+                    : 'Click an image to open the calendar full size, or download the official PDF.'}
+                </p>
+              </div>
+              <span style={{ color: '#606060', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                {OFFICIAL_CALENDARS.length} {lang === 'fr' ? 'supports' : 'files'}
+              </span>
+            </div>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+              gap: '12px',
+            }}>
+              {OFFICIAL_CALENDARS.map(item => (
+                <OfficialCalendarCard
+                  key={item.id}
+                  item={item}
+                  lang={lang}
+                  onOpen={() => setSelectedCalendar(item)}
+                />
+              ))}
             </div>
           </GlassCard>
 
@@ -765,6 +1041,15 @@ export default function Calendrier() {
 
         </div>
       </section>
+      {selectedCalendar && (
+        <CalendarLightbox
+          item={selectedCalendar}
+          list={OFFICIAL_CALENDARS}
+          lang={lang}
+          onClose={() => setSelectedCalendar(null)}
+          onSelect={setSelectedCalendar}
+        />
+      )}
     </Layout>
   );
 }
