@@ -199,7 +199,7 @@ const CLUB_LOCATION_SEEDS: ClubLocation[] = [
   { name: 'Club House Black River', zone: 'Ouest', place: 'Black River', locationKey: 'black-river', lat: -20.360, lng: 57.365, courts: 2, events: 10 },
   { name: 'SPARC Cascavelle', zone: 'Ouest', place: 'Cascavelle', locationKey: 'cascavelle', lat: -20.286, lng: 57.407, courts: 4, events: 17 },
   { name: 'RM Club Tamarin', zone: 'Ouest', place: 'Tamarin', locationKey: 'tamarin', lat: -20.328, lng: 57.374, courts: 4, events: 15 },
-  { name: 'Terres Brunes Sports & Leisure', zone: 'Ouest', place: 'Tamarin / Terre Rouge', locationKey: 'terres-brunes', lat: -20.344, lng: 57.390, courts: 4, events: 13 },
+  { name: 'Terres Brunes Sports & Leisure', zone: 'Ouest', place: 'Tamarin', locationKey: 'terres-brunes', lat: -20.344, lng: 57.390, courts: 4, events: 13 },
   { name: 'I Padel by RM Hennessy', zone: 'Centre', place: 'Ebène / Hennessy', locationKey: 'hennessy', lat: -20.242, lng: 57.491, courts: 4, events: 18 },
   { name: 'I Padel by RM Port Chambly', zone: 'Centre', place: 'Port Chambly', locationKey: 'port-chambly', lat: -20.108, lng: 57.520, courts: 4, events: 17 },
   { name: 'Oxygen Moka', zone: 'Centre', place: 'Moka', locationKey: 'moka', lat: -20.219, lng: 57.502, courts: 3, events: 10 },
