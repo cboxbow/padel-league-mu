@@ -481,6 +481,7 @@ function ClubsMap({ lang }: { lang: string }) {
 
 export default function Regions() {
   const { t, lang } = useI18n();
+  const [active, setActive] = useState<LocalRegion | null>(null);
 
   return (
     <Layout>
