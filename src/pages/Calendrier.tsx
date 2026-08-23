@@ -245,41 +245,63 @@ function OfficialCalendarCard({ item, lang, onOpen }: {
   lang: string;
   onOpen: () => void;
 }) {
+  const title = lang === 'fr' ? item.titleFr : item.titleEn;
+  const subtitle = lang === 'fr' ? item.subtitleFr : item.subtitleEn;
+
   return (
-    <button
-      onClick={onOpen}
+    <article
       style={{
-        minWidth: '170px',
-        textAlign: 'left',
         border: `1px solid ${item.accent}33`,
-        borderRadius: '12px',
-        background: `linear-gradient(180deg, ${item.accent}12, rgba(255,255,255,0.035))`,
-        padding: 0,
+        borderRadius: '14px',
+        background: `linear-gradient(180deg, ${item.accent}13 0%, rgba(255,255,255,0.035) 48%, rgba(0,0,0,0.18) 100%)`,
         overflow: 'hidden',
-        cursor: 'pointer',
         color: 'white',
-        boxShadow: `0 14px 34px ${item.accent}08`,
+        boxShadow: `0 18px 46px ${item.accent}0c`,
+        minHeight: '100%',
+        display: 'flex',
+        flexDirection: 'column',
       }}
     >
-      <div style={{
-        height: '118px',
-        background: '#0f0f0f',
-        borderBottom: `1px solid ${item.accent}22`,
-        position: 'relative',
-        overflow: 'hidden',
-      }}>
+      <button
+        onClick={onOpen}
+        aria-label={`${lang === 'fr' ? 'Ouvrir' : 'Open'} ${title}`}
+        style={{
+          height: '162px',
+          width: '100%',
+          background: '#0f0f0f',
+          border: 'none',
+          borderBottom: `1px solid ${item.accent}24`,
+          position: 'relative',
+          overflow: 'hidden',
+          cursor: 'pointer',
+          padding: 0,
+        }}
+      >
         <img
           src={item.image}
-          alt={lang === 'fr' ? item.titleFr : item.titleEn}
+          alt={title}
           loading="lazy"
-          style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center', opacity: 0.92 }}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            objectPosition: 'top center',
+            opacity: 0.94,
+            transform: 'scale(1.01)',
+          }}
         />
+        <span style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'linear-gradient(180deg, rgba(0,0,0,0.02) 45%, rgba(0,0,0,0.58) 100%)',
+          pointerEvents: 'none',
+        }} />
         <span style={{
           position: 'absolute',
           top: 10,
           left: 10,
-          background: `${item.accent}22`,
-          border: `1px solid ${item.accent}55`,
+          background: `${item.accent}24`,
+          border: `1px solid ${item.accent}66`,
           color: item.accent,
           borderRadius: '999px',
           padding: '4px 9px',
@@ -287,30 +309,75 @@ function OfficialCalendarCard({ item, lang, onOpen }: {
           fontWeight: 900,
           letterSpacing: '0.4px',
         }}>{item.tag}</span>
-      </div>
-      <div style={{ padding: '12px 12px 13px' }}>
-        <div style={{ fontSize: '14px', fontWeight: 900, marginBottom: '3px' }}>
-          {lang === 'fr' ? item.titleFr : item.titleEn}
+        <span style={{
+          position: 'absolute',
+          right: 11,
+          bottom: 10,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '6px',
+          color: 'white',
+          background: 'rgba(0,0,0,0.62)',
+          border: '1px solid rgba(255,255,255,0.16)',
+          borderRadius: '999px',
+          padding: '7px 10px',
+          fontSize: '12px',
+          fontWeight: 900,
+        }}>
+          <Maximize2 size={13} /> {lang === 'fr' ? 'Agrandir' : 'Expand'}
+        </span>
+      </button>
+      <div style={{ padding: '14px 14px 15px', display: 'flex', flexDirection: 'column', flex: 1 }}>
+        <div style={{ fontSize: '16px', fontWeight: 950, marginBottom: '4px', letterSpacing: '0' }}>
+          {title}
         </div>
-        <div style={{ color: '#8a8a8a', fontSize: '12px', lineHeight: 1.35, minHeight: '32px' }}>
-          {lang === 'fr' ? item.subtitleFr : item.subtitleEn}
+        <div style={{ color: '#9a9a9a', fontSize: '13px', lineHeight: 1.45, minHeight: '38px' }}>
+          {subtitle}
         </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '11px' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#4ad569', fontSize: '12px', fontWeight: 800 }}>
-            <Maximize2 size={13} /> {lang === 'fr' ? 'Voir' : 'View'}
-          </span>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '14px' }}>
+          <button
+            onClick={onOpen}
+            style={{
+              minHeight: '36px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '7px',
+              borderRadius: '10px',
+              border: `1px solid ${item.accent}55`,
+              background: `${item.accent}16`,
+              color: item.accent,
+              fontSize: '13px',
+              fontWeight: 900,
+              cursor: 'pointer',
+            }}
+          >
+            <Maximize2 size={14} /> {lang === 'fr' ? 'Ouvrir' : 'Open'}
+          </button>
           <a
             href={item.pdf}
             target="_blank"
             rel="noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#a0a0a0', fontSize: '12px', fontWeight: 700, textDecoration: 'none' }}
+            style={{
+              minHeight: '36px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '7px',
+              borderRadius: '10px',
+              border: '1px solid rgba(255,255,255,0.11)',
+              background: 'rgba(255,255,255,0.045)',
+              color: '#d0d0d0',
+              fontSize: '13px',
+              fontWeight: 850,
+              textDecoration: 'none',
+            }}
           >
-            <Download size={13} /> PDF
+            <Download size={14} /> PDF
           </a>
         </div>
       </div>
-    </button>
+    </article>
   );
 }
 
@@ -708,13 +775,18 @@ export default function Calendrier() {
           </GlassCard>
 
           {/* ── Calendriers officiels en image ── */}
-          <GlassCard style={{ padding: '16px 18px', marginBottom: '20px' }}>
+          <GlassCard style={{
+            padding: 'clamp(16px, 2.3vw, 24px)',
+            marginBottom: '22px',
+            border: '1px solid rgba(74,213,105,0.35)',
+            background: 'linear-gradient(180deg, rgba(74,213,105,0.055), rgba(255,255,255,0.025))',
+          }}>
             <div style={{
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'flex-start',
-              gap: '14px',
-              marginBottom: '14px',
+              gap: '18px',
+              marginBottom: '18px',
               flexWrap: 'wrap',
             }}>
               <div>
@@ -722,21 +794,33 @@ export default function Calendrier() {
                   <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#4ad569', boxShadow: '0 0 12px rgba(74,213,105,0.7)' }} />
                   {lang === 'fr' ? 'Calendriers officiels' : 'Official calendars'}
                 </div>
-                <p style={{ margin: '6px 0 0', color: '#8a8a8a', fontSize: '13px' }}>
+                <p style={{ margin: '7px 0 0', color: '#9a9a9a', fontSize: '14px', lineHeight: 1.5, maxWidth: '680px' }}>
                   {lang === 'fr'
-                    ? 'Clique sur une image pour ouvrir le calendrier en grand, ou telecharge le PDF officiel.'
+                    ? 'Consulte les calendriers par niveau : ouvre l’image en grand ou telecharge le PDF officiel.'
                     : 'Click an image to open the calendar full size, or download the official PDF.'}
                 </p>
               </div>
-              <span style={{ color: '#606060', fontSize: '12px', whiteSpace: 'nowrap' }}>
-                {OFFICIAL_CALENDARS.length} {lang === 'fr' ? 'supports' : 'files'}
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                color: '#9a9a9a',
+                fontSize: '12px',
+                whiteSpace: 'nowrap',
+                border: '1px solid rgba(255,255,255,0.09)',
+                borderRadius: '999px',
+                padding: '7px 10px',
+                background: 'rgba(0,0,0,0.18)',
+              }}>
+                <Calendar size={14} color="#4ad569" />
+                {OFFICIAL_CALENDARS.length} {lang === 'fr' ? 'calendriers' : 'calendars'}
               </span>
             </div>
 
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
-              gap: '12px',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))',
+              gap: '14px',
             }}>
               {OFFICIAL_CALENDARS.map(item => (
                 <OfficialCalendarCard
