@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Compass, LocateFixed, Sunrise, Waves } from 'lucide-react';
+import { Compass, ExternalLink, LocateFixed, MapPin, Sunrise, Waves } from 'lucide-react';
 import { DotWaveBackground } from '@/components/DotWaveBackground';
 import { Layout, GlassCard, RegionBadge } from '@/components/Layout';
 import { useI18n } from '@/hooks/useI18n';
@@ -142,70 +142,316 @@ function RegionCardLabel({ region, color, bg }: { region: LocalRegion; color: st
   );
 }
 
-function RegionMapNode({
-  region,
-  x,
-  y,
-  labelX,
-  labelY,
-  active,
-  onClick,
-}: {
-  region: LocalRegion;
+const ZONE_COLORS: Record<LocalRegion | 'Sud', string> = {
+  Nord: '#4EA8FF',
+  Ouest: '#3ED0A0',
+  Centre: '#9B7EFF',
+  Est: '#FFA940',
+  Sud: '#FF6B6B',
+};
+
+type ClubLocation = {
+  name: string;
+  zone: LocalRegion | 'Sud';
+  place: string;
+  locationKey: string;
+  lat: number;
+  lng: number;
+  courts: number;
+  events: number;
+};
+
+type ClubCluster = {
+  id: string;
+  place: string;
+  zone: LocalRegion | 'Sud';
+  lat: number;
+  lng: number;
+  courts: number;
+  events: number;
+  clubs: ClubLocation[];
   x: number;
   y: number;
-  labelX: number;
-  labelY: number;
-  active: boolean;
-  onClick: () => void;
-}) {
-  const data = REGIONS_DATA[region];
-  const cfg = REGION_CONFIG[region as Region];
-  const anchor = labelX < x - 10 ? 'end' : labelX > x + 10 ? 'start' : 'middle';
+};
+
+const CLUB_LOCATIONS: ClubLocation[] = [
+  { name: 'Caña Beau Plan', zone: 'Nord', place: 'Beau Plan', locationKey: 'beau-plan', lat: -20.086, lng: 57.562, courts: 4, events: 18 },
+  { name: 'Urban Sport Grand Baie', zone: 'Nord', place: 'Grand Baie', locationKey: 'grand-baie', lat: -20.014, lng: 57.584, courts: 6, events: 20 },
+  { name: 'RM Club Grand Baie', zone: 'Nord', place: 'Grand Baie', locationKey: 'grand-baie', lat: -20.014, lng: 57.584, courts: 4, events: 18 },
+  { name: 'Isla Padel Grand Baie', zone: 'Nord', place: 'Grand Baie', locationKey: 'grand-baie', lat: -20.014, lng: 57.584, courts: 4, events: 10 },
+  { name: 'Labourdonnais Mapou', zone: 'Nord', place: 'Mapou', locationKey: 'mapou', lat: -20.079, lng: 57.604, courts: 4, events: 17 },
+  { name: 'Mont Choisy Golf', zone: 'Nord', place: 'Mont Choisy', locationKey: 'mont-choisy', lat: -20.012, lng: 57.552, courts: 3, events: 8 },
+  { name: 'Energia Pointe aux Canonniers', zone: 'Nord', place: 'Pointe aux Canonniers', locationKey: 'pointe-aux-canonniers', lat: -20.006, lng: 57.558, courts: 3, events: 8 },
+  { name: 'Club Med Albion', zone: 'Ouest', place: 'Albion', locationKey: 'albion', lat: -20.207, lng: 57.407, courts: 3, events: 12 },
+  { name: 'Urban Sport Black River', zone: 'Ouest', place: 'Black River', locationKey: 'black-river', lat: -20.360, lng: 57.365, courts: 4, events: 18 },
+  { name: 'Club House Black River', zone: 'Ouest', place: 'Black River', locationKey: 'black-river', lat: -20.360, lng: 57.365, courts: 2, events: 10 },
+  { name: 'SPARC Cascavelle', zone: 'Ouest', place: 'Cascavelle', locationKey: 'cascavelle', lat: -20.286, lng: 57.407, courts: 4, events: 17 },
+  { name: 'RM Club Tamarin', zone: 'Ouest', place: 'Tamarin', locationKey: 'tamarin', lat: -20.328, lng: 57.374, courts: 4, events: 15 },
+  { name: 'Terres Brunes Sports & Leisure', zone: 'Ouest', place: 'Tamarin / Terre Rouge', locationKey: 'terres-brunes', lat: -20.344, lng: 57.390, courts: 4, events: 13 },
+  { name: 'I Padel by RM Hennessy', zone: 'Centre', place: 'Ebène / Hennessy', locationKey: 'hennessy', lat: -20.242, lng: 57.491, courts: 4, events: 18 },
+  { name: 'I Padel by RM Port Chambly', zone: 'Centre', place: 'Port Chambly', locationKey: 'port-chambly', lat: -20.108, lng: 57.520, courts: 4, events: 17 },
+  { name: 'Oxygen Moka', zone: 'Centre', place: 'Moka', locationKey: 'moka', lat: -20.219, lng: 57.502, courts: 3, events: 10 },
+  { name: 'Moka Rangers', zone: 'Centre', place: 'Moka', locationKey: 'moka', lat: -20.219, lng: 57.502, courts: 2, events: 8 },
+  { name: 'Studio by RM Azuri', zone: 'Est', place: 'Azuri', locationKey: 'azuri', lat: -20.084, lng: 57.708, courts: 3, events: 15 },
+];
+
+const MAP_BOUNDS = {
+  minLat: -20.56,
+  maxLat: -19.98,
+  minLng: 57.31,
+  maxLng: 57.74,
+};
+
+function projectClub(lat: number, lng: number) {
+  const x = 64 + ((lng - MAP_BOUNDS.minLng) / (MAP_BOUNDS.maxLng - MAP_BOUNDS.minLng)) * 392;
+  const y = 62 + ((MAP_BOUNDS.maxLat - lat) / (MAP_BOUNDS.maxLat - MAP_BOUNDS.minLat)) * 510;
+  return { x, y };
+}
+
+function buildClubClusters(): ClubCluster[] {
+  const grouped = new Map<string, ClubLocation[]>();
+  CLUB_LOCATIONS.forEach((club) => {
+    grouped.set(club.locationKey, [...(grouped.get(club.locationKey) ?? []), club]);
+  });
+
+  return Array.from(grouped.entries()).map(([id, clubs]) => {
+    const lat = clubs.reduce((sum, club) => sum + club.lat, 0) / clubs.length;
+    const lng = clubs.reduce((sum, club) => sum + club.lng, 0) / clubs.length;
+    const { x, y } = projectClub(lat, lng);
+    return {
+      id,
+      place: clubs[0].place,
+      zone: clubs[0].zone,
+      lat,
+      lng,
+      courts: clubs.reduce((sum, club) => sum + club.courts, 0),
+      events: clubs.reduce((sum, club) => sum + club.events, 0),
+      clubs,
+      x,
+      y,
+    };
+  });
+}
+
+function ClubsMap({ lang }: { lang: string }) {
+  const clusters = buildClubClusters();
+  const [selectedId, setSelectedId] = useState(clusters.find((cluster) => cluster.clubs.length > 1)?.id ?? clusters[0]?.id);
+  const selected = clusters.find((cluster) => cluster.id === selectedId) ?? clusters[0];
+  const totalClubs = CLUB_LOCATIONS.length;
+  const totalCourts = CLUB_LOCATIONS.reduce((sum, club) => sum + club.courts, 0);
+  const totalEvents = CLUB_LOCATIONS.reduce((sum, club) => sum + club.events, 0);
 
   return (
-    <g
-      role="button"
-      tabIndex={0}
-      onClick={onClick}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') onClick();
-      }}
-      style={{ cursor: 'pointer', outline: 'none' }}
-    >
-      <circle
-        cx={x}
-        cy={y}
-        r={active ? 31 : 25}
-        fill={active ? `${cfg.color}22` : 'rgba(5, 15, 22, 0.42)'}
-        stroke={cfg.color}
-        strokeWidth={active ? 3 : 2.1}
-        filter={active ? `drop-shadow(0 0 18px ${cfg.color}66)` : `drop-shadow(0 0 9px ${cfg.color}30)`}
-        style={{ transition: 'all 0.25s ease' }}
-      />
-      <circle cx={x} cy={y} r="4.5" fill={cfg.color} />
-      <line
-        x1={x}
-        y1={y}
-        x2={labelX}
-        y2={labelY - 11}
-        stroke={cfg.color}
-        strokeWidth="1.2"
-        strokeOpacity={active ? 0.55 : 0.28}
-      />
-      <text x={labelX} y={labelY} textAnchor={anchor} fill={cfg.color} fontSize="18" fontWeight="950" letterSpacing="1.5">
-        {region}
-      </text>
-      <text x={labelX} y={labelY + 22} textAnchor={anchor} fill="#d8dde6" fontSize="15" fontWeight="760">
-        {data.clubs}c / {data.courts}t
-      </text>
-    </g>
+    <>
+    <style>{`
+      .clubs-map-shell {
+        display: grid;
+        grid-template-columns: minmax(0, 1.08fr) minmax(280px, 0.92fr);
+        gap: 24px;
+        align-items: stretch;
+      }
+      .clubs-map-panel {
+        padding: 22px;
+      }
+      .clubs-map-stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin-bottom: 18px;
+      }
+      .clubs-map-club-link {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+      }
+      @media (max-width: 760px) {
+        .clubs-map-shell {
+          grid-template-columns: 1fr;
+          gap: 18px;
+        }
+        .clubs-map-panel {
+          padding: 16px !important;
+          border-radius: 16px !important;
+        }
+        .clubs-map-stats {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 8px !important;
+        }
+        .clubs-map-club-link {
+          grid-template-columns: 1fr auto;
+          padding: 12px !important;
+        }
+      }
+      @media (max-width: 420px) {
+        .clubs-map-panel {
+          padding: 14px !important;
+        }
+        .clubs-map-stats {
+          grid-template-columns: 1fr 1fr 1fr;
+        }
+      }
+    `}</style>
+    <div className="clubs-map-shell">
+      <div style={{ minWidth: 0 }}>
+        <div style={{ textAlign: 'center', marginBottom: '22px' }}>
+          <h2 style={{ color: 'white', fontWeight: 950, fontSize: 'clamp(26px,5vw,46px)', margin: '0 0 8px', lineHeight: 1.02 }}>
+            {lang === 'fr' ? 'Carte des clubs MPL' : 'MPL clubs map'}
+          </h2>
+          <p style={{ color: '#9ca3af', margin: 0, fontSize: 'clamp(14px,2vw,18px)' }}>
+            {lang === 'fr' ? 'Distribution géographique réelle — saison en cours' : 'Real geographic distribution — current season'}
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 'clamp(22px,7vw,58px)', marginTop: '22px', flexWrap: 'wrap' }}>
+            {[
+              { value: totalClubs, label: lang === 'fr' ? 'Clubs' : 'Clubs' },
+              { value: totalCourts, label: lang === 'fr' ? 'Terrains' : 'Courts' },
+              { value: totalEvents, label: lang === 'fr' ? 'Événements' : 'Events' },
+            ].map((stat) => (
+              <div key={stat.label}>
+                <div style={{ color: '#34d6ff', fontSize: 'clamp(28px,6vw,38px)', fontFamily: 'JetBrains Mono, monospace', fontWeight: 950, lineHeight: 1 }}>{stat.value}</div>
+                <div style={{ color: '#7b8492', fontSize: '11px', letterSpacing: '2px', textTransform: 'uppercase', marginTop: '7px' }}>{stat.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ width: '100%', maxWidth: '560px', margin: '0 auto' }}>
+          <svg viewBox="0 0 520 650" style={{ width: '100%', display: 'block', overflow: 'visible' }} aria-label={lang === 'fr' ? 'Carte géographique des clubs MPL' : 'Geographic map of MPL clubs'}>
+            <defs>
+              <linearGradient id="real-map-fill" x1="160" y1="40" x2="398" y2="590" gradientUnits="userSpaceOnUse">
+                <stop stopColor="rgba(34,211,238,0.16)" />
+                <stop offset="0.54" stopColor="rgba(6,95,70,0.20)" />
+                <stop offset="1" stopColor="rgba(2,6,23,0.30)" />
+              </linearGradient>
+              <filter id="real-map-glow" x="-35%" y="-35%" width="170%" height="170%">
+                <feGaussianBlur stdDeviation="4" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+
+            <path
+              d="M323 55L363 70L390 88L397 117L382 146L397 193L421 232L447 238L463 250L468 275L463 308L484 326L496 361L493 403L478 464L487 502L473 547L451 579L409 594L358 607L306 618L257 616L212 607L184 592L151 600L123 579L86 536L112 529L139 533L165 526L176 479L171 449L159 439L164 395L164 354L177 313L199 274L236 247L275 236L300 218L305 176L326 134L350 103L336 93L316 96L292 116L263 116L245 104L260 85L296 72Z"
+              fill="url(#real-map-fill)"
+              stroke="#34d6ff"
+              strokeWidth="3"
+              strokeLinejoin="round"
+              filter="url(#real-map-glow)"
+            />
+
+            {clusters.map((cluster) => {
+              const color = ZONE_COLORS[cluster.zone];
+              const radius = Math.max(13, Math.min(29, 11 + cluster.courts * 1.3));
+              const active = cluster.id === selected?.id;
+              return (
+                <g
+                  key={cluster.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedId(cluster.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') setSelectedId(cluster.id);
+                  }}
+                  style={{ cursor: 'pointer', outline: 'none' }}
+                >
+                  <circle cx={cluster.x} cy={cluster.y} r={radius + 9} fill={color} opacity={active ? 0.18 : 0.09} />
+                  <circle cx={cluster.x} cy={cluster.y} r={radius} fill={color} fillOpacity={active ? 0.92 : 0.76} stroke={active ? '#ffffff' : color} strokeWidth={active ? 2.2 : 1.5} />
+                  {cluster.clubs.length > 1 && (
+                    <>
+                      <circle cx={cluster.x} cy={cluster.y} r={Math.max(10, radius - 7)} fill="rgba(5,10,18,0.44)" />
+                      <text x={cluster.x} y={cluster.y + 5} textAnchor="middle" fill="white" fontSize="17" fontWeight="950">{cluster.clubs.length}</text>
+                    </>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', flexWrap: 'wrap', marginTop: '8px' }}>
+          {(['Nord', 'Ouest', 'Centre', 'Est'] as LocalRegion[]).map((region) => (
+            <span key={region} style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', color: '#a9b1bd', fontSize: '14px', fontWeight: 700 }}>
+              <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: ZONE_COLORS[region], boxShadow: `0 0 18px ${ZONE_COLORS[region]}55` }} />
+              {region}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {selected && (
+        <aside className="clubs-map-panel" style={{
+          border: `1px solid ${ZONE_COLORS[selected.zone]}45`,
+          borderRadius: '18px',
+          background: `linear-gradient(180deg, ${ZONE_COLORS[selected.zone]}14, rgba(255,255,255,0.025))`,
+          minWidth: 0,
+          boxShadow: `0 24px 60px ${ZONE_COLORS[selected.zone]}10`,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', marginBottom: '18px' }}>
+            <div>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', color: ZONE_COLORS[selected.zone], fontSize: '12px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '1px' }}>
+                <MapPin size={14} /> {selected.zone}
+              </div>
+              <h3 style={{ color: 'white', margin: '7px 0 0', fontSize: '24px', lineHeight: 1.05 }}>{selected.place}</h3>
+            </div>
+            {selected.clubs.length > 1 && (
+              <span style={{ color: 'white', background: `${ZONE_COLORS[selected.zone]}24`, border: `1px solid ${ZONE_COLORS[selected.zone]}55`, padding: '8px 11px', borderRadius: '999px', fontWeight: 900 }}>
+                {selected.clubs.length} clubs
+              </span>
+            )}
+          </div>
+
+          <div className="clubs-map-stats">
+            {[
+              { value: selected.clubs.length, label: 'Clubs' },
+              { value: selected.courts, label: lang === 'fr' ? 'Terrains' : 'Courts' },
+              { value: selected.events, label: lang === 'fr' ? 'Événements' : 'Events' },
+            ].map((stat) => (
+              <div key={stat.label} style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '12px', background: 'rgba(255,255,255,0.025)' }}>
+                <div style={{ color: ZONE_COLORS[selected.zone], fontSize: '22px', fontWeight: 950, fontFamily: 'JetBrains Mono, monospace' }}>{stat.value}</div>
+                <div style={{ color: '#858b96', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.8px' }}>{stat.label}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {selected.clubs.map((club) => (
+              <a
+                key={club.name}
+                href={`#/clubs?club=${encodeURIComponent(club.name)}`}
+                className="clubs-map-club-link"
+                style={{
+                  color: 'inherit',
+                  textDecoration: 'none',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: '12px',
+                  padding: '14px',
+                  background: 'rgba(0,0,0,0.20)',
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <strong style={{ color: 'white', display: 'block', fontSize: '14px', lineHeight: 1.2 }}>{club.name}</strong>
+                  <span style={{ color: '#8d96a3', fontSize: '12px' }}>
+                    {club.courts} {lang === 'fr' ? 'terrains' : 'courts'} · {club.events} {lang === 'fr' ? 'événements' : 'events'}
+                  </span>
+                </div>
+                <ExternalLink size={16} color={ZONE_COLORS[selected.zone]} />
+              </a>
+            ))}
+          </div>
+
+          <p style={{ margin: '16px 0 0', color: '#7e8794', fontSize: '12px', lineHeight: 1.5 }}>
+            {lang === 'fr' ? 'Touchez un point sur la carte pour changer de lieu.' : 'Tap a map point to switch location.'}
+          </p>
+        </aside>
+      )}
+    </div>
+    </>
   );
 }
 
 export default function Regions() {
   const { t, lang } = useI18n();
-  const [active, setActive] = useState<LocalRegion | null>(null);
 
   return (
     <Layout>
@@ -347,80 +593,8 @@ export default function Regions() {
       {/* ── CARTE INTERACTIVE ── */}
       <section style={{ padding: '0 24px 72px' }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto', minWidth: '320px' }}>
-          <GlassCard style={{ padding: 'clamp(24px,5vw,44px)', textAlign: 'center', overflow: 'hidden' }}>
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '6px 12px',
-              borderRadius: '999px',
-              background: 'rgba(74,213,105,0.08)',
-              border: '1px solid rgba(74,213,105,0.22)',
-              color: '#4ad569',
-              fontSize: '11px',
-              fontWeight: 800,
-              letterSpacing: '0.8px',
-              textTransform: 'uppercase',
-              marginBottom: '14px',
-            }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '999px', background: '#4ad569', boxShadow: '0 0 14px #4ad569' }} />
-              {lang === 'fr' ? 'Carte interactive' : 'Interactive map'}
-            </div>
-            <h2 style={{ color: 'white', fontWeight: 900, fontSize: 'clamp(22px,4vw,34px)', margin: '0 0 10px', lineHeight: 1.05 }}>
-              {lang === 'fr' ? "Carte de l'Île Maurice" : 'Map of Mauritius Island'}
-            </h2>
-            <p style={{ color: '#9ca3af', margin: '0 auto 22px', fontSize: '14px', maxWidth: '460px', lineHeight: 1.55 }}>
-              {lang === 'fr' ? 'Explorez les clubs, terrains et tournois par zone.' : 'Explore clubs, courts and tournaments by zone.'}
-            </p>
-
-            <div style={{
-              width: '100%',
-              maxWidth: '560px',
-              margin: '0 auto',
-              borderRadius: '28px',
-              padding: 'clamp(2px,1vw,10px)',
-              background: 'radial-gradient(circle at 50% 42%, rgba(34,211,238,0.10), rgba(74,213,105,0.045) 42%, rgba(255,255,255,0.012) 68%, transparent 78%)',
-            }}>
-              <svg viewBox="0 0 520 620" style={{ width: '100%', display: 'block' }}>
-                <defs>
-                  <linearGradient id="mauritius-map-fill" x1="145" y1="54" x2="396" y2="554" gradientUnits="userSpaceOnUse">
-                    <stop stopColor="rgba(14,165,233,0.14)" />
-                    <stop offset="0.48" stopColor="rgba(6,95,70,0.18)" />
-                    <stop offset="1" stopColor="rgba(255,255,255,0.025)" />
-                  </linearGradient>
-                  <filter id="map-cyan-glow" x="-30%" y="-30%" width="160%" height="160%">
-                    <feGaussianBlur stdDeviation="3.5" result="blur" />
-                    <feMerge>
-                      <feMergeNode in="blur" />
-                      <feMergeNode in="SourceGraphic" />
-                    </feMerge>
-                  </filter>
-                </defs>
-
-                <path
-                  d="M323 55L363 70L390 88L397 117L382 146L397 193L421 232L447 238L463 250L468 275L463 308L484 326L496 361L493 403L478 464L487 502L473 547L451 579L409 594L358 607L306 618L257 616L212 607L184 592L151 600L123 579L86 536L112 529L139 533L165 526L176 479L171 449L159 439L164 395L164 354L177 313L199 274L236 247L275 236L300 218L305 176L326 134L350 103L336 93L316 96L292 116L263 116L245 104L260 85L296 72Z"
-                  fill="url(#mauritius-map-fill)"
-                  stroke="#34d6ff"
-                  strokeWidth="3.2"
-                  strokeLinejoin="round"
-                  filter="url(#map-cyan-glow)"
-                />
-                <path
-                  d="M321 77L355 90L374 105L363 133L378 185L407 224L431 229L441 240L445 262L441 295L462 315L473 356L469 397L456 455L466 499L452 536L428 562L394 576L350 588L303 598L262 596L224 587L192 572L160 581L135 560L107 529L130 524L155 527L177 515L186 473L183 443L174 430L181 389L181 356L192 320L213 288L247 265L285 254L315 231L322 182L341 143L360 115L342 112L318 125L286 124L261 111L274 95Z"
-                  fill="none"
-                  stroke="rgba(52,214,255,0.16)"
-                  strokeWidth="1.1"
-                />
-                <RegionMapNode region="Nord" x={318} y={117} labelX={318} labelY={66} active={active === 'Nord'} onClick={() => setActive(active === 'Nord' ? null : 'Nord')} />
-                <RegionMapNode region="Ouest" x={181} y={327} labelX={104} labelY={316} active={active === 'Ouest'} onClick={() => setActive(active === 'Ouest' ? null : 'Ouest')} />
-                <RegionMapNode region="Est" x={424} y={268} labelX={474} labelY={258} active={active === 'Est'} onClick={() => setActive(active === 'Est' ? null : 'Est')} />
-                <RegionMapNode region="Centre" x={253} y={276} labelX={253} labelY={216} active={active === 'Centre'} onClick={() => setActive(active === 'Centre' ? null : 'Centre')} />
-              </svg>
-            </div>
-
-            <p style={{ color: '#707987', fontSize: '12px', margin: '10px 0 0', fontWeight: 650 }}>
-              {lang === 'fr' ? 'Touchez une zone pour ouvrir le détail de la région.' : 'Tap a zone to open region details.'}
-            </p>
+          <GlassCard style={{ padding: 'clamp(20px,4vw,40px)', overflow: 'hidden' }}>
+            <ClubsMap lang={lang} />
           </GlassCard>
         </div>
       </section>
