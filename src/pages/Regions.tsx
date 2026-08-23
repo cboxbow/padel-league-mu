@@ -246,9 +246,25 @@ function ClubsMap({ lang }: { lang: string }) {
     <style>{`
       .clubs-map-shell {
         display: grid;
-        grid-template-columns: minmax(0, 1.08fr) minmax(280px, 0.92fr);
+        grid-template-columns: minmax(420px, 1fr) minmax(300px, 0.78fr);
         gap: 24px;
-        align-items: stretch;
+        align-items: start;
+      }
+      .clubs-map-stage {
+        min-width: 0;
+      }
+      .clubs-map-viewport {
+        width: min(100%, 620px);
+        aspect-ratio: 520 / 650;
+        min-height: 640px;
+        margin: 0 auto;
+        position: relative;
+      }
+      .clubs-map-viewport svg {
+        width: 100%;
+        height: 100%;
+        display: block;
+        overflow: visible;
       }
       .clubs-map-panel {
         padding: 22px;
@@ -264,10 +280,23 @@ function ClubsMap({ lang }: { lang: string }) {
         grid-template-columns: 1fr auto;
         gap: 10px;
       }
+      @media (max-width: 980px) {
+        .clubs-map-shell {
+          grid-template-columns: 1fr;
+        }
+        .clubs-map-viewport {
+          width: min(100%, 560px);
+          min-height: 0;
+        }
+      }
       @media (max-width: 760px) {
         .clubs-map-shell {
           grid-template-columns: 1fr;
           gap: 18px;
+        }
+        .clubs-map-viewport {
+          width: 100%;
+          aspect-ratio: 520 / 650;
         }
         .clubs-map-panel {
           padding: 16px !important;
@@ -292,7 +321,7 @@ function ClubsMap({ lang }: { lang: string }) {
       }
     `}</style>
     <div className="clubs-map-shell">
-      <div style={{ minWidth: 0 }}>
+      <div className="clubs-map-stage">
         <div style={{ textAlign: 'center', marginBottom: '22px' }}>
           <h2 style={{ color: 'white', fontWeight: 950, fontSize: 'clamp(26px,5vw,46px)', margin: '0 0 8px', lineHeight: 1.02 }}>
             {lang === 'fr' ? 'Carte des clubs MPL' : 'MPL clubs map'}
@@ -314,8 +343,8 @@ function ClubsMap({ lang }: { lang: string }) {
           </div>
         </div>
 
-        <div style={{ width: '100%', maxWidth: '560px', margin: '0 auto' }}>
-          <svg viewBox="0 0 520 650" style={{ width: '100%', display: 'block', overflow: 'visible' }} aria-label={lang === 'fr' ? 'Carte géographique des clubs MPL' : 'Geographic map of MPL clubs'}>
+        <div className="clubs-map-viewport">
+          <svg viewBox="0 0 520 650" preserveAspectRatio="xMidYMid meet" aria-label={lang === 'fr' ? 'Carte géographique des clubs MPL' : 'Geographic map of MPL clubs'}>
             <defs>
               <linearGradient id="real-map-fill" x1="160" y1="40" x2="398" y2="590" gradientUnits="userSpaceOnUse">
                 <stop stopColor="rgba(34,211,238,0.16)" />
@@ -593,7 +622,7 @@ export default function Regions() {
       {/* ── CARTE INTERACTIVE ── */}
       <section style={{ padding: '0 24px 72px' }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto', minWidth: '320px' }}>
-          <GlassCard style={{ padding: 'clamp(20px,4vw,40px)', overflow: 'hidden' }}>
+          <GlassCard style={{ padding: 'clamp(20px,4vw,40px)', overflow: 'visible' }}>
             <ClubsMap lang={lang} />
           </GlassCard>
         </div>
