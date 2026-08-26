@@ -699,46 +699,74 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
       // → insensible à la casse exacte stockée en DB
       if (hasValidKey) {
         try {
-          const officialParams = new URLSearchParams({
-            select: 'player_name,rank,rank_before,points,division,tournaments_played,trend,season,batch_id,created_at',
+          // Le nombre de joueurs par division peut depasser 1000 lignes : on
+          // determine d'abord le batch_id le plus recent (requete legere),
+          // puis on paginate sur ce batch_id pour recuperer TOUTES ses lignes
+          // (le plafond "max rows" de Supabase tronquait silencieusement la
+          // liste a 1000 joueurs quand on tentait de tout lire en un seul appel).
+          const latestBatchParams = new URLSearchParams({
+            select: 'batch_id,created_at',
             division: `eq.${dbDivision}`,
-            order: 'created_at.desc,rank.asc',
-            limit: '5000',
+            order: 'created_at.desc',
+            limit: '1',
           });
-          const officialRes = await fetch(`${sbUrl}/official_rankings?${officialParams}`, {
+          const latestBatchRes = await fetch(`${sbUrl}/official_rankings?${latestBatchParams}`, {
             headers: { 'apikey': sbKey, 'Authorization': `Bearer ${sbKey}`, 'Accept': 'application/json' },
           });
-          if (officialRes.ok) {
-            const officialRows = await officialRes.json() as Record<string, unknown>[];
-            if (Array.isArray(officialRows) && officialRows.length > 0) {
-              const latestBatchId = String(officialRows.find(row => row.batch_id)?.batch_id ?? '');
-              const latestCreatedAt = String(officialRows[0]?.created_at ?? '');
-              const currentRows = latestBatchId
-                ? officialRows.filter(row => String(row.batch_id ?? '') === latestBatchId)
-                : officialRows.filter(row => String(row.created_at ?? '').slice(0, 16) === latestCreatedAt.slice(0, 16));
-              const officialSorted = currentRows
-                .sort((a, b) => Number(a.rank ?? 9999) - Number(b.rank ?? 9999))
-                .map(r => ({
-                  rank:               Number(r.rank ?? 0),
-                  rank_before:        Number(r.rank_before ?? r.rank ?? 0),
-                  name:               String(r.player_name ?? '').trim(),
-                  points:             roundUpPoints(r.points),
-                  tournaments_played: Number(r.tournaments_played ?? 0),
-                  trend:              trendFromRanks(r.rank, r.rank_before, r.trend),
-                  season:             Number(r.season ?? 2026),
-                  updated_at:         r.created_at as string | undefined,
-                }))
-                .filter(r => r.name);
-              const hasPreviousRankData = officialSorted.some(r =>
-                Number.isFinite(Number(r.rank_before)) &&
-                Number(r.rank_before) > 0 &&
-                Number(r.rank_before) !== Number(r.rank)
-              );
-              if (officialSorted.length && hasPreviousRankData) {
-                console.log(`[useRankings] ✅ official_rankings: ${officialSorted.length} joueurs (${division})`);
-                applySupabaseRankings(await enrichWithOfficialDetails(officialSorted));
-                return;
-              }
+          const latestBatchRow = latestBatchRes.ok
+            ? ((await latestBatchRes.json()) as Record<string, unknown>[])[0]
+            : undefined;
+          const latestBatchId = String(latestBatchRow?.batch_id ?? '');
+
+          const officialRows: Record<string, unknown>[] = [];
+          if (latestBatchId) {
+            let officialOffset = 0;
+            const OFFICIAL_PAGE = 1000;
+            for (;;) {
+              const officialParams = new URLSearchParams({
+                select: 'player_name,rank,rank_before,points,division,tournaments_played,trend,season,batch_id,created_at',
+                division: `eq.${dbDivision}`,
+                batch_id: `eq.${latestBatchId}`,
+                order: 'rank.asc',
+                limit: String(OFFICIAL_PAGE),
+                offset: String(officialOffset),
+              });
+              const officialRes = await fetch(`${sbUrl}/official_rankings?${officialParams}`, {
+                headers: { 'apikey': sbKey, 'Authorization': `Bearer ${sbKey}`, 'Accept': 'application/json' },
+              });
+              if (!officialRes.ok) break;
+              const officialBatch = await officialRes.json() as Record<string, unknown>[];
+              if (!Array.isArray(officialBatch) || !officialBatch.length) break;
+              officialRows.push(...officialBatch);
+              if (officialBatch.length < OFFICIAL_PAGE) break;
+              officialOffset += OFFICIAL_PAGE;
+            }
+          }
+
+          if (officialRows.length > 0) {
+            const currentRows = officialRows.filter(row => String(row.batch_id ?? '') === latestBatchId);
+            const officialSorted = currentRows
+              .sort((a, b) => Number(a.rank ?? 9999) - Number(b.rank ?? 9999))
+              .map(r => ({
+                rank:               Number(r.rank ?? 0),
+                rank_before:        Number(r.rank_before ?? r.rank ?? 0),
+                name:               String(r.player_name ?? '').trim(),
+                points:             roundUpPoints(r.points),
+                tournaments_played: Number(r.tournaments_played ?? 0),
+                trend:              trendFromRanks(r.rank, r.rank_before, r.trend),
+                season:             Number(r.season ?? 2026),
+                updated_at:         r.created_at as string | undefined,
+              }))
+              .filter(r => r.name);
+            const hasPreviousRankData = officialSorted.some(r =>
+              Number.isFinite(Number(r.rank_before)) &&
+              Number(r.rank_before) > 0 &&
+              Number(r.rank_before) !== Number(r.rank)
+            );
+            if (officialSorted.length && hasPreviousRankData) {
+              console.log(`[useRankings] ✅ official_rankings: ${officialSorted.length} joueurs (${division})`);
+              applySupabaseRankings(await enrichWithOfficialDetails(officialSorted));
+              return;
             }
           }
 
