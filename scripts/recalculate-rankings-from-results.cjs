@@ -486,6 +486,9 @@ async function main() {
     updated_at: now,
   })), 250);
 
+  for (const division of divisions) {
+    await deleteByDivision(supabase, 'official_rankings', division);
+  }
   await insertChunks(supabase, 'official_rankings', rows.map((row) => ({
     id: newId(),
     player_name: row.player_name,
