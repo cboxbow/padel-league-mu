@@ -643,16 +643,21 @@ export default function EspaceJoueur() {
     const key = tournamentRequestKey(tournament);
     if (!key) return null;
 
-    const { data, error } = await client
-      .from('player_registration_requests')
-      .select('id,status,pair_key,player1_email,player1_key,tournament_key')
-      .eq('tournament_key', key)
-      .limit(80);
-
-    if (error || !data) return null;
-
     const pair = partner ? pairKeyForPlayers(selectedProfile.name, partner.name) : '';
     const email = accountEmail.trim().toLowerCase();
+
+    // player_registration_requests revokes SELECT from anon by design (players
+    // must not browse each other's pending requests). This RPC returns only
+    // rows matching the caller's own email/player key/pair key for this
+    // tournament, so the existence check works without exposing the queue.
+    const { data, error } = await client.rpc('check_existing_registration_request', {
+      p_tournament_key: key,
+      p_player_email: email || null,
+      p_player_key: selectedProfile.key || null,
+      p_pair_key: pair || null,
+    });
+
+    if (error || !data) return null;
     const rows = data as Array<{
       status?: string | null;
       pair_key?: string | null;
