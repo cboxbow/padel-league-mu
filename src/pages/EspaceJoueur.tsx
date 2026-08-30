@@ -491,11 +491,21 @@ export default function EspaceJoueur() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    return tournaments
+    const upcoming = tournaments
       .filter(t => tournamentDateValue(t) >= today.getTime())
       .filter(t => t.status !== 'cancelled')
-      .sort((a, b) => tournamentDateValue(a) - tournamentDateValue(b))
-      .slice(0, 6);
+      .sort((a, b) => tournamentDateValue(a) - tournamentDateValue(b));
+
+    // Le classement chronologique brut ne montre presque jamais de M500/M1000 :
+    // ces paliers sont beaucoup plus rares que M25/M50/M100/M250, qui se jouent
+    // chaque semaine sur plusieurs clubs en parallele. On garantit donc un
+    // prochain tournoi par palier plutot que "les 6 plus proches dans le temps".
+    const TIERS = ['M25', 'M50', 'M100', 'M250', 'M500', 'M1000'];
+    const nextPerTier = TIERS
+      .map(tier => upcoming.find(t => t.category === tier))
+      .filter((t): t is NonNullable<typeof t> => Boolean(t));
+
+    return nextPerTier.sort((a, b) => tournamentDateValue(a) - tournamentDateValue(b));
   }, [tournaments]);
 
   const selectedBestRankings = selectedProfile?.rankings
