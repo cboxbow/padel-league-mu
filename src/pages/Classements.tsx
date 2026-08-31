@@ -61,7 +61,7 @@ interface PlayerCareerStats {
 //
 //
 function toLocalRanking(r: RankingEntry, div: Division): PlayerRanking {
-  return { rank: r.rank, player_name: r.player_name, points: roundUpPoints(r.points), division: div };
+  return { rank: r.rank, player_name: r.player_name, points: parseRankingPoints(r.points), division: div };
 }
 
 const DATA_MAP: Record<Division, PlayerRanking[]> = {
@@ -144,8 +144,11 @@ function divToDb(div: Division): string {
   return DIV_MAP[div] ?? 'men';
 }
 
-function roundUpPoints(value: unknown): number {
-  return Math.ceil(Number(value) || 0);
+function parseRankingPoints(value: unknown): number {
+  const parsed = typeof value === 'string'
+    ? Number(value.replace(/\s+/g, '').replace(',', '.'))
+    : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 // Convertit un objet SimpleRanking (useData) en PlayerRanking (local)
@@ -163,7 +166,7 @@ function toPlayerRanking(r: {
     rank: r.rank,
     rank_before: r.rank_before,
     player_name: r.name,
-    points: roundUpPoints(r.points),
+    points: parseRankingPoints(r.points),
     division: 'MEN',
     tournaments_played: r.tournaments_played,
     trend: r.trend,
@@ -179,7 +182,7 @@ const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 function formatPoints(value: number): string {
-  return roundUpPoints(value).toLocaleString('fr-FR');
+  return parseRankingPoints(value).toLocaleString('fr-FR', { maximumFractionDigits: 2 });
 }
 
 function inferEventSeason(eventName: string, fallback?: number): number | undefined {
@@ -445,7 +448,7 @@ function detailMatchScore(official: PlayerRankingDetail, detail: PlayerRankingDe
   if (officialCategory && officialCategory === detailCategory) score += 30;
   if (officialClub && officialClub === detailClub) score += 30;
   if (officialDivision && officialDivision === detailDivision) score += 10;
-  if (roundUpPoints(official.points) === roundUpPoints(detail.points)) score += 8;
+  if (parseRankingPoints(official.points) === parseRankingPoints(detail.points)) score += 8;
   if (compactEventName(detail.event_name).includes(compactEventName(official.category || ''))) score += 2;
 
   return score;
@@ -557,8 +560,8 @@ function detailRankLabel(detail: PlayerRankingDetail): string {
 function mergeDetailRows(base: PlayerRankingDetail, incoming: PlayerRankingDetail): PlayerRankingDetail {
   const preferred = detailQuality(incoming) > detailQuality(base) ? incoming : base;
   const other = preferred === incoming ? base : incoming;
-  const preferredPoints = roundUpPoints(preferred.points);
-  const otherPoints = roundUpPoints(other.points);
+  const preferredPoints = parseRankingPoints(preferred.points);
+  const otherPoints = parseRankingPoints(other.points);
   const preferredReliable = detailHasSourceIdentity(preferred);
   const otherReliable = detailHasSourceIdentity(other);
   const points = preferredReliable && !otherReliable
@@ -605,7 +608,7 @@ function detailLooseEventKey(detail: PlayerRankingDetail): string {
     detail.division_key || '',
     compactEventName(detail.category || inferCategory(detail.event_name)),
     detailClubKey(detail),
-    roundUpPoints(detail.points),
+    parseRankingPoints(detail.points),
   ].join('|');
 }
 
@@ -648,7 +651,7 @@ function detailCorrectionKey(detail: PlayerRankingDetail): string {
   return [
     detailIsoDate(detail),
     detailClubKey(detail),
-    roundUpPoints(detail.points),
+    parseRankingPoints(detail.points),
   ].join('|');
 }
 
@@ -724,9 +727,12 @@ function PlayerDetailModal({
   const realDisplayDetails = dedupePlayerDetails(realDetails);
   const officialUniqueDetails = dedupePlayerDetails(officialDetails);
   const reliableOfficialDetails = officialUniqueDetails.filter(detailHasSourceIdentity);
-  const hasOfficialDetails = reliableOfficialDetails.length > 0;
+  const officialDisplayDetails = reliableOfficialDetails.length > 0
+    ? reliableOfficialDetails
+    : officialUniqueDetails;
+  const hasOfficialDetails = officialDisplayDetails.length > 0;
   const displayDetails = hasOfficialDetails
-    ? dedupePlayerDetails([...reliableOfficialDetails, ...realDisplayDetails])
+    ? dedupePlayerDetails([...officialDisplayDetails, ...realDisplayDetails])
     : realDisplayDetails;
   const historicalDetails = displayDetails.filter(detail => detail.source === 'historical');
   const playerDivisionKey = divisionKey;
@@ -760,7 +766,7 @@ function PlayerDetailModal({
       let score = 0;
       if (detailDedupKey(detail) === detailDedupKey(retained)) score += 100;
       if (detailEventKey(detail) === detailEventKey(retained)) score += 40;
-      if (roundUpPoints(detail.points) === roundUpPoints(retained.points)) score += 25;
+      if (parseRankingPoints(detail.points) === parseRankingPoints(retained.points)) score += 25;
       if (detail.partner_name || detail.team_name) score += 8;
       if (detail.rank) score += 6;
       if (score > bestScore) {
@@ -1067,7 +1073,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
         if (!rowHasPlayer(row, playerKey)) continue;
         const eventName = String(row.tournament_name ?? '').trim();
         const date = String(row.tournament_date ?? '').trim();
-        const points = roundUpPoints(row.points);
+        const points = parseRankingPoints(row.points);
         const rank = Number(row.rank ?? 0);
         const teamName = String(row.team_name ?? '').trim();
         const key = `${eventName}|${date}|${teamName}|${points}|${rank}`;
@@ -1075,7 +1081,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
         seen.add(key);
         rows.push({
           event_name: date ? `${eventName} - ${new Date(date).toLocaleDateString('fr-FR')}` : eventName,
-          points: roundUpPoints(points),
+          points: parseRankingPoints(points),
           season: inferEventSeason(eventName, Number(row.season ?? 2026)),
           rank: Number.isFinite(rank) ? rank : undefined,
           team_name: teamName,
@@ -1134,7 +1140,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
       for (const row of historicalRows) {
         const eventName = String(row.event_name ?? '').trim();
         const season = Number(row.season ?? 0) || undefined;
-        const points = roundUpPoints(row.points);
+        const points = parseRankingPoints(row.points);
         const rank = Number(row.rank_min ?? 0);
         const teamName = String(row.team_name ?? '').trim();
         const category = inferCategory(eventName, String(row.category ?? '').trim());
@@ -1169,7 +1175,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
       stats = {
         seasons_played: Number(row.seasons_played ?? 0),
         tournaments_played: Number(row.tournaments_played ?? 0),
-        total_points: roundUpPoints(row.total_points),
+        total_points: parseRankingPoints(row.total_points),
         wins: Number(row.wins ?? 0),
         podiums: Number(row.podiums ?? 0),
         average_points: Number(row.average_points ?? 0),
@@ -1218,7 +1224,8 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
           .limit(5000);
 
         if (scopedToPlayer) {
-          query = query.ilike('player_name', player.player_name);
+          const safeNamePattern = `%${String(player.player_name).trim().replace(/[%_,]/g, '')}%`;
+          query = query.ilike('player_name', safeNamePattern);
         }
 
         if (latestBatchId) {
@@ -1247,7 +1254,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
         ? officialRows.map(row => ({
           player_name: String(row.player_name ?? ''),
           event_name: String(row.event_name ?? ''),
-          points: roundUpPoints(row.points),
+          points: parseRankingPoints(row.points),
           season: inferEventSeason(String(row.event_name ?? ''), Number(row.season ?? 2026)),
           rank: Number(String(row.rank_label ?? '').match(/\d+/)?.[0] ?? 0) || undefined,
           category: inferCategory(String(row.event_name ?? ''), String(row.category ?? '')),
@@ -1501,7 +1508,7 @@ export default function Classements() {
           player_name: String(row.player_name ?? '').trim(),
           division: DB_TO_DIV[String(row.division ?? '').toLowerCase()] ?? 'MEN',
           rank: Number(row.rank ?? 0),
-          points: roundUpPoints(row.points),
+          points: parseRankingPoints(row.points),
           tournaments_played: Number(row.tournaments_played ?? 0),
         }))
         .filter(row => row.player_name)

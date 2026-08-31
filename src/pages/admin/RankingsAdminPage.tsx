@@ -139,7 +139,7 @@ function parseCsv(text: string, division: Division): RankingRow[] {
     if (cols.length < 2) continue;
     const rank   = parseInt(cols[rankIdx >= 0 ? rankIdx : 0], 10);
     const name   = cols[nameIdx >= 0 ? nameIdx : 1] ?? '';
-    const points = parseInt(cols[pointsIdx >= 0 ? pointsIdx : 2] ?? '0', 10);
+    const points = Number(String(cols[pointsIdx >= 0 ? pointsIdx : 2] ?? '0').replace(/\s+/g, '').replace(',', '.'));
     const div    = normalizeCsvDivision(cols[divisionIdx >= 0 ? divisionIdx : 3], division);
     if (isNaN(rank) || !name) continue;
     result.push({

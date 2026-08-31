@@ -166,6 +166,16 @@ function rankNumber(row) {
   return match ? Number(match[0]) : 999;
 }
 
+function parseRankingPoints(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const text = cleanText(value).replace(/\s+/g, '').replace(',', '.');
+  if (!text || text === '-') return 0;
+  const match = text.match(/-?\d+(?:\.\d+)?/);
+  if (!match) return 0;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function historicalToRankingInputs(row) {
   const rawCategory = normalizeJuniorCategory(row.category || row.junior_category || '');
   const division = normalizeRankingDivision(row.division, rawCategory, row.event_name);
@@ -173,7 +183,7 @@ function historicalToRankingInputs(row) {
   const date = cleanText(row.event_date).slice(0, 10);
   const clubName = normalizeClubName(row.club_name);
   const rank = rankNumber(row);
-  const points = Math.ceil(Number(row.points) || 0);
+  const points = parseRankingPoints(row.points);
   const player1 = cleanText(row.player1_name);
   const player2 = cleanText(row.player2_name);
   const base = {
@@ -200,7 +210,7 @@ function resultToRankingInputs(row) {
   const category = division === 'mixed' ? 'MIXED' : rawCategory;
   const date = cleanText(row.tournament_date).slice(0, 10);
   const clubName = normalizeClubName(row.club_name);
-  const points = Math.ceil(Number(row.points) || 0);
+  const points = parseRankingPoints(row.points);
   const player1 = cleanText(row.player1_name);
   const player2 = cleanText(row.player2_name);
   const base = {
@@ -242,7 +252,7 @@ function dedupeRankingInputs(rows) {
     return score;
   };
   for (const row of rows) {
-    if (!cleanText(row.player_name) || !cleanText(row.event_date) || !Math.ceil(Number(row.points) || 0)) continue;
+    if (!cleanText(row.player_name) || !cleanText(row.event_date) || !parseRankingPoints(row.points)) continue;
     const key = [
       eventIdentity(row),
       row.division,
@@ -263,12 +273,12 @@ function dedupeRankingInputs(rows) {
       byKey.set(key, row);
       continue;
     }
-    const samePoints = Math.ceil(Number(row.points) || 0) === Math.ceil(Number(existing.points) || 0);
+    const samePoints = parseRankingPoints(row.points) === parseRankingPoints(existing.points);
     if (
       (rowReliable && !existingReliable) ||
       (rowReliable === existingReliable && rowQuality > existingQuality) ||
       (rowReliable === existingReliable && rowQuality === existingQuality && samePoints && cleanText(row.source) === 'historical' && cleanText(existing.source) !== 'historical') ||
-      (rowReliable === existingReliable && rowQuality === existingQuality && Math.ceil(Number(row.points) || 0) > Math.ceil(Number(existing.points) || 0) && !existingReliable)
+      (rowReliable === existingReliable && rowQuality === existingQuality && parseRankingPoints(row.points) > parseRankingPoints(existing.points) && !existingReliable)
     ) {
       byKey.set(key, row);
     }
@@ -303,7 +313,7 @@ function computeRankingRows(inputs, previousRanks, period) {
           a.rank - b.rank
         );
         const retained = sortedDetails.slice(0, 8);
-        const retainedTotal = retained.reduce((sum, row) => sum + Math.ceil(Number(row.points) || 0), 0);
+        const retainedTotal = retained.reduce((sum, row) => sum + parseRankingPoints(row.points), 0);
         return {
           player_name: sortedDetails[0].player_name,
           points: retainedTotal,
@@ -327,7 +337,7 @@ function computeRankingRows(inputs, previousRanks, period) {
         player_name: row.player_name,
         rank,
         rank_before: rankBefore,
-        points: Math.ceil(row.points),
+        points: parseRankingPoints(row.points),
         division,
         tournaments_played: row.tournaments_played,
         trend: rankTrend(rank, rankBefore),
@@ -344,11 +354,11 @@ function assertRankingDetailsMatch(rows) {
     .map((row) => {
       const detailTotal = row.details
         .filter((detail) => detail.is_retained)
-        .reduce((sum, detail) => sum + Math.ceil(Number(detail.points) || 0), 0);
+        .reduce((sum, detail) => sum + parseRankingPoints(detail.points), 0);
       return {
         row,
         detailTotal,
-        gap: Math.ceil(Number(row.points) || 0) - detailTotal,
+        gap: parseRankingPoints(row.points) - detailTotal,
       };
     })
     .filter((entry) => entry.gap !== 0);
@@ -517,7 +527,7 @@ async function main() {
     club_name: detail.club_name,
     partner_name: detail.partner_name,
     rank_label: Number(detail.rank) > 0 && Number(detail.rank) < 999 ? `#${detail.rank}` : '',
-    points: Math.ceil(Number(detail.points) || 0),
+    points: parseRankingPoints(detail.points),
     season: Number(detail.event_date.slice(0, 4)) || row.season,
     batch_id: batchId,
   })));

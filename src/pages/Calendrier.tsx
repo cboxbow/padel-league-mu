@@ -540,7 +540,7 @@ function CalendarLightbox({ item, list, lang, onClose, onSelect }: {
 // ── Page principale ────────────────────────────────────────────────────────────
 export default function Calendrier() {
   const { lang } = useI18n();
-  const useNav = useNavigate();
+  const navigate = useNavigate();
   const isMobile = useIsMobile();
   useSeo({
     title: "Calendrier des Tournois Padel Maurice 2026",
@@ -962,7 +962,7 @@ export default function Calendrier() {
                             {/* Badge Résultats si résultats disponibles */}
                             {hasResults && (
                               <button
-                                onClick={() => useNav(resultsPathForTournament(t))}
+                                onClick={() => navigate(resultsPathForTournament(t))}
                                 style={{
                                   display: 'flex', alignItems: 'center', gap: '3px',
                                   background: 'rgba(245,158,11,0.1)', color: '#f59e0b',
@@ -978,7 +978,7 @@ export default function Calendrier() {
                             {/* Lien résultats si terminé sans résultats Supabase */}
                             {!hasResults && (t.status === 'completed' || t.status === 'Terminé' || t.status === 'terminé') && (
                               <button
-                                onClick={() => useNav(resultsPathForTournament(t))}
+                                onClick={() => navigate(resultsPathForTournament(t))}
                                 style={{
                                   display: 'flex', alignItems: 'center', gap: '3px',
                                   background: 'rgba(100,100,100,0.1)', color: '#666',

@@ -159,6 +159,16 @@ function normKey(value: unknown): string {
     .trim();
 }
 
+function parseRankingPoints(value: unknown): number {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const text = cleanText(value).replace(/\s+/g, '').replace(',', '.');
+  if (!text || text === '-') return 0;
+  const match = text.match(/-?\d+(?:\.\d+)?/);
+  if (!match) return 0;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function normalizeClubName(value: unknown): string {
   const name = cleanText(value);
   if (!name) return '';
@@ -293,7 +303,7 @@ function mapHistorical(row: HistoricalResultRow): TResult {
     team_name: row.team_name ?? '',
     player1_name: cleanText(row.player1_name),
     player2_name: cleanText(row.player2_name),
-    points: Math.ceil(Number(row.points) || 0),
+    points: parseRankingPoints(row.points),
     _source: 'historical',
     _match_key: resultMatchKey({ date, category, club: clubName, division }),
   };
@@ -334,7 +344,7 @@ function historicalPayload(row: Partial<TResult>) {
     team_name: row.team_name ?? '',
     player1_name: row.player1_name ?? '',
     player2_name: row.player2_name ?? '',
-    points: Math.ceil(Number(row.points) || 0),
+    points: parseRankingPoints(row.points),
   };
 }
 
@@ -370,7 +380,7 @@ function mergeResults(legacyRows: TResult[], historicalRows: TResult[]): TResult
       division,
       club_name: clubName,
       tournament_name: normalizeTournamentDisplayName(row.tournament_name, clubName),
-      points: Math.ceil(Number(row.points) || 0),
+      points: parseRankingPoints(row.points),
       _source: 'legacy',
       _match_key: resultMatchKey({ date: row.tournament_date, category, club: clubName, division }),
     };
@@ -404,7 +414,7 @@ function historicalToRankingInputs(row: HistoricalResultRow): RankingInputRow[] 
   const date = cleanText(row.event_date).slice(0, 10);
   const clubName = normalizeClubName(row.club_name);
   const rank = rankNumber(row);
-  const points = Math.ceil(Number(row.points) || 0);
+  const points = parseRankingPoints(row.points);
   const player1 = cleanText(row.player1_name);
   const player2 = cleanText(row.player2_name);
   const base = {
@@ -429,7 +439,7 @@ function resultToRankingInputs(row: TResult): RankingInputRow[] {
   const category = division === 'mixed' ? 'MIXED' : rawCategory;
   const date = cleanText(row.tournament_date).slice(0, 10);
   const clubName = normalizeClubName(row.club_name);
-  const points = Math.ceil(Number(row.points) || 0);
+  const points = parseRankingPoints(row.points);
   const player1 = cleanText(row.player1_name);
   const player2 = cleanText(row.player2_name);
   const base = {
@@ -461,7 +471,7 @@ function dedupeRankingInputs(rows: RankingInputRow[]): RankingInputRow[] {
   };
 
   for (const row of rows) {
-    if (!cleanText(row.player_name) || !cleanText(row.event_date) || !Math.ceil(Number(row.points) || 0)) continue;
+    if (!cleanText(row.player_name) || !cleanText(row.event_date) || !parseRankingPoints(row.points)) continue;
     const key = [
       row.event_date,
       row.division,
@@ -478,7 +488,7 @@ function dedupeRankingInputs(rows: RankingInputRow[]): RankingInputRow[] {
     const existingQuality = qualityScore(existing);
     if (
       rowQuality > existingQuality ||
-      (rowQuality === existingQuality && Math.ceil(Number(row.points) || 0) > Math.ceil(Number(existing.points) || 0))
+      (rowQuality === existingQuality && parseRankingPoints(row.points) > parseRankingPoints(existing.points))
     ) {
       byKey.set(key, row);
     }
@@ -511,7 +521,7 @@ function computeRankingRows(
         a.rank - b.rank
       );
       const retained = sortedDetails.slice(0, 8);
-      const retainedTotal = retained.reduce((sum, row) => sum + Math.ceil(Number(row.points) || 0), 0);
+      const retainedTotal = retained.reduce((sum, row) => sum + parseRankingPoints(row.points), 0);
       return {
         player_name: sortedDetails[0].player_name,
         points: retainedTotal,
@@ -534,7 +544,7 @@ function computeRankingRows(
         player_name: row.player_name,
         rank,
         rank_before: rankBefore,
-        points: Math.ceil(row.points),
+        points: parseRankingPoints(row.points),
         division,
         tournaments_played: row.tournaments_played,
         trend: rankTrend(rank, rankBefore),
@@ -551,8 +561,8 @@ function assertRankingDetailsMatch(rows: ComputedRankingRow[]) {
     .map(row => {
       const detailTotal = row.details
         .filter(detail => detail.is_retained)
-        .reduce((sum, detail) => sum + Math.ceil(Number(detail.points) || 0), 0);
-      return { row, detailTotal, gap: Math.ceil(Number(row.points) || 0) - detailTotal };
+        .reduce((sum, detail) => sum + parseRankingPoints(detail.points), 0);
+      return { row, detailTotal, gap: parseRankingPoints(row.points) - detailTotal };
     })
     .filter(entry => entry.gap !== 0);
 
@@ -779,7 +789,7 @@ async function publishOfficialRankingsFromResults(onProgress?: (message: string)
     club_name: detail.club_name,
     partner_name: detail.partner_name,
     rank_label: `#${detail.rank}`,
-    points: Math.ceil(Number(detail.points) || 0),
+    points: parseRankingPoints(detail.points),
     season: Number(detail.event_date.slice(0, 4)) || row.season,
     batch_id: batchId,
   })));
@@ -973,8 +983,8 @@ function RowModal({
         {/* Points */}
         <div>
           <label style={lbl}>Points <span style={{color:'#4ad569',fontWeight:400,fontSize:'11px'}}>(auto-calculé selon {f.category ?? 'M25'} / {totalTeams} équipes)</span></label>
-          <input type="number" value={f.points ?? 0} onChange={e => set('points', parseInt(e.target.value) || 0)}
-            style={inp} min={0} max={2000} />
+          <input type="number" value={f.points ?? 0} onChange={e => set('points', parseRankingPoints(e.target.value))}
+            style={inp} min={0} max={2000} step="0.01" />
         </div>
 
         {/* Actions */}
@@ -1053,9 +1063,9 @@ function QuickEntryPanel({
         }
 
         // 2) Extraire points en fin de ligne : "(250)" ou "| 250" ou "- 250"
-        const ptsSuffixMatch = line.match(/(?:\(|\||-)\s*(\d+)\s*\)?\s*$/);
+        const ptsSuffixMatch = line.match(/(?:\(|\||-)\s*(\d+(?:[.,]\d+)?)\s*\)?\s*$/);
         if (ptsSuffixMatch) {
-          customPts = parseInt(ptsSuffixMatch[1]);
+          customPts = parseRankingPoints(ptsSuffixMatch[1]);
           line = line.slice(0, line.lastIndexOf(ptsSuffixMatch[0])).trim();
         }
 
@@ -1082,13 +1092,13 @@ function QuickEntryPanel({
           if (!isNaN(maybeRank)) {
             rank = maybeRank; p1 = cols[1]; p2 = cols[2];
             if (cols[3] && DIVS.includes(cols[3].toLowerCase())) div = cols[3].toLowerCase();
-            if (cols[4]) p = parseInt(cols[4]) || pts(rank, cat, totalTeams);
+            if (cols[4]) p = parseRankingPoints(cols[4]) || pts(rank, cat, totalTeams);
             else p = pts(rank, cat, totalTeams);
           } else {
             p1 = cols[0]; p2 = cols[1];
           }
         } else if (cols.length === 3) {
-          p1 = cols[0]; p2 = cols[1]; p = parseInt(cols[2]) || pts(rank, cat, totalTeams);
+          p1 = cols[0]; p2 = cols[1]; p = parseRankingPoints(cols[2]) || pts(rank, cat, totalTeams);
         } else if (cols.length === 2) {
           p1 = cols[0]; p2 = cols[1]; p = pts(rank, cat, totalTeams);
         } else {

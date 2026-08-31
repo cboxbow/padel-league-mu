@@ -15,8 +15,11 @@ import {
 // Type interne pour les données CSV parsées
 interface CsvRow { rank: number; name: string; points: number; }
 
-function roundUpPoints(value: unknown): number {
-  return Math.ceil(Number(value) || 0);
+function parseRankingPoints(value: unknown): number {
+  const parsed = typeof value === 'string'
+    ? Number(value.replace(/\s+/g, '').replace(',', '.'))
+    : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -69,7 +72,7 @@ async function fetchPublicCsv(division: 'men' | 'women' | 'junior' | 'mixed'): P
         return {
           rank:   parseInt(cols[0] ?? '0', 10),
           name:   (cols[1] ?? '').trim().replace(/^"|"$/g, ''),
-          points: roundUpPoints(cols[2] ?? '0'),
+          points: parseRankingPoints(cols[2] ?? '0'),
         };
       }).filter(r => r.name && !isNaN(r.rank));
       if (parsed.length > 5) {
@@ -751,7 +754,7 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
                 rank:               Number(r.rank ?? 0),
                 rank_before:        Number(r.rank_before ?? r.rank ?? 0),
                 name:               String(r.player_name ?? '').trim(),
-                points:             roundUpPoints(r.points),
+                points:             parseRankingPoints(r.points),
                 tournaments_played: Number(r.tournaments_played ?? 0),
                 trend:              trendFromRanks(r.rank, r.rank_before, r.trend),
                 season:             Number(r.season ?? 2026),
@@ -815,7 +818,7 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
                   rank:               Number(r.rank ?? 0),
                   rank_before:        Number(r.rank_before ?? r.rank ?? 0),
                   name:               String(r.player_name ?? '').trim(),
-                  points:             roundUpPoints(r.points),
+                  points:             parseRankingPoints(r.points),
                   tournaments_played: Number(r.tournaments_played ?? 0),
                   trend:              trendFromRanks(r.rank, r.rank_before, r.trend),
                   season:             Number(r.season ?? 2026),
@@ -832,45 +835,7 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
             console.warn(`[useRankings] rankings: division "${normTarget}" absente (${allRows.length} lignes totales) → fallback tournament_results`);
           }
 
-          // ── Fallback interne : tournament_results agrégé (si rankings vide) ──
-          const divVariants = division === 'mixed'
-            ? ['mixte', 'mixed', 'MIXTE', 'MIXED', 'Mixte']
-            : [division, division.toUpperCase(), division.charAt(0).toUpperCase() + division.slice(1)];
-          const trRows: Record<string, unknown>[] = [];
-          let trOffset = 0;
-          for (;;) {
-            const controller = new AbortController();
-            const tId = setTimeout(() => controller.abort(), 30000);
-            const res = await fetch(
-              `${sbUrl}/tournament_results?select=player1_name,player2_name,points,division&division=in.(${divVariants.join(',')})&order=points.desc&limit=1000&offset=${trOffset}`,
-              { signal: controller.signal, headers: { 'apikey': sbKey, 'Authorization': `Bearer ${sbKey}`, 'Accept': 'application/json' } }
-            );
-            clearTimeout(tId);
-            if (!res.ok) break;
-            const batch = await res.json() as Record<string, unknown>[];
-            if (!Array.isArray(batch) || !batch.length) break;
-            trRows.push(...batch);
-            if (batch.length < 1000) break;
-            trOffset += 1000;
-          }
-          if (trRows.length) {
-            const pts: Record<string, number> = {};
-            for (const r of trRows) {
-              const p = roundUpPoints(r.points);
-              for (const k of ['player1_name', 'player2_name'] as const) {
-                const n = String(r[k] ?? '').trim();
-                if (n) pts[n] = (pts[n] ?? 0) + p;
-              }
-            }
-            const sorted2 = Object.entries(pts).sort(([,a],[,b]) => b-a)
-              .map(([name, points], i) => ({ rank: i+1, name, points }));
-            if (sorted2.length) {
-              console.log(`[useRankings] ✅ Supabase tournament_results fallback: ${sorted2.length} joueurs (${division})`);
-              applySupabaseRankings(sorted2);
-              return;
-            }
-          }
-          console.warn(`[useRankings] Supabase vide pour ${division} → CSV`);
+          console.warn(`[useRankings] Classement officiel indisponible pour ${division} → CSV/local. Fallback tournament_results desactive car non conforme Best 8 / 12 mois.`);
         } catch (e) {
           console.warn('[useRankings] Supabase erreur:', e);
         }
@@ -902,7 +867,7 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
         mixed:  FULL_RANKINGS_MIXED,
       };
       const full = (fullMap[division] ?? []).map(r => ({
-        rank: r.rank, name: r.player_name, points: roundUpPoints(r.points),
+        rank: r.rank, name: r.player_name, points: parseRankingPoints(r.points),
       }));
       setRankings(full);
       setSource('local');

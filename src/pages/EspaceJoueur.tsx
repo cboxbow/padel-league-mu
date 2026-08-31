@@ -73,6 +73,9 @@ type PairEligibility = {
   playerRank?: number;
   partnerRank?: number;
   pairRankSum?: number;
+  playerPoints?: number;
+  partnerPoints?: number;
+  pairPoints?: number;
 };
 
 type PlayerGender = 'M' | 'F' | 'unknown';
@@ -113,7 +116,7 @@ function normalizeName(value: string) {
 }
 
 function formatNumber(value: number | undefined) {
-  return Math.ceil(Number(value ?? 0)).toLocaleString('fr-FR').replace(/\u202f/g, ' ');
+  return Number(value ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 2 }).replace(/\u202f/g, ' ');
 }
 
 function tournamentDateValue(tournament: TournamentData) {
@@ -363,6 +366,9 @@ function pairEligibilityFor(
   const partnerRanking = rankingForDivision(partner, targetDivision);
   const playerRank = playerRanking?.rank;
   const partnerRank = partnerRanking?.rank;
+  const playerPoints = Number(playerRanking?.points ?? 0);
+  const partnerPoints = Number(partnerRanking?.points ?? 0);
+  const pairPoints = playerPoints + partnerPoints;
 
   if (!pairLimit) {
     return {
@@ -372,6 +378,9 @@ function pairEligibilityFor(
       allowed: true,
       playerRank,
       partnerRank,
+      playerPoints,
+      partnerPoints,
+      pairPoints,
     };
   }
 
@@ -383,6 +392,9 @@ function pairEligibilityFor(
       allowed: true,
       playerRank,
       partnerRank,
+      playerPoints,
+      partnerPoints,
+      pairPoints,
     };
   }
 
@@ -398,6 +410,9 @@ function pairEligibilityFor(
     playerRank,
     partnerRank,
     pairRankSum,
+    playerPoints,
+    partnerPoints,
+    pairPoints,
   };
 }
 

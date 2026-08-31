@@ -51,8 +51,8 @@ function parseNumber(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function roundUpPoints(value) {
-  return Math.ceil(parseNumber(value, 0));
+function parseRankingPoints(value) {
+  return parseNumber(value, 0);
 }
 
 function divisionFromSheet(sheetName) {
@@ -120,7 +120,7 @@ function parseRankingSheet(workbook, sheetName) {
     if (norm(playerName).startsWith('TOTAL')) continue;
 
     const rank = parseRank(row[rankIndex]);
-    const points = roundUpPoints(row[pointsIndex]);
+    const points = parseRankingPoints(row[pointsIndex]);
     if (!rank || points < 0) continue;
 
     const rankBefore = rankBeforeIndex >= 0 ? parseRank(row[rankBeforeIndex]) : null;

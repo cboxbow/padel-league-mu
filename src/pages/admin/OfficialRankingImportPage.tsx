@@ -207,9 +207,9 @@ function parseNumber(value: unknown, fallback = 0): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function roundUpPoints(value: unknown): number {
+function parseRankingPoints(value: unknown): number {
   const parsed = parseNumber(value, 0);
-  return Math.ceil(Number.isFinite(parsed) ? parsed : 0);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function findHeaderRow(rows: unknown[][]): number {
@@ -274,7 +274,7 @@ function parseRankingSheet(sheetName: string, sheet: XLSX.WorkSheet, fallbackDiv
     .map((row) => {
       const rank = parseNumber(row[rankIdx], NaN);
       const playerName = String(row[nameIdx] ?? '').trim();
-      const points = roundUpPoints(row[pointsIdx]);
+      const points = parseRankingPoints(row[pointsIdx]);
       const rowDivision = divisionIdx >= 0 ? normDiv(row[divisionIdx], division) : division;
 
       if (!Number.isFinite(rank) || !playerName) return null;
@@ -285,7 +285,7 @@ function parseRankingSheet(sheetName: string, sheet: XLSX.WorkSheet, fallbackDiv
       const details = eventCells
         .map((value, index) => ({
           event_name: String(eventHeaders[index] ?? '').trim(),
-          points: roundUpPoints(value),
+          points: parseRankingPoints(value),
         }))
         .filter(detail => detail.event_name && detail.points > 0);
 
@@ -331,7 +331,7 @@ async function parseRankingFile(file: File, fallbackDivision: Division): Promise
       const rankBeforeValue = pick(row, RANK_BEFORE_ALIASES);
       const rankBefore = parseNumber(rankBeforeValue, rank);
       const playerName = String(pick(row, ['players', 'player_name', 'player', 'joueur', 'name', 'nom']) ?? '').trim();
-      const points = roundUpPoints(pick(row, ['total_points', 'points', 'pts']));
+      const points = parseRankingPoints(pick(row, ['total_points', 'points', 'pts']));
       const division = normDiv(pick(row, ['division', 'category', 'categorie']), fallbackDivision);
 
       if (!Number.isFinite(rank) || !playerName) return null;

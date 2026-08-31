@@ -70,9 +70,9 @@ function toNumber(value) {
   const num = Number(text);
   return Number.isFinite(num) ? num : null;
 }
-function roundUpPoints(value) {
+function parseRankingPoints(value) {
   const num = toNumber(value);
-  return num === null ? 0 : Math.ceil(num);
+  return num === null ? 0 : num;
 }
 function parseRank(value) {
   if (typeof value === 'number' && Number.isFinite(value)) {
@@ -557,7 +557,7 @@ function extractRankingSnapshots() {
         const row = rows[r];
         const playerName = canonicalPlayerName(row[playerIdx]);
         const rank = parseRank(row[rankIdx]);
-        const totalPoints = roundUpPoints(row[pointsIdx]);
+        const totalPoints = parseRankingPoints(row[pointsIdx]);
         if (!playerName || playerName === 'PLAYERS' || !rank.min || totalPoints <= 0) continue;
         const rankBefore = secondRankIdx >= 0 && secondRankIdx < playerIdx ? toNumber(row[secondRankIdx]) : null;
         out.push({ id: crypto.randomUUID(), source_file: fileName, snapshot_year: snapshotYear, snapshot_label: snapshotLabelFromFile(fileName), division, junior_category: juniorCategory, rank: rank.min, rank_label: rank.label, rank_before: rankBefore === null ? null : Math.trunc(rankBefore), player_name: playerName, total_points: totalPoints, season: snapshotYear });
@@ -610,7 +610,7 @@ function extractTournamentResults() {
         const row = rows[r];
         const player1 = canonicalPlayerName(row[p1Idx]);
         const player2 = p2Idx >= 0 ? canonicalPlayerName(row[p2Idx]) : '';
-        const points = roundUpPoints(row[pointsIdx]);
+        const points = parseRankingPoints(row[pointsIdx]);
         if (!player1 || points <= 0) continue;
         const rank = parseRank(row[rankIdx]);
         const result = { id: crypto.randomUUID(), source_file: fileName, sheet_name: sheetName, event_key: meta.eventKey, event_name: meta.eventName, event_year: meta.eventYear, season: meta.season, category: meta.category, division: meta.division, junior_category: meta.juniorCategory, club_name: meta.clubName, event_date: meta.eventDate, region: meta.region, rank_label: rank.label, rank_min: rank.min, rank_max: rank.max, team_name: teamIdx >= 0 ? clean(row[teamIdx]).toUpperCase() : '', player1_name: player1, player2_name: player2, points };
