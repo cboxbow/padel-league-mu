@@ -853,7 +853,7 @@ export default function EspaceJoueur() {
             />
           </div>
           {query.trim() && (
-            <div className="search-results">
+            <div className="search-results" style={{ gridColumn: '1 / -1' }}>
               {filteredProfiles.length ? filteredProfiles.map(profile => (
                 <button
                   key={profile.key}
@@ -1637,6 +1637,46 @@ export default function EspaceJoueur() {
           border-color: rgba(74,213,105,0.45);
           background: rgba(74,213,105,0.12);
           color: #4ad569;
+        }
+        .search-results {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+          gap: 8px;
+          margin-top: 4px;
+          max-height: 260px;
+          overflow-y: auto;
+        }
+        .search-results button {
+          min-height: 58px;
+          text-align: left;
+          border-radius: 12px;
+          border: 1px solid rgba(255,255,255,0.1);
+          background: rgba(255,255,255,0.035);
+          color: white;
+          padding: 10px 12px;
+          cursor: pointer;
+        }
+        .search-results button:hover {
+          border-color: rgba(74,213,105,0.35);
+        }
+        .search-results button.active {
+          border-color: rgba(74,213,105,0.65);
+          background: rgba(74,213,105,0.12);
+        }
+        .search-results strong,
+        .search-results span {
+          display: block;
+        }
+        .search-results span {
+          margin-top: 4px;
+          color: #8b8b8b;
+          font-size: 12px;
+        }
+        .search-empty {
+          grid-column: 1 / -1;
+          padding: 14px 4px;
+          color: #8b8b8b;
+          font-size: 13px;
         }
         .player-grid {
           display: grid;
