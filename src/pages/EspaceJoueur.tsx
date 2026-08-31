@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   LockKeyhole,
   LogOut,
-  Mail,
   Search,
   Send,
   ShieldCheck,
@@ -421,6 +420,7 @@ export default function EspaceJoueur() {
   const [accountEmail, setAccountEmail] = useState('');
   const [authEmail, setAuthEmail] = useState('');
   const [authLicense, setAuthLicense] = useState('');
+  const [authPhone, setAuthPhone] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [authMessage, setAuthMessage] = useState('');
   const [linkedPlayer, setLinkedPlayer] = useState<PlayerAccountRow | null>(null);
@@ -569,12 +569,20 @@ export default function EspaceJoueur() {
   async function verifyPlayerAccess() {
     const email = authEmail.trim();
     const license = authLicense.trim();
-    if (!email) {
-      setAuthMessage('Ajoute ton email joueur.');
+    const phone = authPhone.trim();
+    const hasPhoneAccess = Boolean(phone);
+    const hasEmailLicenseAccess = Boolean(email && license);
+
+    if (!hasPhoneAccess && !hasEmailLicenseAccess) {
+      setAuthMessage('Entre ton email + licence, ou ton numero de telephone.');
       return;
     }
-    if (!license) {
-      setAuthMessage('Ajoute ton numero de licence MPL.');
+    if (!hasPhoneAccess && email && !license) {
+      setAuthMessage('Ajoute ton numero de licence MPL avec ton email.');
+      return;
+    }
+    if (!hasPhoneAccess && license && !email) {
+      setAuthMessage('Ajoute ton email MPL avec ta licence.');
       return;
     }
 
@@ -587,13 +595,30 @@ export default function EspaceJoueur() {
     setAuthLoading(true);
     setAuthMessage('');
 
-    const verifyOnce = () => safeSupabaseQuery<unknown>(
-      () => client.rpc('verify_player_profile', {
-        p_email: email,
-        p_license: license,
-      }),
-      12000,
-    );
+    const verifyPayload = {
+        p_email: hasEmailLicenseAccess ? email : null,
+        p_license: hasEmailLicenseAccess ? license : null,
+        p_phone: hasPhoneAccess ? phone : null,
+    };
+    const verifyOnce = async () => {
+      const result = await safeSupabaseQuery<unknown>(
+        () => client.rpc('verify_player_profile', verifyPayload),
+        12000,
+      );
+      const message = errorMessage(result.error);
+
+      if (!hasPhoneAccess && /verify_player_profile|p_phone|function/i.test(message)) {
+        return safeSupabaseQuery<unknown>(
+          () => client.rpc('verify_player_profile', {
+            p_email: email,
+            p_license: license,
+          }),
+          12000,
+        );
+      }
+
+      return result;
+    };
     const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
     let result = await verifyOnce();
@@ -622,7 +647,7 @@ export default function EspaceJoueur() {
 
     const rows = Array.isArray(result.data) ? result.data : result.data ? [result.data] : [];
     if (!rows.length) {
-      setAuthMessage('Email ou numero de licence incorrect.');
+      setAuthMessage(hasPhoneAccess ? 'Numero de telephone introuvable.' : 'Email ou numero de licence incorrect.');
       return;
     }
 
@@ -632,14 +657,14 @@ export default function EspaceJoueur() {
       return;
     }
 
-    const verifiedEmail = String(player.email ?? email).trim().toLowerCase();
+    const verifiedEmail = String(player.email ?? (email || phone)).trim().toLowerCase();
     const fullName = `${player.first_name ?? ''} ${player.last_name ?? ''}`.trim();
     const playerKey = normalizeName(fullName);
     const matchingProfile = profiles.find(profile => profile.key === playerKey);
 
     setAccountEmail(verifiedEmail);
     setLinkedPlayer(player);
-    setLinkMessage(matchingProfile ? 'Profil joueur verifie par email et licence.' : 'Compte trouve, classement a associer manuellement.');
+    setLinkMessage(matchingProfile ? 'Profil joueur verifie.' : 'Compte trouve, classement a associer manuellement.');
     if (matchingProfile) setSelectedKey(matchingProfile.key);
     setAuthMessage('Profil MPL connecte.');
   }
@@ -914,10 +939,10 @@ export default function EspaceJoueur() {
             </div>
             <h2>{accountEmail ? 'Profil MPL connecte' : 'Connecte ton profil MPL'}</h2>
             <p>
-              Verifie ton email et ta licence pour preparer une demande d inscription avec les regles MPL.
+              Verifie ton profil avec ton email et ta licence, ou directement avec ton numero de telephone.
             </p>
             <div className="account-steps">
-              <span className={accountEmail ? 'done' : ''}>Email controle</span>
+              <span className={accountEmail ? 'done' : ''}>Acces controle</span>
               <span className={linkedPlayer?.license_no ? 'done' : ''}>Licence verifiee</span>
               <span className={linkedPlayer ? 'done' : ''}>Profil associe</span>
               <span className={accountEmail ? 'current' : ''}>Inscription guidee</span>
@@ -948,26 +973,32 @@ export default function EspaceJoueur() {
                 <span className={`account-status ${supabaseReady ? '' : 'offline'}`}>
                   {supabaseReady ? 'Acces securise' : 'Connexion indisponible'}
                 </span>
-                <label htmlFor="player-email">Email joueur</label>
                 <div className="email-input">
-                  <Mail size={17} />
                   <input
                     id="player-email"
                     value={authEmail}
                     onChange={event => setAuthEmail(event.target.value)}
-                    placeholder="ton.email@exemple.com"
+                    placeholder="Email MPL"
                     type="email"
                   />
                 </div>
-                <label htmlFor="player-license">Numero de licence</label>
                 <div className="email-input">
-                  <ShieldCheck size={17} />
                   <input
                     id="player-license"
                     value={authLicense}
                     onChange={event => setAuthLicense(event.target.value)}
-                    placeholder="Ex: 1234"
+                    placeholder="Numero de licence"
                     inputMode="numeric"
+                  />
+                </div>
+                <div className="email-input">
+                  <input
+                    id="player-phone"
+                    value={authPhone}
+                    onChange={event => setAuthPhone(event.target.value)}
+                    placeholder="Ou numero de telephone"
+                    inputMode="tel"
+                    type="tel"
                   />
                 </div>
                 <button
@@ -1439,12 +1470,11 @@ export default function EspaceJoueur() {
         .email-input {
           display: flex;
           align-items: center;
-          gap: 10px;
-          min-height: 46px;
-          border: 1px solid rgba(255,255,255,0.1);
-          border-radius: 12px;
-          padding: 0 12px;
-          background: rgba(0,0,0,0.22);
+          min-height: 48px;
+          border: 1px solid rgba(78,168,255,0.24);
+          border-radius: 2px;
+          padding: 0 14px;
+          background: #0d1a2b;
         }
         .email-input input {
           width: 100%;
@@ -1453,6 +1483,9 @@ export default function EspaceJoueur() {
           background: transparent;
           color: white;
           font: inherit;
+        }
+        .email-input input::placeholder {
+          color: rgba(116,154,196,0.88);
         }
         .account-button {
           display: inline-flex;
