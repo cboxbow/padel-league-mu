@@ -580,15 +580,22 @@ export default function EspaceJoueur() {
         p_email: email,
         p_license: license,
       }),
-      7000,
+      12000,
     );
+    const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
     let result = await verifyOnce();
     let verificationError = errorMessage(result.error);
 
-    if (!result.data && (result.timedOut || isTemporaryVerificationIssue(verificationError))) {
+    // Reseau mobile/pooler Supabase parfois lent au premier appel : jusqu'a
+    // 2 essais supplementaires, avec une courte pause pour laisser passer
+    // un blip transitoire plutot que de re-tenter immediatement.
+    let attempts = 1;
+    while (!result.data && attempts < 3 && (result.timedOut || isTemporaryVerificationIssue(verificationError))) {
+      await wait(600);
       result = await verifyOnce();
       verificationError = errorMessage(result.error);
+      attempts += 1;
     }
 
     setAuthLoading(false);
