@@ -487,6 +487,18 @@ export default function EspaceJoueur() {
     return filteredProfiles[0] ?? profiles[0];
   }, [profiles, filteredProfiles, selectedKey]);
 
+  // Cle du profil de classement lie au compte authentifie (email+licence),
+  // independante du profil actuellement parcouru via la recherche. Sert a
+  // s'assurer qu'on ne prepare jamais une inscription pour un autre joueur
+  // que celui reellement connecte.
+  const authenticatedProfileKey = useMemo(() => {
+    if (!linkedPlayer) return '';
+    return normalizeName(`${linkedPlayer.first_name ?? ''} ${linkedPlayer.last_name ?? ''}`.trim());
+  }, [linkedPlayer]);
+  const isViewingOwnProfile = !!accountEmail
+    && !!authenticatedProfileKey
+    && selectedProfile?.key === authenticatedProfileKey;
+
   const upcomingTournaments = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -690,6 +702,10 @@ export default function EspaceJoueur() {
       setAuthMessage('Selectionne ton profil joueur avant de preparer une inscription.');
       return;
     }
+    if (!isViewingOwnProfile) {
+      setAuthMessage(`Tu consultes le classement de ${selectedProfile.name}, pas ton propre profil. Recherche ton nom pour preparer ta propre inscription.`);
+      return;
+    }
     if (!canPrepareRegistration(label)) {
       setAuthMessage('Ce tournoi n est pas disponible pour ce profil.');
       return;
@@ -731,6 +747,10 @@ export default function EspaceJoueur() {
   async function submitRegistrationRequest() {
     if (!registrationDraft || !selectedProfile || !selectedPartner) {
       setAuthMessage('Choisis un tournoi et un partenaire avant d envoyer la demande.');
+      return;
+    }
+    if (!isViewingOwnProfile) {
+      setAuthMessage(`Tu consultes le classement de ${selectedProfile.name}, pas ton propre profil. Recherche ton nom pour preparer ta propre inscription.`);
       return;
     }
     if (!draftPairCheck.allowed) {
@@ -910,9 +930,14 @@ export default function EspaceJoueur() {
                 <span className="account-status">Connecte</span>
                 <strong>{accountEmail}</strong>
                 <small>
-                  Profil actif: {selectedProfile?.name ?? 'selection a faire'}
+                  Profil actif: {linkedPlayer ? `${linkedPlayer.first_name ?? ''} ${linkedPlayer.last_name ?? ''}`.trim() : 'selection a faire'}
                   {linkedPlayer?.license_no ? ` - licence ${linkedPlayer.license_no}` : ''}
                 </small>
+                {!isViewingOwnProfile && selectedProfile && (
+                  <small style={{ color: '#f59e0b' }}>
+                    Tu consultes le classement de {selectedProfile.name} — les inscriptions restent liees a ton propre profil.
+                  </small>
+                )}
                 {linkMessage && <small>{linkMessage}</small>}
                 <button type="button" className="account-button secondary" onClick={signOutPlayer}>
                   <LogOut size={16} /> Se deconnecter
@@ -1155,11 +1180,13 @@ export default function EspaceJoueur() {
                   <button
                     type="button"
                     className="registration-button"
-                    disabled={!accountEmail || !canPrepareRegistration(eligibility.label) || checkingExistingRequest}
+                    disabled={!accountEmail || !isViewingOwnProfile || !canPrepareRegistration(eligibility.label) || checkingExistingRequest}
                     onClick={() => prepareRegistration(tournament, eligibility.label)}
                   >
                     {!accountEmail
                       ? 'Connexion requise'
+                      : !isViewingOwnProfile
+                        ? 'Ce n est pas ton profil'
                       : checkingExistingRequest
                         ? 'Controle...'
                       : canPrepareRegistration(eligibility.label)
