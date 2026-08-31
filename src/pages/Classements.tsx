@@ -737,6 +737,11 @@ function PlayerDetailModal({
 }) {
   const [activeHistoryTab, setActiveHistoryTab] = useState<'all' | 'men' | 'women' | 'mixed' | 'junior'>('all');
   const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    setActiveHistoryTab('all');
+  }, [player.player_name, divisionKey]);
+
   const officialDetails = details.filter(detail => detail.source === 'official');
   const realDetails = resolveDetailDivisionConflicts(details.filter(detail => detail.source !== 'official'));
   const realDisplayDetails = dedupePlayerDetails(realDetails);
@@ -828,8 +833,9 @@ function PlayerDetailModal({
     { key: 'mixed' as const, label: 'Mixed', count: combinedDetails.filter(detail => detail.division_key === 'mixed').length },
     { key: 'junior' as const, label: 'Junior', count: combinedDetails.filter(detail => detail.division_key === 'junior').length },
   ].filter(tab => tab.key === 'all' || tab.count > 0);
-  const visibleDetails = combinedDetails
-    .filter(detail => activeHistoryTab === 'all' || detail.division_key === activeHistoryTab)
+  const filteredDetails = combinedDetails
+    .filter(detail => activeHistoryTab === 'all' || detail.division_key === activeHistoryTab);
+  const visibleDetails = (filteredDetails.length > 0 ? filteredDetails : combinedDetails)
     .sort((a, b) => {
       const retainedA = isRetainedDetail(a);
       const retainedB = isRetainedDetail(b);
@@ -1235,6 +1241,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
       const { data: latestBatchRows } = await sb
         .from('official_rankings')
         .select('batch_id,created_at')
+        .eq('division', divToDb(division))
         .order('created_at', { ascending: false })
         .limit(1);
 
