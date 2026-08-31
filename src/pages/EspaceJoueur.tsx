@@ -1988,9 +1988,14 @@ export default function EspaceJoueur() {
           .search-panel,
           .account-panel,
           .draft-panel,
+          .draft-workflow,
           .player-grid,
           .tournament-grid,
           .roadmap-grid {
+            grid-template-columns: 1fr;
+          }
+          .partner-results,
+          .search-results {
             grid-template-columns: 1fr;
           }
           .player-hero h1 {
