@@ -852,6 +852,23 @@ export default function EspaceJoueur() {
               placeholder="Rechercher ton nom..."
             />
           </div>
+          {query.trim() && (
+            <div className="search-results">
+              {filteredProfiles.length ? filteredProfiles.map(profile => (
+                <button
+                  key={profile.key}
+                  type="button"
+                  className={selectedProfile?.key === profile.key ? 'active' : ''}
+                  onClick={() => setSelectedKey(profile.key)}
+                >
+                  <strong>{profile.name}</strong>
+                  <span>#{profile.bestRank} - {formatNumber(profile.bestPoints)} pts</span>
+                </button>
+              )) : (
+                <div className="search-empty">Aucun joueur trouve pour "{query.trim()}".</div>
+              )}
+            </div>
+          )}
           <div className="division-tabs">
             {(['all', 'men', 'women', 'junior', 'mixed'] as const).map(key => (
               <button
