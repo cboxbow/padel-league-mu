@@ -368,8 +368,22 @@ function playerCanonicalKey(value: unknown): string {
   return nameKey(value);
 }
 
-function rowHasPlayer(row: Record<string, unknown>, playerKey: string): boolean {
-  return playerCanonicalKey(row.player1_name) === playerKey || playerCanonicalKey(row.player2_name) === playerKey;
+function looseNameKey(value: unknown): string {
+  return playerCanonicalKey(value)
+    .split(' ')
+    .filter(Boolean)
+    .sort()
+    .join(' ');
+}
+
+function playerNameMatches(value: unknown, playerKey: string, playerLooseKey = looseNameKey(playerKey)): boolean {
+  const candidateKey = playerCanonicalKey(value);
+  if (!candidateKey || !playerKey) return false;
+  return candidateKey === playerKey || looseNameKey(candidateKey) === playerLooseKey;
+}
+
+function rowHasPlayer(row: Record<string, unknown>, playerKey: string, playerLooseKey = looseNameKey(playerKey)): boolean {
+  return playerNameMatches(row.player1_name, playerKey, playerLooseKey) || playerNameMatches(row.player2_name, playerKey, playerLooseKey);
 }
 
 function partnerFromTeamName(teamName: string, playerName: string): string {
@@ -386,12 +400,13 @@ function partnerFromTeamName(teamName: string, playerName: string): string {
 
 function partnerForPlayer(row: Record<string, unknown>, playerName: string): string {
   const player = nameKey(playerName);
+  const playerLoose = looseNameKey(player);
   const p1Raw = normalizePersonName(row.player1_name);
   const p2Raw = normalizePersonName(row.player2_name);
   const p1 = nameKey(p1Raw);
   const p2 = nameKey(p2Raw);
-  if (p1 && p1 !== player) return p1Raw.toUpperCase();
-  if (p2 && p2 !== player) return p2Raw.toUpperCase();
+  if (p1 && !playerNameMatches(p1Raw, player, playerLoose)) return p1Raw.toUpperCase();
+  if (p2 && !playerNameMatches(p2Raw, player, playerLoose)) return p2Raw.toUpperCase();
   return partnerFromTeamName(String(row.team_name ?? ''), playerName);
 }
 
@@ -734,7 +749,6 @@ function PlayerDetailModal({
   const displayDetails = hasOfficialDetails
     ? dedupePlayerDetails([...officialDisplayDetails, ...realDisplayDetails])
     : realDisplayDetails;
-  const historicalDetails = displayDetails.filter(detail => detail.source === 'historical');
   const playerDivisionKey = divisionKey;
   const windowRange = rankingWindowRange();
   const calculationDetails = displayDetails;
@@ -850,7 +864,7 @@ function PlayerDetailModal({
             <span style={{ color: '#f59e0b', fontSize: isMobile ? '18px' : '20px', lineHeight: 1.2, flex: '0 0 auto' }}>#{player.rank}</span>
             <div style={{ minWidth: 0 }}>
               <div style={{ color: 'white', fontSize: isMobile ? '17px' : '16px', fontWeight: 900, textTransform: 'uppercase', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isMobile ? 'normal' : 'nowrap', lineHeight: 1.08 }}>{player.player_name}</div>
-              <div style={{ color: '#777', fontSize: '12px', marginTop: '4px', lineHeight: 1.35 }}>{formatPoints(rankingTotal)} pts Ranking Top 8 - Joues 12 mois: {top8Label} - {historicalDetails.length} historique</div>
+              <div style={{ color: '#777', fontSize: '12px', marginTop: '4px', lineHeight: 1.35 }}>{formatPoints(rankingTotal)} pts Ranking Top 8 - Joues 12 mois: {top8Label} - {displayDetails.length} historique</div>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: isMobile ? '8px' : '14px', flex: '0 0 auto' }}>
@@ -1049,20 +1063,24 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
 
     const name = player.player_name.trim();
     const playerKey = playerCanonicalKey(name);
-    const escapedName = name.replace(/[%_,]/g, '');
-    const namePattern = `%${escapedName}%`;
-    const queries = await Promise.all([
-      sb
-        .from('tournament_results')
-        .select('tournament_name,tournament_date,team_name,player1_name,player2_name,rank,points,season,division,category,club_name')
-        .ilike('player1_name', namePattern)
-        .limit(500),
-      sb
-        .from('tournament_results')
-        .select('tournament_name,tournament_date,team_name,player1_name,player2_name,rank,points,season,division,category,club_name')
-        .ilike('player2_name', namePattern)
-        .limit(500),
-    ]);
+    const playerLooseKey = looseNameKey(playerKey);
+    const escapedName = name.replace(/[%_,]/g, '').trim();
+    const nameTokens = playerKey.split(' ').filter(token => token.length >= 3);
+    const lookupTerms = Array.from(new Set([escapedName, ...nameTokens].filter(Boolean)));
+    const queries = await Promise.all(
+      lookupTerms.flatMap(term => [
+        sb
+          .from('tournament_results')
+          .select('tournament_name,tournament_date,team_name,player1_name,player2_name,rank,points,season,division,category,club_name')
+          .ilike('player1_name', `%${term}%`)
+          .limit(1000),
+        sb
+          .from('tournament_results')
+          .select('tournament_name,tournament_date,team_name,player1_name,player2_name,rank,points,season,division,category,club_name')
+          .ilike('player2_name', `%${term}%`)
+          .limit(1000),
+      ])
+    );
 
     const seen = new Set<string>();
     const rows: PlayerRankingDetail[] = [];
@@ -1070,7 +1088,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
     for (const result of queries) {
       if (result.error || !result.data) continue;
       for (const row of result.data as Record<string, unknown>[]) {
-        if (!rowHasPlayer(row, playerKey)) continue;
+        if (!rowHasPlayer(row, playerKey, playerLooseKey)) continue;
         const eventName = String(row.tournament_name ?? '').trim();
         const date = String(row.tournament_date ?? '').trim();
         const points = parseRankingPoints(row.points);
@@ -1104,33 +1122,38 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
 
     const name = player.player_name.trim();
     const playerKey = playerCanonicalKey(name);
-    const escapedName = name.replace(/[%_,]/g, '');
+    const playerLooseKey = looseNameKey(playerKey);
+    const escapedName = name.replace(/[%_,]/g, '').trim();
+    const nameTokens = playerKey.split(' ').filter(token => token.length >= 3);
+    const lookupTerms = Array.from(new Set([escapedName, ...nameTokens].filter(Boolean)));
     const historicalRows: Record<string, unknown>[] = [];
     const historicalSeen = new Set<string>();
     const pageSize = 300;
 
-    for (const column of ['player1_name', 'player2_name'] as const) {
-      for (let from = 0; from < 3000; from += pageSize) {
-        const { data, error } = await sb
-          .from('historical_tournament_results')
-          .select('id,event_name,season,category,division,rank_min,team_name,player1_name,player2_name,points,club_name,event_date')
-          .ilike(column, `%${escapedName}%`)
-          .range(from, from + pageSize - 1);
+    for (const term of lookupTerms) {
+      for (const column of ['player1_name', 'player2_name'] as const) {
+        for (let from = 0; from < 3000; from += pageSize) {
+          const { data, error } = await sb
+            .from('historical_tournament_results')
+            .select('id,event_name,season,category,division,rank_min,team_name,player1_name,player2_name,points,club_name,event_date')
+            .ilike(column, `%${term}%`)
+            .range(from, from + pageSize - 1);
 
-        if (error) {
-          console.warn('[Classements] historical_tournament_results error:', error);
-          break;
-        }
+          if (error) {
+            console.warn('[Classements] historical_tournament_results error:', error);
+            break;
+          }
 
-        const batch = (data ?? []) as Record<string, unknown>[];
-        for (const row of batch) {
-          if (!rowHasPlayer(row, playerKey)) continue;
-          const key = String(row.id ?? `${row.event_name}|${row.team_name}|${row.points}`);
-          if (historicalSeen.has(key)) continue;
-          historicalSeen.add(key);
-          historicalRows.push(row);
+          const batch = (data ?? []) as Record<string, unknown>[];
+          for (const row of batch) {
+            if (!rowHasPlayer(row, playerKey, playerLooseKey)) continue;
+            const key = String(row.id ?? `${row.event_name}|${row.team_name}|${row.points}`);
+            if (historicalSeen.has(key)) continue;
+            historicalSeen.add(key);
+            historicalRows.push(row);
+          }
+          if (batch.length < pageSize) break;
         }
-        if (batch.length < pageSize) break;
       }
     }
 
@@ -1208,6 +1231,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
     setDetailsLoading(true);
     try {
       const playerKey = playerCanonicalKey(player.player_name);
+      const playerLooseKey = looseNameKey(playerKey);
       const { data: latestBatchRows } = await sb
         .from('official_rankings')
         .select('batch_id,created_at')
@@ -1215,7 +1239,11 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
         .limit(1);
 
       const latestBatchId = String((latestBatchRows as Record<string, unknown>[] | null)?.[0]?.batch_id ?? '');
-      const buildDetailsQuery = (select: string, scopedToPlayer = true) => {
+      const playerTerms = Array.from(new Set([
+        String(player.player_name).trim().replace(/[%_,]/g, ''),
+        ...playerKey.split(' ').filter(token => token.length >= 3),
+      ].filter(Boolean)));
+      const buildDetailsQuery = (select: string, scopedToPlayer = true, scopedTerm = String(player.player_name).trim().replace(/[%_,]/g, '')) => {
         let query = sb
           .from('official_ranking_details')
           .select(select)
@@ -1224,7 +1252,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
           .limit(5000);
 
         if (scopedToPlayer) {
-          const safeNamePattern = `%${String(player.player_name).trim().replace(/[%_,]/g, '')}%`;
+          const safeNamePattern = `%${scopedTerm}%`;
           query = query.ilike('player_name', safeNamePattern);
         }
 
@@ -1234,19 +1262,34 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
         return query;
       };
 
+      const appendOfficialMatches = (rows: Record<string, unknown>[] | null | undefined, target: Record<string, unknown>[]) => {
+        for (const row of rows ?? []) {
+          if (!playerNameMatches(row.player_name, playerKey, playerLooseKey)) continue;
+          const key = `${row.player_name}|${row.event_name}|${row.points}|${row.season}|${row.batch_id}`;
+          if (target.some(existing => `${existing.player_name}|${existing.event_name}|${existing.points}|${existing.season}|${existing.batch_id}` === key)) continue;
+          target.push(row);
+        }
+      };
+
       let { data, error } = await buildDetailsQuery('player_name,event_name,event_date,category,club_name,partner_name,rank_label,points,season,batch_id,import_id,created_at');
       if (error && /schema cache|Could not find|column/i.test(error.message)) {
         const fallback = await buildDetailsQuery('player_name,event_name,points,season,batch_id');
         data = fallback.data;
         error = fallback.error;
       }
-      const officialRows = !error && data
-        ? (data as Record<string, unknown>[]).filter(row => playerCanonicalKey(row.player_name) === playerKey)
-        : [];
+      const officialRows: Record<string, unknown>[] = [];
+      if (!error && data) appendOfficialMatches(data as Record<string, unknown>[], officialRows);
+      if (!officialRows.length) {
+        for (const term of playerTerms) {
+          const termResult = await buildDetailsQuery('player_name,event_name,event_date,category,club_name,partner_name,rank_label,points,season,batch_id,import_id,created_at', true, term);
+          if (!termResult.error && termResult.data) appendOfficialMatches(termResult.data as Record<string, unknown>[], officialRows);
+          if (officialRows.length) break;
+        }
+      }
       if (!officialRows.length && latestBatchId) {
         const fallback = await buildDetailsQuery('player_name,event_name,points,season,batch_id', false);
         if (!fallback.error && fallback.data) {
-          officialRows.push(...(fallback.data as Record<string, unknown>[]).filter(row => playerCanonicalKey(row.player_name) === playerKey));
+          appendOfficialMatches(fallback.data as Record<string, unknown>[], officialRows);
         }
       }
 
