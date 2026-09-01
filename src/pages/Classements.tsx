@@ -1077,12 +1077,12 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
       lookupTerms.flatMap(term => [
         sb
           .from('tournament_results')
-          .select('tournament_name,tournament_date,team_name,player1_name,player2_name,rank,points,season,division,category,club_name')
+          .select('tournament_name,tournament_date,team_name,player1_name,player2_name,rank,points,division,category,club_name')
           .ilike('player1_name', `%${term}%`)
           .limit(1000),
         sb
           .from('tournament_results')
-          .select('tournament_name,tournament_date,team_name,player1_name,player2_name,rank,points,season,division,category,club_name')
+          .select('tournament_name,tournament_date,team_name,player1_name,player2_name,rank,points,division,category,club_name')
           .ilike('player2_name', `%${term}%`)
           .limit(1000),
       ])
