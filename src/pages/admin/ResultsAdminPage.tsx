@@ -1059,12 +1059,16 @@ function QuickEntryPanel({
         let rank = 0;
         let p1 = '', p2 = '', customPts = 0;
 
-        // 1) Extraire rang en début de ligne : "3." ou "3)" ou "3 "
-        const rankPrefixMatch = line.match(/^(\d+)[.)\s]\s*/);
+        // 1) Extraire rang en début de ligne : "3." ou "3)" ou "3 " ou "5-6."
+        //    (paires ex aequo, une ligne par paire, le rang affiche est le
+        //    plus bas des deux ; sans le "(?:-\d+)?" le tiret casse le
+        //    match et "5-6. " reste colle au nom du joueur 1)
+        const rankPrefixMatch = line.match(/^(\d+)(?:-(\d+))?[.)\s]\s*/);
         if (rankPrefixMatch) {
           rank = parseInt(rankPrefixMatch[1]);
+          const rangeEnd = rankPrefixMatch[2] ? parseInt(rankPrefixMatch[2]) : rank;
           line = line.slice(rankPrefixMatch[0].length).trim();
-          autoRank = rank + 1;
+          autoRank = rangeEnd + 1;
         } else {
           rank = autoRank++;
         }
