@@ -317,7 +317,14 @@ function historicalPayload(row: Partial<TResult>) {
   const clubName = normalizeClubName(row.club_name);
   const eventName = normalizeTournamentDisplayName(row.tournament_name ?? '', clubName);
   const rank = Number(row.rank ?? 1);
-  const id = row.id && row._source === 'historical'
+  // historical_tournament_results.id is a uuid column: the composite-key
+  // slug this used to build for non-historical rows always failed with
+  // "invalid input syntax for type uuid" (every admin bulk import and
+  // single-row save reported "0 OK" as a result). Callers already resolve
+  // a proper uuid before calling this (savedId / row.id from the batch
+  // transform), so just reuse it -- fall back to the slug only in the
+  // unexpected case where no id was provided at all.
+  const id = row.id
     ? row.id
     : `admin-${row.tournament_id}-${division}-${rank}-${normKey(row.player1_name)}-${normKey(row.player2_name)}`
       .toLowerCase()
