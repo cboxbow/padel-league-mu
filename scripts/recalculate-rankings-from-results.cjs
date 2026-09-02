@@ -144,6 +144,12 @@ const PLAYER_NAME_ALIASES = new Map([
   ['ANNA ROMERO', 'ANNA ROMERO MARTINEZ'],
   ['LAURYN LI', 'LAURYN LI YOUN FONG'],
   ['CLAUDIA RONCHI', 'CLAUDIA RONCHI STIERLI'],
+
+  // Croises avec l'export AllApplicationUsers (2026-09-02), matches
+  // confirmes par email vers une ligne existante de public.players.
+  ['NATHAN DE SPEVILLE', 'NATHAN DOGER DE SPEVILLE'],
+  ['ILANE WACHILL', 'WACHILL ILANE'],
+  ['GREGORY CHAROUX', 'GREG CHAROUX'],
 ]);
 
 function canonicalPlayerName(value) {
