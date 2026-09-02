@@ -173,6 +173,7 @@ function normalizeName(value: unknown): string {
     'SHEIKH ALI NASSIM': 'NASSIM SHEIKH ALI',
     'SHONA LI QUERY': 'SHONA-LI QUERY',
     'ZAKARIA AFIF': 'AFIF ZAKARIA',
+    'ELIAN BESSONART': 'ELIAN BESSONNART',
     'JOHAN ESPITALIER NOEL': 'JOHAN ESPITALIER-NOEL',
   };
   const key = cleaned

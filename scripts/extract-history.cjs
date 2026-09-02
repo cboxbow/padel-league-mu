@@ -56,6 +56,7 @@ const playerNameAliases = new Map([
   ['SHONA LI QUERY', 'SHONA-LI QUERY'],
   ['AFIF ZAKARIA', 'AFIF ZAKARIA'],
   ['ZAKARIA AFIF', 'AFIF ZAKARIA'],
+  ['ELIAN BESSONART', 'ELIAN BESSONNART'],
   ['JOHAN ESPITALIER NOEL', 'JOHAN ESPITALIER-NOEL'],
 ]);
 function canonicalPlayerName(value) {

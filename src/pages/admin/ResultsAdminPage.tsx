@@ -159,6 +159,25 @@ function normKey(value: unknown): string {
     .trim();
 }
 
+const PLAYER_NAME_ALIASES: Record<string, string> = {
+  'DALLE GRAVE TIPPI': 'TIPPI DALLE-GRAVE',
+  'TIPPI DALLE GRAVE': 'TIPPI DALLE-GRAVE',
+  'DANE DOHERTY BIGARA': 'DANE DOHERTY-BIGARA',
+  'SOOHINESH DIP': 'DIP SOOHINESH',
+  'ROBERT LARRY': 'LARRY ROBERT',
+  'SHEIKH ALI NASSIM': 'NASSIM SHEIKH ALI',
+  'SHONA LI QUERY': 'SHONA-LI QUERY',
+  'ZAKARIA AFIF': 'AFIF ZAKARIA',
+  'ELIAN BESSONART': 'ELIAN BESSONNART',
+  'JOHAN ESPITALIER NOEL': 'JOHAN ESPITALIER-NOEL',
+};
+
+function canonicalPlayerName(value: unknown): string {
+  const cleaned = cleanText(value).replace(/\s+/g, ' ').toUpperCase();
+  if (!cleaned) return '';
+  return PLAYER_NAME_ALIASES[normKey(cleaned)] || cleaned;
+}
+
 function parseRankingPoints(value: unknown): number {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
   const text = cleanText(value).replace(/\s+/g, '').replace(',', '.');
@@ -397,15 +416,15 @@ function mergeResults(legacyRows: TResult[], historicalRows: TResult[]): TResult
     const dedupeKey = [
       row._match_key,
       row.rank,
-      normKey(row.player1_name),
-      normKey(row.player2_name),
+      normKey(canonicalPlayerName(row.player1_name)),
+      normKey(canonicalPlayerName(row.player2_name)),
       row.points,
     ].join('|');
     if (![...map.values()].some(existing => [
       existing._match_key,
       existing.rank,
-      normKey(existing.player1_name),
-      normKey(existing.player2_name),
+      normKey(canonicalPlayerName(existing.player1_name)),
+      normKey(canonicalPlayerName(existing.player2_name)),
       existing.points,
     ].join('|') === dedupeKey)) {
       map.set(`historical:${row.id}`, row);
@@ -422,8 +441,8 @@ function historicalToRankingInputs(row: HistoricalResultRow): RankingInputRow[] 
   const clubName = normalizeClubName(row.club_name);
   const rank = rankNumber(row);
   const points = parseRankingPoints(row.points);
-  const player1 = cleanText(row.player1_name);
-  const player2 = cleanText(row.player2_name);
+  const player1 = canonicalPlayerName(row.player1_name);
+  const player2 = canonicalPlayerName(row.player2_name);
   const base = {
     id: row.id,
     event_name: normalizeTournamentDisplayName(row.event_name, clubName),
@@ -447,8 +466,8 @@ function resultToRankingInputs(row: TResult): RankingInputRow[] {
   const date = cleanText(row.tournament_date).slice(0, 10);
   const clubName = normalizeClubName(row.club_name);
   const points = parseRankingPoints(row.points);
-  const player1 = cleanText(row.player1_name);
-  const player2 = cleanText(row.player2_name);
+  const player1 = canonicalPlayerName(row.player1_name);
+  const player2 = canonicalPlayerName(row.player2_name);
   const base = {
     id: row.id,
     event_name: normalizeTournamentDisplayName(row.tournament_name, clubName),
@@ -484,7 +503,7 @@ function dedupeRankingInputs(rows: RankingInputRow[]): RankingInputRow[] {
       row.division,
       row.division === 'mixed' ? 'MIXED' : row.category,
       normKey(row.club_name || row.event_name),
-      normKey(row.player_name),
+      normKey(canonicalPlayerName(row.player_name)),
     ].join('|');
     const existing = byKey.get(key);
     if (!existing) {
@@ -514,9 +533,10 @@ function computeRankingRows(
     if (!row.player_name || !row.event_date || Number.isNaN(date.getTime())) continue;
     if (date < period.start || date > period.end) continue;
     if (!byDivision.has(row.division)) byDivision.set(row.division, new Map());
-    const key = normKey(row.player_name);
+    const playerName = canonicalPlayerName(row.player_name);
+    const key = normKey(playerName);
     const playerRows = byDivision.get(row.division)!;
-    playerRows.set(key, [...(playerRows.get(key) ?? []), row]);
+    playerRows.set(key, [...(playerRows.get(key) ?? []), { ...row, player_name: playerName }]);
   }
 
   const computed: ComputedRankingRow[] = [];
@@ -595,7 +615,7 @@ async function fetchPreviousOfficialRanks(sb: NonNullable<ReturnType<typeof getS
     if (latestBatch && String(row.batch_id ?? '') !== latestBatch) continue;
     if (!latestBatch && latestCreatedAt && String(row.created_at ?? '').slice(0, 16) !== latestCreatedAt) continue;
     const division = normalizeRankingDivision(row.division);
-    const name = normKey(row.player_name);
+    const name = normKey(canonicalPlayerName(row.player_name));
     const rank = Number(row.rank ?? 0);
     if (name && Number.isFinite(rank) && rank > 0) previous.set(`${division}|${name}`, rank);
   }

@@ -49,6 +49,25 @@ function normKey(value) {
     .trim();
 }
 
+const PLAYER_NAME_ALIASES = new Map([
+  ['DALLE GRAVE TIPPI', 'TIPPI DALLE-GRAVE'],
+  ['TIPPI DALLE GRAVE', 'TIPPI DALLE-GRAVE'],
+  ['DANE DOHERTY BIGARA', 'DANE DOHERTY-BIGARA'],
+  ['SOOHINESH DIP', 'DIP SOOHINESH'],
+  ['ROBERT LARRY', 'LARRY ROBERT'],
+  ['SHEIKH ALI NASSIM', 'NASSIM SHEIKH ALI'],
+  ['SHONA LI QUERY', 'SHONA-LI QUERY'],
+  ['ZAKARIA AFIF', 'AFIF ZAKARIA'],
+  ['ELIAN BESSONART', 'ELIAN BESSONNART'],
+  ['JOHAN ESPITALIER NOEL', 'JOHAN ESPITALIER-NOEL'],
+]);
+
+function canonicalPlayerName(value) {
+  const cleaned = cleanText(value).replace(/\s+/g, ' ').toUpperCase();
+  if (!cleaned) return '';
+  return PLAYER_NAME_ALIASES.get(normKey(cleaned)) || cleaned;
+}
+
 function compactEventName(value) {
   return normKey(value).replace(/\s+/g, '');
 }
@@ -202,8 +221,8 @@ function historicalToRankingInputs(row) {
   const clubName = normalizeClubName(row.club_name);
   const rank = rankNumber(row);
   const points = parseRankingPoints(row.points);
-  const player1 = cleanText(row.player1_name);
-  const player2 = cleanText(row.player2_name);
+  const player1 = canonicalPlayerName(row.player1_name);
+  const player2 = canonicalPlayerName(row.player2_name);
   const base = {
     id: row.id,
     event_key: row.event_key,
@@ -229,8 +248,8 @@ function resultToRankingInputs(row) {
   const date = cleanText(row.tournament_date).slice(0, 10);
   const clubName = normalizeClubName(row.club_name);
   const points = parseRankingPoints(row.points);
-  const player1 = cleanText(row.player1_name);
-  const player2 = cleanText(row.player2_name);
+  const player1 = canonicalPlayerName(row.player1_name);
+  const player2 = canonicalPlayerName(row.player2_name);
   const base = {
     id: row.id,
     event_name: normalizeTournamentDisplayName(row.tournament_name, clubName),
@@ -316,9 +335,10 @@ function computeRankingRows(inputs, previousRanks, period) {
     if (!row.player_name || !row.event_date || Number.isNaN(date.getTime())) continue;
     if (date < period.start || date > period.end) continue;
     if (!byDivision.has(row.division)) byDivision.set(row.division, new Map());
-    const key = normKey(row.player_name);
+    const playerName = canonicalPlayerName(row.player_name);
+    const key = normKey(playerName);
     const playerRows = byDivision.get(row.division);
-    playerRows.set(key, [...(playerRows.get(key) ?? []), row]);
+    playerRows.set(key, [...(playerRows.get(key) ?? []), { ...row, player_name: playerName }]);
   }
 
   const computed = [];
@@ -486,7 +506,7 @@ async function main() {
     if (latestBatch && String(row.batch_id ?? '') !== latestBatch) continue;
     if (!latestBatch && latestCreatedAt && String(row.created_at ?? '').slice(0, 16) !== latestCreatedAt) continue;
     const division = normalizeRankingDivision(row.division);
-    const name = normKey(row.player_name);
+    const name = normKey(canonicalPlayerName(row.player_name));
     const rank = Number(row.rank ?? 0);
     if (name && Number.isFinite(rank) && rank > 0) previousRanks.set(`${division}|${name}`, rank);
   }

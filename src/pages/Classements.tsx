@@ -356,12 +356,24 @@ function normalizePersonName(value: unknown): string {
 }
 
 function nameKey(value: unknown): string {
-  return normalizePersonName(value)
+  const key = normalizePersonName(value)
     .toUpperCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^A-Z0-9]+/g, ' ')
     .trim();
+  const aliases: Record<string, string> = {
+    'DALLE GRAVE TIPPI': 'TIPPI DALLE GRAVE',
+    'DANE DOHERTY BIGARA': 'DANE DOHERTY BIGARA',
+    'SOOHINESH DIP': 'DIP SOOHINESH',
+    'ROBERT LARRY': 'LARRY ROBERT',
+    'SHEIKH ALI NASSIM': 'NASSIM SHEIKH ALI',
+    'SHONA LI QUERY': 'SHONA LI QUERY',
+    'ZAKARIA AFIF': 'AFIF ZAKARIA',
+    'ELIAN BESSONART': 'ELIAN BESSONNART',
+    'JOHAN ESPITALIER NOEL': 'JOHAN ESPITALIER NOEL',
+  };
+  return aliases[key] || key;
 }
 
 function playerCanonicalKey(value: unknown): string {
