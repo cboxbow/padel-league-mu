@@ -51,6 +51,30 @@ where event_date = '2026-01-24'
   and category = 'M250'
   and sheet_name ilike '%WOME%';
 
+-- Reprise robuste si une passe precedente a deja renomme les lignes Women en MEN.
+update public.historical_tournament_results
+set
+  event_name = 'M250 - URBAN BR - JAN 26 - WOMEN',
+  sheet_name = 'M250 - URBAN BR - JAN 26 - WOMEN',
+  division = 'women',
+  category = 'M250',
+  event_date = '2026-01-24',
+  club_name = 'Urban Sport Black River'
+where event_date = '2026-01-24'
+  and club_name = 'Urban Sport Black River'
+  and category = 'M250'
+  and player1_name in (
+    'PAMELA JUGDARREE',
+    'CELINE DESVAUX DE MARIGNY',
+    'MARTINA HOLA',
+    'PASCALE FERRAT',
+    'ELIZABETH RECTER',
+    'VALENTINA CRUCIANI',
+    'OLGA KLIMENKO',
+    'MELODY DE ROBILLARD',
+    'DESIRE DE WAAL'
+  );
+
 update public.historical_tournament_results
 set
   event_name = 'M250 - URBAN BR - JAN 26 - MEN',
@@ -62,7 +86,8 @@ set
 where event_date = '2026-01-24'
   and club_name = 'Urban Sport Black River'
   and category = 'M250'
-  and sheet_name ilike '%MEN%';
+  and sheet_name ilike '%MEN%'
+  and sheet_name not ilike '%WOM%';
 
 commit;
 

@@ -44,6 +44,18 @@ const WOMEN_IDS = [
   '36497504-dce9-4bd9-9376-3f884d51bd94',
 ];
 
+const WOMEN_PLAYER1_NAMES = [
+  'PAMELA JUGDARREE',
+  'CELINE DESVAUX DE MARIGNY',
+  'MARTINA HOLA',
+  'PASCALE FERRAT',
+  'ELIZABETH RECTER',
+  'VALENTINA CRUCIANI',
+  'OLGA KLIMENKO',
+  'MELODY DE ROBILLARD',
+  'DESIRE DE WAAL',
+];
+
 async function main() {
   console.log('1/4 Deplacement des resultats Women vers t013f...');
   const { error: moveWomenError } = await supabase
@@ -95,6 +107,22 @@ async function main() {
     .ilike('sheet_name', '%WOME%');
   if (historyWomenError) throw new Error(`history women rows: ${historyWomenError.message}`);
 
+  const { error: historyWomenNamesError } = await supabase
+    .from('historical_tournament_results')
+    .update({
+      event_name: 'M250 - URBAN BR - JAN 26 - WOMEN',
+      sheet_name: 'M250 - URBAN BR - JAN 26 - WOMEN',
+      division: 'women',
+      category: 'M250',
+      event_date: '2026-01-24',
+      club_name: 'Urban Sport Black River',
+    })
+    .eq('event_date', '2026-01-24')
+    .eq('club_name', 'Urban Sport Black River')
+    .eq('category', 'M250')
+    .in('player1_name', WOMEN_PLAYER1_NAMES);
+  if (historyWomenNamesError) throw new Error(`history women rows by names: ${historyWomenNamesError.message}`);
+
   const { error: historyMenError } = await supabase
     .from('historical_tournament_results')
     .update({
@@ -108,7 +136,8 @@ async function main() {
     .eq('event_date', '2026-01-24')
     .eq('club_name', 'Urban Sport Black River')
     .eq('category', 'M250')
-    .ilike('sheet_name', '%MEN%');
+    .ilike('sheet_name', '%MEN%')
+    .not('sheet_name', 'ilike', '%WOM%');
   if (historyMenError) throw new Error(`history men rows: ${historyMenError.message}`);
 
   console.log('4/4 Verification...');

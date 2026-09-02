@@ -1,12 +1,30 @@
 /* eslint-disable no-console */
+const fs = require('node:fs');
 const crypto = require('node:crypto');
 const { createClient } = require('@supabase/supabase-js');
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+function readEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) return {};
+  return Object.fromEntries(
+    fs.readFileSync(filePath, 'utf8')
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(line => line && !line.startsWith('#') && line.includes('='))
+      .map(line => {
+        const index = line.indexOf('=');
+        const key = line.slice(0, index).trim();
+        const value = line.slice(index + 1).trim().replace(/^['"]|['"]$/g, '');
+        return [key, value];
+      })
+  );
+}
+
+const env = { ...readEnvFile('.env.local'), ...readEnvFile('.env.admin'), ...process.env };
+const SUPABASE_URL = env.SUPABASE_URL || env.VITE_SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.');
+  console.error('Missing SUPABASE_URL/VITE_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.');
   process.exit(1);
 }
 
