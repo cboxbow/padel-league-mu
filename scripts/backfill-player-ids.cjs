@@ -130,17 +130,31 @@ async function updatePairs(supabase, table, resolvePlayerId) {
     return { table, updated: 0, unresolved: 0, skipped: true };
   }
   const rows = await fetchAll(supabase, table, 'id,player1_name,player2_name,player1_id,player2_id');
-  let updated = 0;
   let unresolved = 0;
+  const updates = [];
   for (const row of rows) {
     const player1Id = cleanText(row.player1_id) || resolvePlayerId(row.player1_name);
     const player2Id = cleanText(row.player2_id) || resolvePlayerId(row.player2_name);
     if (row.player1_name && !player1Id) unresolved += 1;
     if (row.player2_name && !player2Id) unresolved += 1;
     if (player1Id === row.player1_id && player2Id === row.player2_id) continue;
-    const { error } = await supabase.from(table).update({ player1_id: player1Id, player2_id: player2Id }).eq('id', row.id);
-    if (error) throw new Error(`${table} update ${row.id}: ${error.message}`);
-    updated += 1;
+    updates.push({ id: row.id, player1_id: player1Id, player2_id: player2Id });
+  }
+  let updated = 0;
+  const concurrency = 12;
+  for (let i = 0; i < updates.length; i += concurrency) {
+    const batch = updates.slice(i, i + concurrency);
+    await Promise.all(batch.map(async (row) => {
+      const { error } = await supabase
+        .from(table)
+        .update({ player1_id: row.player1_id, player2_id: row.player2_id })
+        .eq('id', row.id);
+      if (error) throw new Error(`${table} update ${row.id}: ${error.message}`);
+    }));
+    updated += batch.length;
+    if (updated % 240 === 0 || updated === updates.length) {
+      console.log(`${table}: ${updated}/${updates.length} lignes mises a jour`);
+    }
   }
   return { table, rows: rows.length, updated, unresolved, skipped: false };
 }

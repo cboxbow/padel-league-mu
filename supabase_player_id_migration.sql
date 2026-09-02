@@ -40,42 +40,53 @@ create index if not exists idx_official_ranking_details_player_id_division
 create index if not exists idx_player_registration_requests_player_ids
   on public.player_registration_requests (player1_id, player2_id);
 
-do $$
-begin
-  if not exists (select 1 from pg_constraint where conname = 'tournament_results_player1_id_fkey') then
-    alter table public.tournament_results add constraint tournament_results_player1_id_fkey
-      foreign key (player1_id) references public.players(id) not valid;
-  end if;
-  if not exists (select 1 from pg_constraint where conname = 'tournament_results_player2_id_fkey') then
-    alter table public.tournament_results add constraint tournament_results_player2_id_fkey
-      foreign key (player2_id) references public.players(id) not valid;
-  end if;
-  if not exists (select 1 from pg_constraint where conname = 'historical_tournament_results_player1_id_fkey') then
-    alter table public.historical_tournament_results add constraint historical_tournament_results_player1_id_fkey
-      foreign key (player1_id) references public.players(id) not valid;
-  end if;
-  if not exists (select 1 from pg_constraint where conname = 'historical_tournament_results_player2_id_fkey') then
-    alter table public.historical_tournament_results add constraint historical_tournament_results_player2_id_fkey
-      foreign key (player2_id) references public.players(id) not valid;
-  end if;
-  if not exists (select 1 from pg_constraint where conname = 'rankings_player_id_fkey') then
-    alter table public.rankings add constraint rankings_player_id_fkey
-      foreign key (player_id) references public.players(id) not valid;
-  end if;
-  if not exists (select 1 from pg_constraint where conname = 'official_rankings_player_id_fkey') then
-    alter table public.official_rankings add constraint official_rankings_player_id_fkey
-      foreign key (player_id) references public.players(id) not valid;
-  end if;
-  if not exists (select 1 from pg_constraint where conname = 'official_ranking_details_player_id_fkey') then
-    alter table public.official_ranking_details add constraint official_ranking_details_player_id_fkey
-      foreign key (player_id) references public.players(id) not valid;
-  end if;
-  if not exists (select 1 from pg_constraint where conname = 'player_registration_requests_player1_id_fkey') then
-    alter table public.player_registration_requests add constraint player_registration_requests_player1_id_fkey
-      foreign key (player1_id) references public.players(id) not valid;
-  end if;
-  if not exists (select 1 from pg_constraint where conname = 'player_registration_requests_player2_id_fkey') then
-    alter table public.player_registration_requests add constraint player_registration_requests_player2_id_fkey
-      foreign key (player2_id) references public.players(id) not valid;
-  end if;
-end $$;
+alter table public.tournament_results
+  drop constraint if exists tournament_results_player1_id_fkey,
+  drop constraint if exists tournament_results_player2_id_fkey;
+
+alter table public.historical_tournament_results
+  drop constraint if exists historical_tournament_results_player1_id_fkey,
+  drop constraint if exists historical_tournament_results_player2_id_fkey;
+
+alter table public.rankings
+  drop constraint if exists rankings_player_id_fkey;
+
+alter table public.official_rankings
+  drop constraint if exists official_rankings_player_id_fkey;
+
+alter table public.official_ranking_details
+  drop constraint if exists official_ranking_details_player_id_fkey;
+
+alter table public.player_registration_requests
+  drop constraint if exists player_registration_requests_player1_id_fkey,
+  drop constraint if exists player_registration_requests_player2_id_fkey;
+
+alter table public.tournament_results
+  add constraint tournament_results_player1_id_fkey
+    foreign key (player1_id) references public.players(id) not valid,
+  add constraint tournament_results_player2_id_fkey
+    foreign key (player2_id) references public.players(id) not valid;
+
+alter table public.historical_tournament_results
+  add constraint historical_tournament_results_player1_id_fkey
+    foreign key (player1_id) references public.players(id) not valid,
+  add constraint historical_tournament_results_player2_id_fkey
+    foreign key (player2_id) references public.players(id) not valid;
+
+alter table public.rankings
+  add constraint rankings_player_id_fkey
+    foreign key (player_id) references public.players(id) not valid;
+
+alter table public.official_rankings
+  add constraint official_rankings_player_id_fkey
+    foreign key (player_id) references public.players(id) not valid;
+
+alter table public.official_ranking_details
+  add constraint official_ranking_details_player_id_fkey
+    foreign key (player_id) references public.players(id) not valid;
+
+alter table public.player_registration_requests
+  add constraint player_registration_requests_player1_id_fkey
+    foreign key (player1_id) references public.players(id) not valid,
+  add constraint player_registration_requests_player2_id_fkey
+    foreign key (player2_id) references public.players(id) not valid;
