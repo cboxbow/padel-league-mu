@@ -11,6 +11,8 @@
     "build:dev": "cross-env VITE_ENABLE_ROUTE_MESSAGING=true vite build --mode development --sourcemap",
     "build:map": "cross-env VITE_ENABLE_ROUTE_MESSAGING=true vite build --sourcemap",
     "lint": "eslint .",
+    "audit:player-names": "node scripts/audit-player-name-variants.cjs",
+    "backfill:player-ids": "node scripts/backfill-player-ids.cjs",
     "preview": "vite preview",
     "preview:dev": "npm run build:dev && npm run preview",
     "test:edge-functions": "cd supabase/edge_function && deno task test"

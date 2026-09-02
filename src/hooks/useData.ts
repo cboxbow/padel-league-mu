@@ -495,6 +495,7 @@ export function useClubTournaments(clubId: string) {
 // Priorité : 1) Supabase table `rankings`  2) CSV public  3) données mock locales
 // Même logique que RankingsAdminPage : charge tout sans filtre SQL, filtre côté JS
 interface SimpleRanking {
+  player_id?: string | null;
   rank: number;
   rank_before?: number;
   name: string;
@@ -629,9 +630,10 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
         try {
           let detailsOffset = 0;
           const PAGE = 1000;
+          let includeDetailPlayerId = true;
           for (;;) {
             const params = new URLSearchParams({
-              select: 'player_name,division',
+              select: includeDetailPlayerId ? 'player_id,player_name,division' : 'player_name,division',
               division: `eq.${dbDivision}`,
               limit: String(PAGE),
               offset: String(detailsOffset),
@@ -639,11 +641,17 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
             const res = await fetch(`${sbUrl}/official_ranking_details?${params}`, {
               headers: { 'apikey': sbKey, 'Authorization': `Bearer ${sbKey}`, 'Accept': 'application/json' },
             });
-            if (!res.ok) break;
+            if (!res.ok) {
+              if (includeDetailPlayerId && detailsOffset === 0) {
+                includeDetailPlayerId = false;
+                continue;
+              }
+              break;
+            }
             const batch = await res.json() as Record<string, unknown>[];
             if (!Array.isArray(batch) || !batch.length) break;
             for (const row of batch) {
-              const name = String(row.player_name ?? '').trim().toLowerCase();
+              const name = String(row.player_id || row.player_name || '').trim().toLowerCase();
               if (name) detailCounts.set(name, (detailCounts.get(name) ?? 0) + 1);
             }
             if (batch.length < PAGE) break;
@@ -656,9 +664,12 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
         try {
           let metaOffset = 0;
           const PAGE = 1000;
+          let includeMetaPlayerId = true;
           for (;;) {
             const params = new URLSearchParams({
-            select: 'player_name,division,rank,rank_before,tournaments_played,trend,is_current',
+            select: includeMetaPlayerId
+              ? 'player_id,player_name,division,rank,rank_before,tournaments_played,trend,is_current'
+              : 'player_name,division,rank,rank_before,tournaments_played,trend,is_current',
               division: `eq.${dbDivision}`,
               is_current: 'eq.true',
               limit: String(PAGE),
@@ -667,11 +678,17 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
             const res = await fetch(`${sbUrl}/official_rankings?${params}`, {
               headers: { 'apikey': sbKey, 'Authorization': `Bearer ${sbKey}`, 'Accept': 'application/json' },
             });
-            if (!res.ok) break;
+            if (!res.ok) {
+              if (includeMetaPlayerId && metaOffset === 0) {
+                includeMetaPlayerId = false;
+                continue;
+              }
+              break;
+            }
             const batch = await res.json() as Record<string, unknown>[];
             if (!Array.isArray(batch) || !batch.length) break;
             for (const row of batch) {
-              const name = String(row.player_name ?? '').trim().toLowerCase();
+              const name = String(row.player_id || row.player_name || '').trim().toLowerCase();
               if (!name) continue;
               officialMeta.set(name, {
                 trend: trendFromRanks(row.rank, row.rank_before, row.trend),
@@ -686,7 +703,7 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
         }
 
         return baseRows.map(row => {
-          const key = row.name.trim().toLowerCase();
+          const key = String(row.player_id || row.name).trim().toLowerCase();
           const meta = officialMeta.get(key);
           const detailCount = detailCounts.get(key) ?? 0;
           return {
@@ -725,9 +742,12 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
           if (latestBatchId) {
             let officialOffset = 0;
             const OFFICIAL_PAGE = 1000;
+            let includeOfficialPlayerId = true;
             for (;;) {
               const officialParams = new URLSearchParams({
-                select: 'player_name,rank,rank_before,points,division,tournaments_played,trend,season,batch_id,created_at',
+                select: includeOfficialPlayerId
+                  ? 'player_id,player_name,rank,rank_before,points,division,tournaments_played,trend,season,batch_id,created_at'
+                  : 'player_name,rank,rank_before,points,division,tournaments_played,trend,season,batch_id,created_at',
                 division: `eq.${dbDivision}`,
                 batch_id: `eq.${latestBatchId}`,
                 order: 'rank.asc',
@@ -737,7 +757,13 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
               const officialRes = await fetch(`${sbUrl}/official_rankings?${officialParams}`, {
                 headers: { 'apikey': sbKey, 'Authorization': `Bearer ${sbKey}`, 'Accept': 'application/json' },
               });
-              if (!officialRes.ok) break;
+              if (!officialRes.ok) {
+                if (includeOfficialPlayerId && officialOffset === 0) {
+                  includeOfficialPlayerId = false;
+                  continue;
+                }
+                break;
+              }
               const officialBatch = await officialRes.json() as Record<string, unknown>[];
               if (!Array.isArray(officialBatch) || !officialBatch.length) break;
               officialRows.push(...officialBatch);
@@ -753,6 +779,7 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
               .map(r => ({
                 rank:               Number(r.rank ?? 0),
                 rank_before:        Number(r.rank_before ?? r.rank ?? 0),
+                player_id:          String(r.player_id ?? '') || null,
                 name:               String(r.player_name ?? '').trim(),
                 points:             parseRankingPoints(r.points),
                 tournaments_played: Number(r.tournaments_played ?? 0),
@@ -777,12 +804,15 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
           let offset = 0;
           const PAGE = 1000;
           let includeRankBefore = true;
+          let includePlayerId = true;
           for (;;) {
             const controller = new AbortController();
             const tId = setTimeout(() => controller.abort(), 30000);
             const params = new URLSearchParams({
               select: includeRankBefore
-                ? 'player_name,rank,rank_before,points,division,tournaments_played,trend,season,updated_at'
+                ? (includePlayerId
+                  ? 'player_id,player_name,rank,rank_before,points,division,tournaments_played,trend,season,updated_at'
+                  : 'player_name,rank,rank_before,points,division,tournaments_played,trend,season,updated_at')
                 : 'player_name,rank,points,division,tournaments_played,trend,season,updated_at',
               order: 'division,rank',
               limit: String(PAGE),
@@ -794,6 +824,10 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
             });
             clearTimeout(tId);
             if (!res.ok) {
+              if (includePlayerId && offset === 0) {
+                includePlayerId = false;
+                continue;
+              }
               if (includeRankBefore && offset === 0) {
                 includeRankBefore = false;
                 continue;
@@ -817,6 +851,7 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
                 .map(r => ({
                   rank:               Number(r.rank ?? 0),
                   rank_before:        Number(r.rank_before ?? r.rank ?? 0),
+                  player_id:          String(r.player_id ?? '') || null,
                   name:               String(r.player_name ?? '').trim(),
                   points:             parseRankingPoints(r.points),
                   tournaments_played: Number(r.tournaments_played ?? 0),

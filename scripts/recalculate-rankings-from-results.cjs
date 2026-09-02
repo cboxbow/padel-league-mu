@@ -93,6 +93,37 @@ function canonicalPlayerName(value) {
   return PLAYER_NAME_ALIASES.get(normKey(cleaned)) || cleaned;
 }
 
+function playerIdentityKey(row) {
+  return cleanText(row.player_id) || normKey(row.player_name);
+}
+
+function playerNameCandidates(player) {
+  return [
+    [player.first_name, player.last_name].filter(Boolean).join(' '),
+    [player.last_name, player.first_name].filter(Boolean).join(' '),
+    player.player_name,
+    player.full_name,
+    player.name,
+  ].map(canonicalPlayerName).filter(Boolean);
+}
+
+function createPlayerResolver(players) {
+  const byName = new Map();
+  for (const player of players) {
+    for (const name of playerNameCandidates(player)) {
+      const key = normKey(name);
+      if (!key) continue;
+      if (!byName.has(key)) byName.set(key, []);
+      byName.get(key).push(player);
+    }
+  }
+  return (name) => {
+    const matches = byName.get(normKey(canonicalPlayerName(name))) || [];
+    const uniqueIds = Array.from(new Set(matches.map((player) => player.id).filter(Boolean)));
+    return uniqueIds.length === 1 ? uniqueIds[0] : null;
+  };
+}
+
 function compactEventName(value) {
   return normKey(value).replace(/\s+/g, '');
 }
@@ -261,8 +292,8 @@ function historicalToRankingInputs(row) {
     source: 'historical',
   };
   return [
-    player1 ? { ...base, player_name: player1, partner_name: player2 } : null,
-    player2 ? { ...base, player_name: player2, partner_name: player1 } : null,
+    player1 ? { ...base, player_name: player1, partner_name: player2, player_id: row.player1_id ?? null, partner_id: row.player2_id ?? null } : null,
+    player2 ? { ...base, player_name: player2, partner_name: player1, player_id: row.player2_id ?? null, partner_id: row.player1_id ?? null } : null,
   ].filter(Boolean);
 }
 
@@ -287,8 +318,8 @@ function resultToRankingInputs(row) {
     source: 'current',
   };
   return [
-    player1 ? { ...base, player_name: player1, partner_name: player2 } : null,
-    player2 ? { ...base, player_name: player2, partner_name: player1 } : null,
+    player1 ? { ...base, player_name: player1, partner_name: player2, player_id: row.player1_id ?? null, partner_id: row.player2_id ?? null } : null,
+    player2 ? { ...base, player_name: player2, partner_name: player1, player_id: row.player2_id ?? null, partner_id: row.player1_id ?? null } : null,
   ].filter(Boolean);
 }
 
@@ -319,7 +350,7 @@ function dedupeRankingInputs(rows) {
       eventIdentity(row),
       row.division,
       row.division === 'mixed' ? 'MIXED' : row.category,
-      normKey(row.player_name),
+      playerIdentityKey(row),
     ].join('|');
     const existing = byKey.get(key);
     if (!existing) {
@@ -361,7 +392,7 @@ function computeRankingRows(inputs, previousRanks, period) {
     if (date < period.start || date > period.end) continue;
     if (!byDivision.has(row.division)) byDivision.set(row.division, new Map());
     const playerName = canonicalPlayerName(row.player_name);
-    const key = normKey(playerName);
+    const key = cleanText(row.player_id) || normKey(playerName);
     const playerRows = byDivision.get(row.division);
     playerRows.set(key, [...(playerRows.get(key) ?? []), { ...row, player_name: playerName }]);
   }
@@ -394,9 +425,10 @@ function computeRankingRows(inputs, previousRanks, period) {
       const rank = row.points === lastPoints ? lastRank : index + 1;
       lastPoints = row.points;
       lastRank = rank;
-      const rankBefore = previousRanks.get(`${division}|${normKey(row.player_name)}`) ?? rank;
+      const rankBefore = previousRanks.get(`${division}|${playerIdentityKey(row)}`) ?? rank;
       computed.push({
         id: newId(),
+        player_id: cleanText(row.details[0]?.player_id) || null,
         player_name: row.player_name,
         rank,
         rank_before: rankBefore,
@@ -448,6 +480,18 @@ async function fetchAll(supabase, table, select, buildQuery) {
   return rows;
 }
 
+async function hasColumn(supabase, table, column) {
+  const { error } = await supabase.from(table).select(column).limit(1);
+  return !error;
+}
+
+function withOptionalFields(row, fields) {
+  const optionalFields = new Set(['player_id']);
+  return Object.fromEntries(Object.entries(row).filter(([key, value]) =>
+    value !== null && value !== undefined && (!optionalFields.has(key) || fields.has(key))
+  ));
+}
+
 async function deleteByDivision(supabase, table, division) {
   for (;;) {
     const { data, error } = await supabase.from(table).select('id').eq('division', division).limit(250);
@@ -490,10 +534,20 @@ async function main() {
 
   const period = computeFixedMauritiusPeriod();
   console.log(`2/5 Lecture resultats ${period.startIso} -> ${period.endIso}...`);
+  const schema = {
+    historicalPlayerIds: await hasColumn(supabase, 'historical_tournament_results', 'player1_id'),
+    tournamentPlayerIds: await hasColumn(supabase, 'tournament_results', 'player1_id'),
+    rankingsPlayerId: await hasColumn(supabase, 'rankings', 'player_id'),
+    officialRankingsPlayerId: await hasColumn(supabase, 'official_rankings', 'player_id'),
+    officialDetailsPlayerId: await hasColumn(supabase, 'official_ranking_details', 'player_id'),
+  };
+  const players = await fetchAll(supabase, 'players', 'id,first_name,last_name');
+  const resolvePlayerId = createPlayerResolver(players);
   const historicalColumns = [
     'id','source_file','sheet_name','event_key','event_name','event_year','season','category','division',
     'junior_category','club_name','event_date','region','rank_label','rank_min','rank_max','team_name',
     'player1_name','player2_name','points',
+    ...(schema.historicalPlayerIds ? ['player1_id','player2_id'] : []),
   ].join(',');
   const historical = await fetchAll(
     supabase,
@@ -504,16 +558,25 @@ async function main() {
   let inputs = historical.flatMap(historicalToRankingInputs);
 
   try {
+    const legacyColumns = schema.tournamentPlayerIds ? '*' : [
+      'id','tournament_id','tournament_name','tournament_date','category','division','region','club_name',
+      'rank','team_name','player1_name','player2_name','points','created_at',
+    ].join(',');
     const legacy = await fetchAll(
       supabase,
       'tournament_results',
-      '*',
+      legacyColumns,
       (query) => query.gte('tournament_date', period.startIso).lte('tournament_date', period.endIso)
     );
     inputs.push(...legacy.flatMap(resultToRankingInputs));
   } catch (error) {
     console.warn(`   tournament_results ignore: ${error.message}`);
   }
+  inputs = inputs.map((row) => ({
+    ...row,
+    player_id: cleanText(row.player_id) || resolvePlayerId(row.player_name),
+    partner_id: cleanText(row.partner_id) || resolvePlayerId(row.partner_name),
+  }));
   inputs = dedupeRankingInputs(inputs);
   console.log(`   ${inputs.length} lignes joueurs detectees.`);
 
@@ -521,7 +584,7 @@ async function main() {
   const previousRows = await fetchAll(
     supabase,
     'official_rankings',
-    'player_name,division,rank,batch_id,created_at',
+    schema.officialRankingsPlayerId ? 'player_id,player_name,division,rank,batch_id,created_at' : 'player_name,division,rank,batch_id,created_at',
     (query) => query.order('created_at', { ascending: false }).limit(5000)
   );
   const latestBatch = String(previousRows.find((row) => row.batch_id)?.batch_id ?? '');
@@ -531,7 +594,7 @@ async function main() {
     if (latestBatch && String(row.batch_id ?? '') !== latestBatch) continue;
     if (!latestBatch && latestCreatedAt && String(row.created_at ?? '').slice(0, 16) !== latestCreatedAt) continue;
     const division = normalizeRankingDivision(row.division);
-    const name = normKey(canonicalPlayerName(row.player_name));
+    const name = cleanText(row.player_id) || normKey(canonicalPlayerName(row.player_name));
     const rank = Number(row.rank ?? 0);
     if (name && Number.isFinite(rank) && rank > 0) previousRanks.set(`${division}|${name}`, rank);
   }
@@ -546,8 +609,9 @@ async function main() {
   for (const division of divisions) {
     await deleteByDivision(supabase, 'rankings', division);
   }
-  await insertChunks(supabase, 'rankings', rows.map((row) => ({
+  await insertChunks(supabase, 'rankings', rows.map((row) => withOptionalFields({
     id: row.id,
+    player_id: row.player_id,
     player_name: row.player_name,
     rank: row.rank,
     rank_before: row.rank_before,
@@ -557,13 +621,14 @@ async function main() {
     trend: row.trend,
     season: row.season,
     updated_at: now,
-  })), 250);
+  }, schema.rankingsPlayerId ? new Set(['player_id']) : new Set())), 250);
 
   for (const division of divisions) {
     await deleteByDivision(supabase, 'official_rankings', division);
   }
-  await insertChunks(supabase, 'official_rankings', rows.map((row) => ({
+  await insertChunks(supabase, 'official_rankings', rows.map((row) => withOptionalFields({
     id: newId(),
+    player_id: row.player_id,
     player_name: row.player_name,
     rank: row.rank,
     rank_before: row.rank_before,
@@ -574,7 +639,7 @@ async function main() {
     season: row.season,
     is_current: true,
     batch_id: batchId,
-  })), 250);
+  }, schema.officialRankingsPlayerId ? new Set(['player_id']) : new Set())), 250);
 
   console.log('5/5 Publication details officiels...');
   for (const division of divisions) {
@@ -582,6 +647,7 @@ async function main() {
   }
   const details = rows.flatMap((row) => row.details.map((detail) => ({
     id: newId(),
+    player_id: row.player_id,
     player_name: row.player_name,
     division: row.division,
     event_name: detail.event_name,
@@ -593,7 +659,7 @@ async function main() {
     points: parseRankingPoints(detail.points),
     season: Number(detail.event_date.slice(0, 4)) || row.season,
     batch_id: batchId,
-  })));
+  })).map((row) => withOptionalFields(row, schema.officialDetailsPlayerId ? new Set(['player_id']) : new Set())));
   const leanDetails = details.map((detail) => ({
     id: detail.id,
     player_name: detail.player_name,

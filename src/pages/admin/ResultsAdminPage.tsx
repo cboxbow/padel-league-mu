@@ -83,6 +83,8 @@ type RankingDivision = 'men' | 'women' | 'mixed' | 'junior';
 
 interface RankingInputRow {
   id: string;
+  player_id?: string | null;
+  partner_id?: string | null;
   event_name: string;
   event_date: string;
   category: string;
@@ -97,6 +99,7 @@ interface RankingInputRow {
 
 interface ComputedRankingRow {
   id: string;
+  player_id?: string | null;
   player_name: string;
   rank: number;
   rank_before: number;
@@ -201,6 +204,36 @@ function canonicalPlayerName(value: unknown): string {
   const cleaned = cleanText(value).replace(/\s+/g, ' ').toUpperCase();
   if (!cleaned) return '';
   return PLAYER_NAME_ALIASES[normKey(cleaned)] || cleaned;
+}
+
+function playerIdentityKey(row: { player_id?: unknown; player_name?: unknown }): string {
+  return cleanText(row.player_id) || normKey(row.player_name);
+}
+
+function playerNameCandidates(player: Record<string, unknown>): string[] {
+  return [
+    [player.first_name, player.last_name].filter(Boolean).join(' '),
+    [player.last_name, player.first_name].filter(Boolean).join(' '),
+    player.player_name,
+    player.full_name,
+    player.name,
+  ].map(canonicalPlayerName).filter(Boolean);
+}
+
+function createPlayerResolver(players: Record<string, unknown>[]) {
+  const byName = new Map<string, Record<string, unknown>[]>();
+  for (const player of players) {
+    for (const name of playerNameCandidates(player)) {
+      const key = normKey(name);
+      if (!key) continue;
+      byName.set(key, [...(byName.get(key) ?? []), player]);
+    }
+  }
+  return (name: unknown): string | null => {
+    const matches = byName.get(normKey(canonicalPlayerName(name))) ?? [];
+    const ids = Array.from(new Set(matches.map(player => cleanText(player.id)).filter(Boolean)));
+    return ids.length === 1 ? ids[0] : null;
+  };
 }
 
 function parseRankingPoints(value: unknown): number {
@@ -479,8 +512,8 @@ function historicalToRankingInputs(row: HistoricalResultRow): RankingInputRow[] 
     points,
   };
   return [
-    player1 ? { ...base, player_name: player1, partner_name: player2 } : null,
-    player2 ? { ...base, player_name: player2, partner_name: player1 } : null,
+    player1 ? { ...base, player_name: player1, partner_name: player2, player_id: cleanText((row as Record<string, unknown>).player1_id) || null, partner_id: cleanText((row as Record<string, unknown>).player2_id) || null } : null,
+    player2 ? { ...base, player_name: player2, partner_name: player1, player_id: cleanText((row as Record<string, unknown>).player2_id) || null, partner_id: cleanText((row as Record<string, unknown>).player1_id) || null } : null,
   ].filter(Boolean) as RankingInputRow[];
 }
 
@@ -504,8 +537,8 @@ function resultToRankingInputs(row: TResult): RankingInputRow[] {
     points,
   };
   return [
-    player1 ? { ...base, player_name: player1, partner_name: player2 } : null,
-    player2 ? { ...base, player_name: player2, partner_name: player1 } : null,
+    player1 ? { ...base, player_name: player1, partner_name: player2, player_id: cleanText((row as Record<string, unknown>).player1_id) || null, partner_id: cleanText((row as Record<string, unknown>).player2_id) || null } : null,
+    player2 ? { ...base, player_name: player2, partner_name: player1, player_id: cleanText((row as Record<string, unknown>).player2_id) || null, partner_id: cleanText((row as Record<string, unknown>).player1_id) || null } : null,
   ].filter(Boolean) as RankingInputRow[];
 }
 
@@ -528,7 +561,7 @@ function dedupeRankingInputs(rows: RankingInputRow[]): RankingInputRow[] {
       row.division,
       row.division === 'mixed' ? 'MIXED' : row.category,
       normKey(row.club_name || row.event_name),
-      normKey(canonicalPlayerName(row.player_name)),
+      playerIdentityKey(row),
     ].join('|');
     const existing = byKey.get(key);
     if (!existing) {
@@ -559,7 +592,7 @@ function computeRankingRows(
     if (date < period.start || date > period.end) continue;
     if (!byDivision.has(row.division)) byDivision.set(row.division, new Map());
     const playerName = canonicalPlayerName(row.player_name);
-    const key = normKey(playerName);
+    const key = cleanText(row.player_id) || normKey(playerName);
     const playerRows = byDivision.get(row.division)!;
     playerRows.set(key, [...(playerRows.get(key) ?? []), { ...row, player_name: playerName }]);
   }
@@ -575,6 +608,7 @@ function computeRankingRows(
       const retained = sortedDetails.slice(0, 8);
       const retainedTotal = retained.reduce((sum, row) => sum + parseRankingPoints(row.points), 0);
       return {
+        player_id: cleanText(sortedDetails[0].player_id) || null,
         player_name: sortedDetails[0].player_name,
         points: retainedTotal,
         tournaments_played: sortedDetails.length,
@@ -590,9 +624,10 @@ function computeRankingRows(
       const rank = row.points === lastPoints ? lastRank : index + 1;
       lastPoints = row.points;
       lastRank = rank;
-      const rankBefore = previousRanks.get(`${division}|${normKey(row.player_name)}`) ?? rank;
+      const rankBefore = previousRanks.get(`${division}|${playerIdentityKey(row)}`) ?? rank;
       computed.push({
         id: newId(),
+        player_id: row.player_id,
         player_name: row.player_name,
         rank,
         rank_before: rankBefore,
@@ -628,11 +663,21 @@ function assertRankingDetailsMatch(rows: ComputedRankingRow[]) {
 
 async function fetchPreviousOfficialRanks(sb: NonNullable<ReturnType<typeof getSupabaseClient>>) {
   const previous = new Map<string, number>();
-  const { data } = await withAdminTimeout(
-    sb.from('official_rankings').select('player_name,division,rank,batch_id,created_at').order('created_at', { ascending: false }).limit(5000),
+  let { data, error } = await withAdminTimeout(
+    sb.from('official_rankings').select('player_id,player_name,division,rank,batch_id,created_at').order('created_at', { ascending: false }).limit(5000),
     'Lecture anciens classements officiels',
     12000
   );
+  if (error && isSchemaCacheError(error.message)) {
+    const fallback = await withAdminTimeout(
+      sb.from('official_rankings').select('player_name,division,rank,batch_id,created_at').order('created_at', { ascending: false }).limit(5000),
+      'Lecture anciens classements officiels',
+      12000
+    );
+    data = fallback.data;
+    error = fallback.error;
+  }
+  if (error) throw new Error(`official_rankings: ${error.message}`);
   const rows = (data ?? []) as Record<string, unknown>[];
   const latestBatch = String(rows.find(row => row.batch_id)?.batch_id ?? '');
   const latestCreatedAt = String(rows[0]?.created_at ?? '').slice(0, 16);
@@ -640,11 +685,21 @@ async function fetchPreviousOfficialRanks(sb: NonNullable<ReturnType<typeof getS
     if (latestBatch && String(row.batch_id ?? '') !== latestBatch) continue;
     if (!latestBatch && latestCreatedAt && String(row.created_at ?? '').slice(0, 16) !== latestCreatedAt) continue;
     const division = normalizeRankingDivision(row.division);
-    const name = normKey(canonicalPlayerName(row.player_name));
+    const name = cleanText(row.player_id) || normKey(canonicalPlayerName(row.player_name));
     const rank = Number(row.rank ?? 0);
     if (name && Number.isFinite(rank) && rank > 0) previous.set(`${division}|${name}`, rank);
   }
   return previous;
+}
+
+async function fetchPlayerResolver(sb: NonNullable<ReturnType<typeof getSupabaseClient>>) {
+  const { data, error } = await withAdminTimeout(
+    sb.from('players').select('id,first_name,last_name').limit(5000),
+    'Lecture joueurs',
+    12000
+  );
+  if (error) throw new Error(`players: ${error.message}`);
+  return createPlayerResolver((data ?? []) as Record<string, unknown>[]);
 }
 
 async function fetchRollingRankingInputs(sb: NonNullable<ReturnType<typeof getSupabaseClient>>, period: ReturnType<typeof computeRollingPeriod>) {
@@ -713,6 +768,7 @@ async function replaceRankingsFromComputed(sb: NonNullable<ReturnType<typeof get
 
   const fullPayload = rows.map(row => ({
     id: row.id,
+    player_id: row.player_id,
     player_name: row.player_name,
     rank: row.rank,
     rank_before: row.rank_before,
@@ -765,10 +821,16 @@ async function publishOfficialRankingsFromResults(onProgress?: (message: string)
 
   const period = computeRollingPeriod();
   onProgress?.(`Periode ${period.startIso} -> ${period.endIso}: lecture des resultats...`);
-  const [inputs, previousRanks] = await Promise.all([
+  const [rawInputs, previousRanks, resolvePlayerId] = await Promise.all([
     fetchRollingRankingInputs(sb, period),
     fetchPreviousOfficialRanks(sb),
+    fetchPlayerResolver(sb),
   ]);
+  const inputs = rawInputs.map(row => ({
+    ...row,
+    player_id: cleanText(row.player_id) || resolvePlayerId(row.player_name),
+    partner_id: cleanText(row.partner_id) || resolvePlayerId(row.partner_name),
+  }));
 
   onProgress?.(`${inputs.length} lignes joueurs detectees: calcul top 8...`);
   const rows = computeRankingRows(inputs, previousRanks, period);
@@ -780,6 +842,7 @@ async function publishOfficialRankingsFromResults(onProgress?: (message: string)
 
   const officialFullPayload = rows.map(row => ({
     id: newId(),
+    player_id: row.player_id,
     player_name: row.player_name,
     rank: row.rank,
     rank_before: row.rank_before,
@@ -833,6 +896,7 @@ async function publishOfficialRankingsFromResults(onProgress?: (message: string)
   await clearCurrentRankingDetails(sb, divisions);
   const detailPayload = rows.flatMap(row => row.details.map(detail => ({
     id: newId(),
+    player_id: row.player_id,
     player_name: row.player_name,
     division: row.division,
     event_name: detail.event_name,

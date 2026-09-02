@@ -22,6 +22,7 @@ type Division = 'MEN' | 'WOMEN' | 'JUNIOR' | 'MIXTE';
 
 interface PlayerRanking {
   id?: string;
+  player_id?: string | null;
   rank: number;
   rank_before?: number;
   player_name: string;
@@ -34,6 +35,7 @@ interface PlayerRanking {
 }
 
 interface PlayerRankingDetail {
+  player_id?: string | null;
   player_name?: string;
   event_name: string;
   points: number;
@@ -153,6 +155,7 @@ function parseRankingPoints(value: unknown): number {
 
 // Convertit un objet SimpleRanking (useData) en PlayerRanking (local)
 function toPlayerRanking(r: {
+  player_id?: string | null;
   rank: number;
   rank_before?: number;
   name: string;
@@ -163,6 +166,7 @@ function toPlayerRanking(r: {
   updated_at?: string;
 }): PlayerRanking {
   return {
+    player_id: r.player_id,
     rank: r.rank,
     rank_before: r.rank_before,
     player_name: r.name,
@@ -1296,8 +1300,12 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
           .limit(5000);
 
         if (scopedToPlayer) {
-          const safeNamePattern = `%${scopedTerm}%`;
-          query = query.ilike('player_name', safeNamePattern);
+          if (player.player_id) {
+            query = query.eq('player_id', player.player_id);
+          } else {
+            const safeNamePattern = `%${scopedTerm}%`;
+            query = query.ilike('player_name', safeNamePattern);
+          }
         }
 
         if (latestBatchId) {
@@ -1308,14 +1316,15 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
 
       const appendOfficialMatches = (rows: Record<string, unknown>[] | null | undefined, target: Record<string, unknown>[]) => {
         for (const row of rows ?? []) {
-          if (!playerNameMatches(row.player_name, playerKey, playerLooseKey)) continue;
+          const samePlayerId = player.player_id && String(row.player_id ?? '') === player.player_id;
+          if (!samePlayerId && !playerNameMatches(row.player_name, playerKey, playerLooseKey)) continue;
           const key = `${row.player_name}|${row.event_name}|${row.points}|${row.season}|${row.batch_id}`;
           if (target.some(existing => `${existing.player_name}|${existing.event_name}|${existing.points}|${existing.season}|${existing.batch_id}` === key)) continue;
           target.push(row);
         }
       };
 
-      let { data, error } = await buildDetailsQuery('player_name,event_name,event_date,category,club_name,partner_name,rank_label,points,season,batch_id,import_id,created_at');
+      let { data, error } = await buildDetailsQuery('player_id,player_name,event_name,event_date,category,club_name,partner_name,rank_label,points,season,batch_id,import_id,created_at');
       if (error && /schema cache|Could not find|column/i.test(error.message)) {
         const fallback = await buildDetailsQuery('player_name,event_name,points,season,batch_id');
         data = fallback.data;
@@ -1325,7 +1334,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
       if (!error && data) appendOfficialMatches(data as Record<string, unknown>[], officialRows);
       if (!officialRows.length) {
         for (const term of playerTerms) {
-          const termResult = await buildDetailsQuery('player_name,event_name,event_date,category,club_name,partner_name,rank_label,points,season,batch_id,import_id,created_at', true, term);
+          const termResult = await buildDetailsQuery('player_id,player_name,event_name,event_date,category,club_name,partner_name,rank_label,points,season,batch_id,import_id,created_at', true, term);
           if (!termResult.error && termResult.data) appendOfficialMatches(termResult.data as Record<string, unknown>[], officialRows);
           if (officialRows.length) break;
         }
@@ -1339,6 +1348,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
 
       const officialDetails = officialRows.length
         ? officialRows.map(row => ({
+          player_id: String(row.player_id ?? '') || null,
           player_name: String(row.player_name ?? ''),
           event_name: String(row.event_name ?? ''),
           points: parseRankingPoints(row.points),
