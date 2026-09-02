@@ -438,7 +438,7 @@ const calendarEvents = loadCalendarEvents();
 function detectDivision(text) {
   const n = norm(text);
   if (/\bMIXED\b|\bMIXTE\b/.test(n)) return { division: 'mixed', juniorCategory: '' };
-  if (/\bWOMEN\b|\bWOM\b|\bDAMES\b|\bFEMMES\b/.test(n)) return { division: 'women', juniorCategory: '' };
+  if (/\bWOMEN\b|\bWOME\b|\bWOM\b|\bDAMES\b|\bFEMMES\b/.test(n)) return { division: 'women', juniorCategory: '' };
   if (/\bU\s?11\b/.test(n)) return { division: 'junior', juniorCategory: 'U11' };
   if (/\bU\s?13\b/.test(n)) return { division: 'junior', juniorCategory: 'U13' };
   if (/\bU\s?15\b/.test(n)) return { division: 'junior', juniorCategory: 'U15' };
