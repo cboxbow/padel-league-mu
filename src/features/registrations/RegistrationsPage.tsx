@@ -6,6 +6,7 @@ import {
 import { GlassCard } from '@/components/Layout';
 import { getSupabaseClient, isSupabaseConnected } from '@/lib/supabase';
 import { applyCancelledTournamentStatus } from '@/lib/cancelledTournaments';
+import { useRankings, type SimpleRanking } from '@/hooks/useData';
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  DESIGN TOKENS
@@ -107,6 +108,15 @@ const MOCK_REGISTRATIONS: Registration[] = [
 // ─────────────────────────────────────────────────────────────────────────────
 //  HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
+
+function normalizeName(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(new RegExp('[\\u0300-\\u036f]', 'g'), '')
+    .replace(/[^A-Z0-9]+/gi, ' ')
+    .trim()
+    .toUpperCase();
+}
 
 /** Convertit un type de division technique en label lisible */
 
@@ -382,9 +392,53 @@ function Notice({ type, children }: { type: 'success' | 'error' | 'warn' | 'info
 // ─────────────────────────────────────────────────────────────────────────────
 //  MAIN PAGE
 // ─────────────────────────────────────────────────────────────────────────────
+type RankDivisionKey = 'men' | 'women' | 'junior' | 'mixed';
+
+const REG_DIVISION_TO_RANK_KEY: Record<string, RankDivisionKey> = {
+  MEN: 'men', WOMEN: 'women', JUNIOR: 'junior', MIXED: 'mixed',
+};
+
 export default function RegistrationsPage() {
   const demo = !isSupabaseConnected();
   const supabase = getSupabaseClient();
+
+  // ── Classements live, pour afficher le rang de chaque inscrit ──────────────
+  const menRankings    = useRankings('men');
+  const womenRankings  = useRankings('women');
+  const juniorRankings = useRankings('junior');
+  const mixedRankings  = useRankings('mixed');
+
+  const rankingsByDivision = useMemo<Record<RankDivisionKey, SimpleRanking[]>>(() => ({
+    men: menRankings.rankings,
+    women: womenRankings.rankings,
+    junior: juniorRankings.rankings,
+    mixed: mixedRankings.rankings,
+  }), [menRankings.rankings, womenRankings.rankings, juniorRankings.rankings, mixedRankings.rankings]);
+
+  // Rang provisoire aligne sur le classement officiel Excel (RANK.EQ) : un
+  // joueur sans resultat se classe a "nombre de joueurs avec des points + 1".
+  const rankLookupByDivision = useMemo(() => {
+    const lookups: Partial<Record<RankDivisionKey, Map<string, SimpleRanking>>> = {};
+    (Object.keys(rankingsByDivision) as RankDivisionKey[]).forEach(division => {
+      const map = new Map<string, SimpleRanking>();
+      rankingsByDivision[division].forEach(row => {
+        const key = normalizeName(row.name);
+        if (key) map.set(key, row);
+      });
+      lookups[division] = map;
+    });
+    return lookups;
+  }, [rankingsByDivision]);
+
+  const playerRankInfo = useCallback((playerName: string, regDivision?: string) => {
+    const division = REG_DIVISION_TO_RANK_KEY[(regDivision ?? '').toUpperCase()];
+    if (!division) return null;
+    const key = normalizeName(playerName);
+    const found = key ? rankLookupByDivision[division]?.get(key) : undefined;
+    if (found) return { rank: found.rank, points: found.points, provisional: false };
+    const scoringCount = rankingsByDivision[division].length;
+    return { rank: scoringCount + 1, points: 0, provisional: true };
+  }, [rankLookupByDivision, rankingsByDivision]);
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [tournaments, setTournaments]         = useState<Tournament[]>([]);
@@ -1370,7 +1424,7 @@ export default function RegistrationsPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
-                    {['#', 'Paire', 'Division', 'Seed', 'Statut', 'Check-in', 'Actions'].map(h => (
+                    {['#', 'Paire', 'Division', 'Classement', 'Seed', 'Statut', 'Check-in', 'Actions'].map(h => (
                       <th key={h} style={{ padding: '10px 14px', textAlign: h === '#' ? 'center' : 'left', color: T.muted, fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: `1px solid ${T.border}`, whiteSpace: 'nowrap' }}>
                         {h}
                       </th>
@@ -1404,6 +1458,26 @@ export default function RegistrationsPage() {
                             ? <Badge color={dc.color} bg={dc.bg}>{divLabel(reg.division)}</Badge>
                             : <span style={{ color: '#555', fontSize: 12 }}>—</span>
                           }
+                        </td>
+
+                        {/* Classement (rang live, "Non classe" = rang provisoire dernier+1) */}
+                        <td style={{ padding: '10px 14px' }}>
+                          {(() => {
+                            const p1 = playerRankInfo(reg.player1_name, reg.division);
+                            const p2 = playerRankInfo(reg.player2_name, reg.division);
+                            if (!p1 || !p2) return <span style={{ color: '#555', fontSize: 12 }}>—</span>;
+                            const renderPlayer = (info: { rank: number; points: number; provisional: boolean }) => (
+                              info.provisional
+                                ? <span style={{ color: '#f59e0b' }}>Non classe · 0 pts</span>
+                                : <span style={{ color: T.text }}>#{info.rank} · {info.points} pts</span>
+                            );
+                            return (
+                              <div style={{ fontSize: 12, lineHeight: 1.6 }}>
+                                <div>{renderPlayer(p1)}</div>
+                                <div>{renderPlayer(p2)}</div>
+                              </div>
+                            );
+                          })()}
                         </td>
 
                         {/* Seed badge */}
