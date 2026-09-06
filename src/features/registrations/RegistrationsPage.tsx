@@ -118,6 +118,13 @@ function normalizeName(value: string) {
     .toUpperCase();
 }
 
+// Les classements stockent "Prenom Nom" alors que les inscriptions stockent
+// "Nom Prenom" (saisie manuelle/CSV) -- comparer par ensemble de mots trie
+// plutot que par egalite de chaine pour matcher les deux ordres.
+function nameMatchKey(value: string) {
+  return normalizeName(value).split(' ').filter(Boolean).sort().join(' ');
+}
+
 /** Convertit un type de division technique en label lisible */
 
 function divLabel(type: string): string {
@@ -422,7 +429,7 @@ export default function RegistrationsPage() {
     (Object.keys(rankingsByDivision) as RankDivisionKey[]).forEach(division => {
       const map = new Map<string, SimpleRanking>();
       rankingsByDivision[division].forEach(row => {
-        const key = normalizeName(row.name);
+        const key = nameMatchKey(row.name);
         if (key) map.set(key, row);
       });
       lookups[division] = map;
@@ -433,7 +440,7 @@ export default function RegistrationsPage() {
   const playerRankInfo = useCallback((playerName: string, regDivision?: string) => {
     const division = REG_DIVISION_TO_RANK_KEY[(regDivision ?? '').toUpperCase()];
     if (!division) return null;
-    const key = normalizeName(playerName);
+    const key = nameMatchKey(playerName);
     const found = key ? rankLookupByDivision[division]?.get(key) : undefined;
     if (found) return { rank: found.rank, points: found.points, provisional: false };
     const scoringCount = rankingsByDivision[division].length;
