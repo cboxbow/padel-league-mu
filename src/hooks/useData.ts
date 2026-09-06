@@ -913,3 +913,55 @@ export function useRankings(division: 'men' | 'women' | 'junior' | 'mixed') {
 
   return { rankings, loading, source };
 }
+
+// ── usePlayersDirectory ────────────────────────────────────────────────────
+// Liste complete des joueurs licencies (table players), y compris ceux qui
+// n'ont encore aucun resultat publie donc n'apparaissent dans aucun
+// classement. Sert a retrouver un joueur "nouveau" pour lui attribuer un rang
+// provisoire (dernier rang de sa division + 1) tant qu'il n'a pas de resultat
+// reel -- voir EspaceJoueur.tsx.
+export interface PlayerDirectoryRow {
+  first_name: string;
+  last_name: string;
+  division: string | null;
+  gender: string | null;
+  active: boolean | null;
+}
+
+export function usePlayersDirectory() {
+  const [players, setPlayers] = useState<PlayerDirectoryRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      const supabase = getSupabaseClient();
+      if (!isSupabaseConnected() || !supabase) {
+        setLoading(false);
+        return;
+      }
+      const all: PlayerDirectoryRow[] = [];
+      const pageSize = 1000;
+      // PostgREST plafonne toute reponse a 1000 lignes quel que soit le
+      // .limit() demande -- paginer via .range() pour tout recuperer.
+      for (let from = 0; ; from += pageSize) {
+        const { data, error, timedOut } = await safeSupabaseQuery(
+          () => supabase.from('players').select('first_name,last_name,division,gender,active').range(from, from + pageSize - 1),
+          10000,
+        );
+        if (error || timedOut || !data) break;
+        const rows = data as PlayerDirectoryRow[];
+        all.push(...rows);
+        if (rows.length < pageSize) break;
+      }
+      if (!cancelled) {
+        setPlayers(all);
+        setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  return { players, loading };
+}

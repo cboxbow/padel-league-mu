@@ -14,7 +14,7 @@ import {
   UserRound,
 } from 'lucide-react';
 import { CategoryBadge, Layout, StatusBadge } from '@/components/Layout';
-import { useRankings, useTournaments, type SimpleRanking, type TournamentData } from '@/hooks/useData';
+import { useRankings, useTournaments, usePlayersDirectory, type SimpleRanking, type TournamentData } from '@/hooks/useData';
 import { ROUTE_PATHS } from '@/lib/index';
 import { useSeo } from '@/hooks/useSeo';
 import { getSupabaseClient, isSupabaseConnected, safeSupabaseQuery } from '@/lib/supabase';
@@ -428,6 +428,7 @@ export default function EspaceJoueur() {
   const junior = useRankings('junior');
   const mixed = useRankings('mixed');
   const { tournaments, loading: tournamentsLoading, source: tournamentSource } = useTournaments();
+  const { players: playerDirectory } = usePlayersDirectory();
 
   const [query, setQuery] = useState('');
   const [divisionFilter, setDivisionFilter] = useState<DivisionKey | 'all'>('all');
@@ -463,6 +464,16 @@ export default function EspaceJoueur() {
     ].filter(row => row.name);
   }, [men.rankings, women.rankings, junior.rankings, mixed.rankings]);
 
+  // Dernier rang publie par division, pour attribuer un rang provisoire aux
+  // joueurs sans aucun resultat (nouvel inscrit) : dernier + 1.
+  const lastRankByDivision = useMemo(() => {
+    const last: Record<DivisionKey, number> = { men: 0, women: 0, junior: 0, mixed: 0 };
+    for (const ranking of allRankings) {
+      if (ranking.rank > last[ranking.division]) last[ranking.division] = ranking.rank;
+    }
+    return last;
+  }, [allRankings]);
+
   const profiles = useMemo<PlayerProfile[]>(() => {
     const grouped = new Map<string, PlayerProfile>();
     for (const ranking of allRankings) {
@@ -485,9 +496,39 @@ export default function EspaceJoueur() {
       grouped.set(key, current);
     }
 
+    // Joueurs licencies sans aucun resultat publie : invisibles dans les
+    // classements ci-dessus, donc introuvables et non selectionnables pour
+    // preparer une inscription. On leur cree un profil "provisoire" avec le
+    // rang du dernier joueur de leur division + 1 (0 point, 0 tournoi joue) --
+    // suffisant pour les categories d'entree (M25/M50/M100/M250) qui exigent
+    // justement un rang faible, et pour se retrouver apres connexion.
+    for (const player of playerDirectory) {
+      if (player.active === false) continue;
+      const fullName = `${player.first_name ?? ''} ${player.last_name ?? ''}`.trim();
+      const key = normalizeName(fullName);
+      if (!key || grouped.has(key)) continue;
+
+      const division: DivisionKey = player.division === 'women' || player.division === 'junior' || player.division === 'mixed'
+        ? player.division
+        : player.division === 'men'
+          ? 'men'
+          : (player.gender ?? '').toUpperCase() === 'F' ? 'women' : 'men';
+
+      const provisionalRank = lastRankByDivision[division] + 1;
+      grouped.set(key, {
+        key,
+        name: fullName,
+        rankings: [{ name: fullName, rank: provisionalRank, points: 0, tournaments_played: 0, division }],
+        bestRank: provisionalRank,
+        bestPoints: 0,
+        divisions: [divisionLabels[division]],
+        played: 0,
+      });
+    }
+
     return Array.from(grouped.values())
       .sort((a, b) => a.bestRank - b.bestRank || b.bestPoints - a.bestPoints || a.name.localeCompare(b.name));
-  }, [allRankings]);
+  }, [allRankings, playerDirectory, lastRankByDivision]);
 
   const filteredProfiles = useMemo(() => {
     const q = normalizeName(query);
