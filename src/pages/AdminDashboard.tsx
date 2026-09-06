@@ -89,7 +89,8 @@ interface PlayerRow {
   // Colonne reelle en base (voir normalizeTableRows) -- club_name reste le
   // champ utilise partout dans l'UI et est traduit vers "club" a l'ecriture.
   club?: string;
-  level?: string;
+  // Libelle "P1".."P8"/"Elite" en UI ; numerique (1-9) une fois envoye/lu en base.
+  level?: string | number;
   active: boolean;
 }
 
@@ -258,8 +259,15 @@ function normalizeTableRows<T>(tableName: string, rows: T[]): T[] {
     // club de chaque joueur au lieu d'une valeur vide.
     return rows.map(row => {
       const record = row as Record<string, unknown>;
-      if (typeof record.club_name === 'string' && record.club_name) return row;
-      return { ...record, club_name: typeof record.club === 'string' ? record.club : '' } as T;
+      return {
+        ...record,
+        club_name: typeof record.club_name === 'string' && record.club_name
+          ? record.club_name
+          : (typeof record.club === 'string' ? record.club : ''),
+        // players.level est numerique en base ; le reste de l'UI attend un
+        // libelle "P1".."P8"/"Elite".
+        level: levelDbToLabel(record.level),
+      } as T;
     });
   }
   if (tableName !== 'tournaments') return rows;
@@ -618,6 +626,21 @@ const MPL_CLUBS_LIST = [
 
 const PLAYER_LEVELS = ['P1','P2','P3','P4','P5','P6','P7','P8','Elite'];
 
+// La colonne reelle players.level est numerique (1-9) -- le formulaire/import
+// manipulent des libelles "P1".."P8"/"Elite". Convertir aux deux frontieres.
+function levelLabelToDb(label?: string | null): number | null {
+  if (!label) return null;
+  if (/^elite$/i.test(label)) return 9;
+  const m = /^p(\d+)$/i.exec(label.trim());
+  if (m) return Number(m[1]);
+  const n = Number(label);
+  return Number.isFinite(n) ? n : null;
+}
+function levelDbToLabel(value: unknown): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return typeof value === 'string' ? value : '';
+  return value >= 9 ? 'Elite' : `P${value}`;
+}
+
 type PlayerImportDraft = Omit<PlayerRow, 'id'> & { id?: string };
 type PlayerImportStatus = 'existing' | 'new' | 'review';
 type PlayerImportAuditRow = PlayerImportDraft & {
@@ -855,15 +878,20 @@ function PlayersAdminPage() {
     if (!editing) return;
     setSaving(true);
     const isNew = !editing.id;
-    // Payload propre : on exclut 'name' (doublon calcule) et 'club_name' (la
-    // colonne reelle en base s'appelle "club" -- envoyer club_name declenche
-    // "column players.club_name does not exist", PGRST204) pour eviter toute
-    // erreur Supabase.
+    // Payload propre : on exclut 'name' (doublon calcule), 'club_name' (la
+    // colonne reelle s'appelle "club" -- envoyer club_name declenche
+    // "column players.club_name does not exist") et 'club_id' (colonne uuid
+    // en base, FK vers clubs.id -- le select du formulaire n'utilise que les
+    // pseudo-ids locaux "c01".."c18" de MPL_CLUBS_LIST, jamais de vrais uuid,
+    // donc l'envoyer declenche systematiquement "invalid input syntax for
+    // type uuid"). Le nom du club choisi est conserve via club (texte).
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { name: _name, club_name, ...editingClean } = editing as Partial<PlayerRow> & { name?: string };
+    const { name: _name, club_name, club_id, level, ...editingClean } = editing as Partial<PlayerRow> & { name?: string };
     const payload: Partial<PlayerRow> = {
       ...editingClean,
-      club: club_name || MPL_CLUBS_LIST.find(c => c.id === editingClean.club_id)?.name || '',
+      club: club_name || MPL_CLUBS_LIST.find(c => c.id === club_id)?.name || '',
+      // players.level est numerique (1-9), le formulaire manipule "P1".."P8"/"Elite"
+      level: levelLabelToDb(typeof level === 'string' ? level : undefined) ?? undefined,
       // Pas d'id pour un nouveau joueur : save() decide INSERT vs UPDATE sur la
       // presence d'un id, et genere lui-meme un UUID pour l'INSERT.
     };
@@ -974,13 +1002,16 @@ function PlayersAdminPage() {
           region: row.region,
           division: row.division,
           license_no: String(nextLicense++),
-          club_id: row.club_id,
+          // Pas de club_id : colonne uuid (FK clubs.id) en base, alors que
+          // row.club_id est un pseudo-id local "c01".."c18" (MPL_CLUBS_LIST) --
+          // l'envoyer declenche "invalid input syntax for type uuid".
           // colonne reelle "club", pas "club_name" (voir handleSave plus haut)
           club: row.club_name,
-          level: row.level,
+          // players.level est numerique (1-9), row.level est un libelle "P1".."P8"
+          level: levelLabelToDb(typeof row.level === 'string' ? row.level : undefined),
           active: row.active,
         };
-        return Object.fromEntries(Object.entries(clean).filter(([, value]) => value !== undefined && value !== ''));
+        return Object.fromEntries(Object.entries(clean).filter(([, value]) => value !== undefined && value !== null && value !== ''));
       });
 
       for (let index = 0; index < payload.length; index += 400) {
