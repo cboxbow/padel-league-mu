@@ -282,18 +282,33 @@ function useTable<T extends { id: string }>(tableName: string, mockData: T[], or
     setLoading(true); setError('');
     const sb = getSupabaseClient();
     if (isSupabaseConnected() && sb) {
-      const { data, error: err } = await sb.from(tableName).select('*').order(orderCol);
-      if (err) {
-        // Erreur READ : log silencieux + fallback mock (pas d'erreur visible pour l'utilisateur)
-        console.warn(`[useTable] READ ${tableName} failed (${err.message}) — using mock fallback`);
-        setRows(normalizeTableRows(tableName, mockData));
+      // PostgREST plafonne les reponses a 1000 lignes par defaut : paginer via
+      // Range pour recuperer TOUTES les lignes (ex: 1756 joueurs), sinon la
+      // liste, la recherche et l'audit d'import ignorent silencieusement tout
+      // ce qui suit la 1000e ligne triee.
+      const pageSize = 1000;
+      const all: T[] = [];
+      let from = 0;
+      let failed = false;
+      for (;;) {
+        const { data, error: err } = await sb.from(tableName).select('*').order(orderCol).range(from, from + pageSize - 1);
+        if (err) {
+          // Erreur READ : log silencieux + fallback mock (pas d'erreur visible pour l'utilisateur)
+          console.warn(`[useTable] READ ${tableName} failed (${err.message}) — using mock fallback`);
+          setRows(normalizeTableRows(tableName, mockData));
+          failed = true;
+          break;
+        }
+        all.push(...((data ?? []) as T[]));
+        if (!data || data.length < pageSize) break;
+        from += pageSize;
       }
-      else { setRows(normalizeTableRows(tableName, (data ?? []) as T[])); }
+      if (!failed) setRows(normalizeTableRows(tableName, all));
     } else {
       setRows(normalizeTableRows(tableName, mockData));
     }
     setLoading(false);
-  }, [tableName]);
+  }, [tableName, orderCol]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -908,32 +923,33 @@ function PlayersAdminPage() {
     }
     setImportingPlayers(true);
     try {
-      const { data: existingData, error: existingError } = await sb
-        .from('players')
-        .select('id,first_name,last_name,email')
-        .limit(5000);
-      if (existingError) throw new Error(existingError.message);
-
-      const byEmail = new Map<string, string>();
-      const byName = new Map<string, string>();
-      ((existingData ?? []) as Partial<PlayerRow>[]).forEach(row => {
-        if (row.email) byEmail.set(String(row.email).trim().toLowerCase(), row.id as string);
-        const key = normalizePlayerImportKey(`${row.first_name ?? ''} ${row.last_name ?? ''}`);
-        if (key) byName.set(key, row.id as string);
-      });
-
+      // On ne cree QUE les lignes "nouveau" : les lignes "deja en base" ne
+      // doivent jamais etre re-ecrites ici, sinon un import (qui ne connait
+      // pas le numero de licence, forcement vide dans le fichier source)
+      // effacerait le license_no reel de chaque joueur deja existant.
+      const newRows = importAuditRows.filter(row => row.importStatus === 'new');
       const deduped = new Map<string, PlayerImportAuditRow>();
-      importAuditRows
-        .filter(row => row.importStatus !== 'review')
-        .forEach(row => {
+      newRows.forEach(row => {
         const key = row.email || normalizePlayerImportKey(`${row.first_name} ${row.last_name}`);
         if (key) deduped.set(key, row);
       });
 
+      // Numero de licence sequentiel, a la suite du max existant (pagine :
+      // PostgREST plafonne toute reponse a 1000 lignes quel que soit le
+      // .limit() demande).
+      const existingLicenses: { license_no: string | null }[] = [];
+      for (let from = 0; ; from += 1000) {
+        const { data, error: err } = await sb.from('players').select('license_no').range(from, from + 999);
+        if (err) throw new Error(err.message);
+        existingLicenses.push(...((data ?? []) as { license_no: string | null }[]));
+        if (!data || data.length < 1000) break;
+      }
+      const licenseNums = existingLicenses.map(r => Number(r.license_no)).filter(n => Number.isFinite(n));
+      let nextLicense = (licenseNums.length ? Math.max(...licenseNums) : 0) + 1;
+
       const payload = Array.from(deduped.values()).map(row => {
-        const existingId = row.matchedId || (row.email && byEmail.get(row.email)) || byName.get(normalizePlayerImportKey(`${row.first_name} ${row.last_name}`));
         const clean = {
-          id: existingId || crypto.randomUUID?.() || `ply-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          id: crypto.randomUUID?.() ?? `ply-${Date.now()}-${Math.random().toString(36).slice(2)}`,
           first_name: row.first_name,
           last_name: row.last_name,
           email: row.email,
@@ -941,22 +957,22 @@ function PlayersAdminPage() {
           gender: row.gender,
           region: row.region,
           division: row.division,
-          license_no: row.license_no,
+          license_no: String(nextLicense++),
           club_id: row.club_id,
           club_name: row.club_name,
           level: row.level,
           active: row.active,
         };
-        return Object.fromEntries(Object.entries(clean).filter(([, value]) => value !== undefined));
+        return Object.fromEntries(Object.entries(clean).filter(([, value]) => value !== undefined && value !== ''));
       });
 
       for (let index = 0; index < payload.length; index += 400) {
         const batch = payload.slice(index, index + 400);
-        const { error: upsertError } = await sb.from('players').upsert(batch);
-        if (upsertError) throw new Error(upsertError.message);
+        const { error: insertError } = await sb.from('players').insert(batch);
+        if (insertError) throw new Error(insertError.message);
       }
 
-      setError(`${payload.length.toLocaleString('fr-FR')} joueurs importes / mis a jour.`);
+      setError(`${payload.length.toLocaleString('fr-FR')} nouveaux joueurs crees.`);
       setImportRows([]);
       setImportFileName('');
       await load();
