@@ -421,10 +421,9 @@ function ClubsAdminPage() {
     if (!editing) return;
     setSaving(true);
     const isNew = !editing.id;
-    const { ok, isDemo } = await save({
-      ...editing,
-      ...((!editing.id) && { id: crypto.randomUUID?.() ?? `club-${Date.now()}` }),
-    });
+    // Pas d'id pour un nouveau club : save() decide INSERT vs UPDATE sur la
+    // presence d'un id, et genere lui-meme un UUID pour l'INSERT.
+    const { ok, isDemo } = await save(editing);
     setSaving(false);
     if (ok) {
       setEditing(null);
@@ -834,8 +833,8 @@ function PlayersAdminPage() {
     const payload: Partial<PlayerRow> = {
       ...editingClean,
       club_name: editingClean.club_name || MPL_CLUBS_LIST.find(c => c.id === editingClean.club_id)?.name || '',
-      // Pour un nouveau joueur : id UUID compatible Supabase
-      ...(isNew && { id: crypto.randomUUID ? crypto.randomUUID() : `ply-${Date.now()}` }),
+      // Pas d'id pour un nouveau joueur : save() decide INSERT vs UPDATE sur la
+      // presence d'un id, et genere lui-meme un UUID pour l'INSERT.
     };
     const { ok, isDemo } = await save(payload);
     setSaving(false);
