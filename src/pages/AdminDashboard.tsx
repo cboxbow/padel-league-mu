@@ -592,6 +592,11 @@ function ClubsAdminPage() {
   );
 }
 
+// Adresses generiques partagees par plusieurs comptes club (ex: front-desk) --
+// players.email a une contrainte UNIQUE, les reutiliser telles quelles fait
+// echouer tout import en lot des la 2e ligne qui la partage.
+const GENERIC_IMPORT_EMAILS = new Set(['info@urbansport.mu']);
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  PAGE : JOUEURS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -657,10 +662,6 @@ function normalizePlayerImportKey(value: unknown) {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
-}
-
-function normalizePlayerPhone(value: unknown) {
-  return String(value ?? '').replace(/\D+/g, '');
 }
 
 function extractEmailFromText(value: unknown) {
@@ -821,36 +822,37 @@ function PlayersAdminPage() {
 
   const importAuditRows = useMemo<PlayerImportAuditRow[]>(() => {
     const existingByEmail = new Map<string, PlayerRow[]>();
-    const existingByPhone = new Map<string, PlayerRow[]>();
     const existingByName = new Map<string, PlayerRow[]>();
 
     enriched.forEach(player => {
       const fullName = playerFullName(player);
       const email = String(player.email || '').trim().toLowerCase() || extractEmailFromText(fullName);
-      const phone = normalizePlayerPhone(player.phone);
       const name = normalizePlayerImportKey(fullName);
       if (email) existingByEmail.set(email, [...(existingByEmail.get(email) || []), player]);
-      if (phone) existingByPhone.set(phone, [...(existingByPhone.get(phone) || []), player]);
       if (name) existingByName.set(name, [...(existingByName.get(name) || []), player]);
     });
 
     const importKeyCounts = new Map<string, number>();
     importRows.forEach(row => {
-      const key = row.email || normalizePlayerImportKey(`${row.first_name} ${row.last_name}`);
+      const rowEmail = row.email && !GENERIC_IMPORT_EMAILS.has(row.email) ? row.email : '';
+      const key = rowEmail || normalizePlayerImportKey(`${row.first_name} ${row.last_name}`);
       if (key) importKeyCounts.set(key, (importKeyCounts.get(key) || 0) + 1);
     });
 
     return importRows.map(row => {
-      const email = String(row.email || '').trim().toLowerCase();
-      const phone = normalizePlayerPhone(row.phone);
+      const emailRaw = String(row.email || '').trim().toLowerCase();
+      const email = GENERIC_IMPORT_EMAILS.has(emailRaw) ? '' : emailRaw;
       const name = normalizePlayerImportKey(`${row.first_name} ${row.last_name}`);
       const importKey = email || name;
       const fileDuplicate = importKey ? (importKeyCounts.get(importKey) || 0) > 1 : false;
+      // Le telephone n'est pas utilise comme cle de rapprochement : des
+      // dizaines de joueurs distincts partagent le meme numero (placeholder/
+      // front-desk) dans les donnees existantes -- l'utiliser produirait de
+      // faux "plusieurs joueurs possibles" entre joueurs sans aucun lien.
       const emailMatches = email ? (existingByEmail.get(email) || []) : [];
-      const phoneMatches = phone ? (existingByPhone.get(phone) || []) : [];
       const nameMatches = name ? (existingByName.get(name) || []) : [];
       const uniqueMatches = new Map<string, PlayerRow>();
-      [...emailMatches, ...phoneMatches, ...nameMatches].forEach(match => {
+      [...emailMatches, ...nameMatches].forEach(match => {
         if (match.id) uniqueMatches.set(match.id, match);
       });
       const matches = Array.from(uniqueMatches.values());
@@ -864,7 +866,6 @@ function PlayersAdminPage() {
       if (matches.length === 1) {
         const match = matches[0];
         if (emailMatches.length > 0) return { ...row, importStatus: 'existing', importReason: 'Existe deja: email identique', matchedId: match.id };
-        if (phoneMatches.length > 0) return { ...row, importStatus: 'existing', importReason: 'Existe deja: mobile identique', matchedId: match.id };
         return { ...row, importStatus: 'existing', importReason: 'Existe deja: nom identique', matchedId: match.id };
       }
       if (!row.club_id) {
@@ -996,7 +997,7 @@ function PlayersAdminPage() {
           id: crypto.randomUUID?.() ?? `ply-${Date.now()}-${Math.random().toString(36).slice(2)}`,
           first_name: row.first_name,
           last_name: row.last_name,
-          email: row.email,
+          email: row.email && !GENERIC_IMPORT_EMAILS.has(row.email) ? row.email : undefined,
           phone: row.phone,
           gender: row.gender,
           region: row.region,
