@@ -86,6 +86,9 @@ interface PlayerRow {
   license_no?: string;
   club_id?: string;
   club_name?: string;
+  // Colonne reelle en base (voir normalizeTableRows) -- club_name reste le
+  // champ utilise partout dans l'UI et est traduit vers "club" a l'ecriture.
+  club?: string;
   level?: string;
   active: boolean;
 }
@@ -248,6 +251,17 @@ function usePlayerStats() {
 }
 
 function normalizeTableRows<T>(tableName: string, rows: T[]): T[] {
+  if (tableName === 'players') {
+    // La colonne reelle est "club" (texte) -- PAS "club_name". PlayerRow /
+    // tout le code d'affichage utilisent club_name : on l'alimente ici a la
+    // lecture pour que la liste, la recherche et l'audit d'import voient le
+    // club de chaque joueur au lieu d'une valeur vide.
+    return rows.map(row => {
+      const record = row as Record<string, unknown>;
+      if (typeof record.club_name === 'string' && record.club_name) return row;
+      return { ...record, club_name: typeof record.club === 'string' ? record.club : '' } as T;
+    });
+  }
   if (tableName !== 'tournaments') return rows;
 
   return rows.map(row => {
@@ -841,13 +855,15 @@ function PlayersAdminPage() {
     if (!editing) return;
     setSaving(true);
     const isNew = !editing.id;
-    // Payload propre : on exclut le champ 'name' (doublon calculé) pour éviter
-    // PGRST204 si la colonne n'existe pas dans Supabase
+    // Payload propre : on exclut 'name' (doublon calcule) et 'club_name' (la
+    // colonne reelle en base s'appelle "club" -- envoyer club_name declenche
+    // "column players.club_name does not exist", PGRST204) pour eviter toute
+    // erreur Supabase.
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { name: _name, ...editingClean } = editing as Partial<PlayerRow> & { name?: string };
+    const { name: _name, club_name, ...editingClean } = editing as Partial<PlayerRow> & { name?: string };
     const payload: Partial<PlayerRow> = {
       ...editingClean,
-      club_name: editingClean.club_name || MPL_CLUBS_LIST.find(c => c.id === editingClean.club_id)?.name || '',
+      club: club_name || MPL_CLUBS_LIST.find(c => c.id === editingClean.club_id)?.name || '',
       // Pas d'id pour un nouveau joueur : save() decide INSERT vs UPDATE sur la
       // presence d'un id, et genere lui-meme un UUID pour l'INSERT.
     };
@@ -959,7 +975,8 @@ function PlayersAdminPage() {
           division: row.division,
           license_no: String(nextLicense++),
           club_id: row.club_id,
-          club_name: row.club_name,
+          // colonne reelle "club", pas "club_name" (voir handleSave plus haut)
+          club: row.club_name,
           level: row.level,
           active: row.active,
         };
