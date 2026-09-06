@@ -464,14 +464,17 @@ export default function EspaceJoueur() {
     ].filter(row => row.name);
   }, [men.rankings, women.rankings, junior.rankings, mixed.rankings]);
 
-  // Dernier rang publie par division, pour attribuer un rang provisoire aux
-  // joueurs sans aucun resultat (nouvel inscrit) : dernier + 1.
-  const lastRankByDivision = useMemo(() => {
-    const last: Record<DivisionKey, number> = { men: 0, women: 0, junior: 0, mixed: 0 };
+  // Rang provisoire des joueurs sans aucun resultat, aligne sur la formule du
+  // classement officiel Excel (RANK.EQ) : un total de 0 point se classe a
+  // "nombre de joueurs avec des points + 1", pas "meilleur rang affiche + 1"
+  // -- les deux ne coincident pas quand le dernier groupe de joueurs classes
+  // est lui-meme en egalite a plusieurs.
+  const scoringPlayerCountByDivision = useMemo(() => {
+    const count: Record<DivisionKey, number> = { men: 0, women: 0, junior: 0, mixed: 0 };
     for (const ranking of allRankings) {
-      if (ranking.rank > last[ranking.division]) last[ranking.division] = ranking.rank;
+      count[ranking.division] += 1;
     }
-    return last;
+    return count;
   }, [allRankings]);
 
   const profiles = useMemo<PlayerProfile[]>(() => {
@@ -514,7 +517,7 @@ export default function EspaceJoueur() {
           ? 'men'
           : (player.gender ?? '').toUpperCase() === 'F' ? 'women' : 'men';
 
-      const provisionalRank = lastRankByDivision[division] + 1;
+      const provisionalRank = scoringPlayerCountByDivision[division] + 1;
       grouped.set(key, {
         key,
         name: fullName,
@@ -528,7 +531,7 @@ export default function EspaceJoueur() {
 
     return Array.from(grouped.values())
       .sort((a, b) => a.bestRank - b.bestRank || b.bestPoints - a.bestPoints || a.name.localeCompare(b.name));
-  }, [allRankings, playerDirectory, lastRankByDivision]);
+  }, [allRankings, playerDirectory, scoringPlayerCountByDivision]);
 
   const filteredProfiles = useMemo(() => {
     const q = normalizeName(query);
