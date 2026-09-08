@@ -1124,7 +1124,7 @@ function QuickEntryPanel({
   tourn, onImport, onClose,
 }: {
   tourn: TournRow;
-  onImport: (rows: Partial<TResult>[]) => Promise<{ ok: number; fail: number }>;
+  onImport: (rows: Partial<TResult>[]) => Promise<{ ok: number; fail: number; message?: string }>;
   onClose: () => void;
 }) {
   const [division, setDivision] = useState('men');
@@ -1132,7 +1132,7 @@ function QuickEntryPanel({
   const [text, setText] = useState('');
   const [preview, setPreview] = useState<Partial<TResult>[]>([]);
   const [importing, setImporting] = useState(false);
-  const [result, setResult] = useState<{ ok: number; fail: number } | null>(null);
+  const [result, setResult] = useState<{ ok: number; fail: number; message?: string } | null>(null);
   const [mode, setMode] = useState<'quick' | 'csv' | 'sql'>('quick');
   const [copied, setCopied] = useState(false);
 
@@ -1243,9 +1243,17 @@ function QuickEntryPanel({
   const doImport = async () => {
     if (!preview.length) return;
     setImporting(true);
-    const r = await onImport(preview);
-    setResult(r);
-    setImporting(false);
+    try {
+      const r = await onImport(preview);
+      setResult(r);
+    } catch (e) {
+      // Sans ce filet, une exception ici laissait le bouton bloque sur
+      // "Import..." indefiniment, sans aucun message d'erreur visible.
+      const msg = e instanceof Error ? e.message : String(e);
+      setResult({ ok: 0, fail: preview.length, message: msg });
+    } finally {
+      setImporting(false);
+    }
   };
 
   const copySQL = () => {
@@ -1386,11 +1394,16 @@ function QuickEntryPanel({
 
       {/* Résultat */}
       {result && (
-        <div style={{ background:result.fail===0?'rgba(74,213,105,0.08)':'rgba(239,68,68,0.08)',border:`1px solid ${result.fail===0?'rgba(74,213,105,0.2)':'rgba(239,68,68,0.2)'}`,borderRadius:'10px',padding:'12px 16px',display:'flex',alignItems:'center',gap:'10px' }}>
-          {result.fail===0
-            ? <><CheckCircle size={16} color="#4ad569"/><span style={{ color:'#4ad569',fontWeight:700 }}>{result.ok} paires importées avec succès !</span></>
-            : <><AlertCircle size={16} color="#ef4444"/><span style={{ color:'#ef4444',fontWeight:700 }}>{result.ok} OK · {result.fail} erreurs</span></>
-          }
+        <div style={{ background:result.fail===0?'rgba(74,213,105,0.08)':'rgba(239,68,68,0.08)',border:`1px solid ${result.fail===0?'rgba(74,213,105,0.2)':'rgba(239,68,68,0.2)'}`,borderRadius:'10px',padding:'12px 16px',display:'flex',flexDirection:'column',gap:'6px' }}>
+          <div style={{ display:'flex',alignItems:'center',gap:'10px' }}>
+            {result.fail===0
+              ? <><CheckCircle size={16} color="#4ad569"/><span style={{ color:'#4ad569',fontWeight:700 }}>{result.ok} paires importées avec succès !</span></>
+              : <><AlertCircle size={16} color="#ef4444"/><span style={{ color:'#ef4444',fontWeight:700 }}>{result.ok} OK · {result.fail} erreurs</span></>
+            }
+          </div>
+          {result.message && (
+            <span style={{ color:'#ef4444', fontSize:'12px', fontFamily:'monospace' }}>{result.message}</span>
+          )}
         </div>
       )}
 
@@ -1672,10 +1685,11 @@ export default function ResultsAdminPage() {
   };
 
   // ── Import en lot ────────────────────────────────────────────────────────────
-  const bulkImport = async (rows: Partial<TResult>[]): Promise<{ ok: number; fail: number }> => {
+  const bulkImport = async (rows: Partial<TResult>[]): Promise<{ ok: number; fail: number; message?: string }> => {
     const sb = getSupabaseClient();
-    if (!sb) return { ok: 0, fail: rows.length };
+    if (!sb) return { ok: 0, fail: rows.length, message: 'Supabase non connecte.' };
     let ok = 0, fail = 0;
+    let message: string | undefined;
     for (let i = 0; i < rows.length; i += 20) {
       const batch = rows.slice(i, i + 20).map(r => ({
         id: (r.id && !r.id.startsWith('res-')) ? r.id : crypto.randomUUID(),
@@ -1686,16 +1700,25 @@ export default function ResultsAdminPage() {
         player1_name: r.player1_name ?? '', player2_name: r.player2_name ?? '',
         points: r.points ?? 0,
       }));
-      const { error: e } = await sb.from('tournament_results').upsert(batch, { onConflict: 'id' });
-      const historicalBatch = batch.map(row => historicalPayload(row));
-      const { error: histError } = await sb.from('historical_tournament_results').upsert(historicalBatch, { onConflict: 'id' });
-      if (e || histError) {
+      try {
+        const { error: e } = await sb.from('tournament_results').upsert(batch, { onConflict: 'id' });
+        const historicalBatch = batch.map(row => historicalPayload(row));
+        const { error: histError } = await sb.from('historical_tournament_results').upsert(historicalBatch, { onConflict: 'id' });
+        if (e || histError) {
+          fail += batch.length;
+          message = e?.message ?? histError?.message ?? 'Erreur import resultats';
+          setError(message);
+        } else ok += batch.length;
+      } catch (err) {
+        // Un rejet non catche ici (ex: reseau) faisait planter tout l'import
+        // sans retour au bouton "Importer", qui restait bloque indefiniment.
         fail += batch.length;
-        setError(e?.message ?? histError?.message ?? 'Erreur import resultats');
-      } else ok += batch.length;
+        message = err instanceof Error ? err.message : String(err);
+        setError(message);
+      }
     }
     if (ok > 0) markRankingsDirty(`${ok} resultats importes`);
-    await load(); return { ok, fail };
+    await load(); return { ok, fail, message };
   };
 
 
