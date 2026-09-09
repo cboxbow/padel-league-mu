@@ -14,7 +14,7 @@ import { getPoints, getBracketIndex, POINTS_BRACKETS } from '@/lib/pointsAllocat
 // ─────────────────────────────────────────────────────────────────────────────
 //  TYPES
 // ─────────────────────────────────────────────────────────────────────────────
-interface TResult {
+export interface TResult {
   id: string;
   tournament_id: string;
   tournament_name: string;
@@ -55,7 +55,7 @@ interface HistoricalResultRow {
   points: number;
 }
 
-interface TournRow {
+export interface TournRow {
   id: string;
   name: string;
   date?: string;
@@ -369,7 +369,7 @@ function resultMatchKey(parts: { date?: string; category?: string; club?: string
   ].join('|');
 }
 
-function tournMatchKeys(tourn: TournRow): string[] {
+export function tournMatchKeys(tourn: TournRow): string[] {
   const date = tournamentDate(tourn);
   const category = normalizeJuniorCategory(tourn.category ?? '');
   const division = normalizeDivision(tourn.division ?? tourn.tournament_type ?? tourn.type, category, tourn.name ?? tourn.tournament_name);
@@ -452,7 +452,7 @@ function historicalPayload(row: Partial<TResult>) {
   };
 }
 
-async function fetchHistoricalAdminResults(sb: ReturnType<typeof getSupabaseClient>): Promise<TResult[]> {
+export async function fetchHistoricalAdminResults(sb: ReturnType<typeof getSupabaseClient>): Promise<TResult[]> {
   if (!sb) return [];
   const pageSize = 1000;
   const baseQuery = () => sb
@@ -487,7 +487,7 @@ async function fetchHistoricalAdminResults(sb: ReturnType<typeof getSupabaseClie
   return rows.map(mapHistorical);
 }
 
-function mergeResults(legacyRows: TResult[], historicalRows: TResult[]): TResult[] {
+export function mergeResults(legacyRows: TResult[], historicalRows: TResult[]): TResult[] {
   const map = new Map<string, TResult>();
   for (const row of legacyRows) {
     const category = normalizeJuniorCategory(row.category);

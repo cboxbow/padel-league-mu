@@ -1,8 +1,16 @@
 import { useState } from 'react';
 import { Download, FileText, Database, RefreshCw, CheckCircle, Wifi, WifiOff } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { GlassCard } from '@/components/Layout';
 import { getSupabaseClient, isSupabaseConnected } from '@/lib/supabase';
 import { normalizeJuniorCategory, normalizeTournamentDisplayName } from '@/lib/tournamentNames';
+import { computeTournamentStatus } from '@/hooks/useData';
+import { isCancelledTournament } from '@/lib/cancelledTournaments';
+import {
+  type TResult, type TournRow,
+  tournMatchKeys, mergeResults, fetchHistoricalAdminResults,
+} from '@/pages/admin/ResultsAdminPage';
 import { MOCK_CLUBS, MOCK_TOURNAMENTS } from '@/data/index';
 import { RANKINGS_MEN_CSV, RANKINGS_WOMEN_CSV, RANKINGS_JUNIOR_CSV, RANKINGS_MIXTE_CSV } from '@/data/rankingsCsv';
 
@@ -377,6 +385,69 @@ async function fetchData(target: ExportTarget): Promise<FetchResult> {
     return { rows: normalizeExportTournamentRows(MOCK_REGISTRATIONS), source: 'mock', sourceLabel: 'Fallback mock (Supabase non connecté)', error: null };
   }
 
+  // ── Tournois sans résultats ────────────────────────────────────────────────
+  // Même règle que l'admin "Résultats" : tournois dont la date est passée
+  // (computeTournamentStatus === 'completed'), non annulés, et pour lesquels
+  // aucune ligne tournament_results / historical_tournament_results ne
+  // correspond (par tournament_id OU par clé date+catégorie+club+division).
+  if (target === 'missing_results') {
+    if (sbOk) {
+      const { rows: tournRows, error: tErr } = await sbQueryAllRanged<TournRow>(
+        (from, to) => sb!.from('tournaments').select('*').range(from, to),
+        'tournaments[missing_results]'
+      );
+      if (!tournRows.length) {
+        return { rows: [], source: 'supabase', sourceLabel: `Supabase tournaments vide${tErr ? ` (${tErr})` : ''}`, error: tErr };
+      }
+
+      const [legacyRes, historicalRes] = await Promise.all([
+        sbQueryAllRanged<TResult>(
+          (from, to) => sb!.from('tournament_results').select('*').range(from, to),
+          'tournament_results[missing_results]'
+        ),
+        fetchHistoricalAdminResults(sb).catch((e) => {
+          console.warn('[Export] historical_tournament_results indisponible:', e);
+          return [] as TResult[];
+        }),
+      ]);
+      const merged = mergeResults(legacyRes.rows, historicalRes);
+
+      const resultsByTourn = new Map<string, TResult[]>();
+      for (const r of merged) {
+        if (r.tournament_id) {
+          if (!resultsByTourn.has(r.tournament_id)) resultsByTourn.set(r.tournament_id, []);
+          resultsByTourn.get(r.tournament_id)!.push(r);
+        }
+        if (r._match_key) {
+          if (!resultsByTourn.has(r._match_key)) resultsByTourn.set(r._match_key, []);
+          resultsByTourn.get(r._match_key)!.push(r);
+        }
+      }
+      const hasResults = (t: TournRow) =>
+        [t.id, ...tournMatchKeys(t)].some((k) => (resultsByTourn.get(k)?.length ?? 0) > 0);
+
+      const missing = tournRows
+        .filter((t) => {
+          if ((t.status ?? '').toString().toLowerCase() === 'cancelled' || isCancelledTournament(t)) return false;
+          const d = (t.date ?? t.tournament_date ?? '').toString();
+          return computeTournamentStatus(d, t.status) === 'completed';
+        })
+        .filter((t) => !hasResults(t))
+        .map((t) => ({
+          tournament_name: normalizeTournamentDisplayName(t.name, t.club_name ?? ''),
+          tournament_date: (t.date ?? t.tournament_date ?? '').toString().slice(0, 10),
+          category: normalizeJuniorCategory(t.category ?? ''),
+          division: (t.tournament_type ?? t.type ?? '').toString(),
+          club_name: t.club_name ?? '',
+          region: t.region ?? '',
+        }))
+        .sort((a, b) => a.tournament_date.localeCompare(b.tournament_date));
+
+      return { rows: missing, source: 'supabase', sourceLabel: `Supabase — ${missing.length} tournoi(s) sans résultats à ce jour`, error: null };
+    }
+    return { rows: [], source: 'mock', sourceLabel: 'Supabase non connecté', error: null };
+  }
+
   return { rows: [], source: 'mock', sourceLabel: 'Inconnu', error: 'Cible inconnue' };
 }
 
@@ -399,7 +470,7 @@ type ExportFormat = 'csv' | 'json';
 type ExportTarget =
   | 'clubs' | 'players' | 'tournaments'
   | 'rankings_men' | 'rankings_women' | 'rankings_junior' | 'rankings_mixte' | 'rankings_all'
-  | 'results' | 'registrations';
+  | 'results' | 'registrations' | 'missing_results';
 
 function toCSV(data: Record<string, unknown>[]): string {
   if (!data.length) return 'Aucune donnée disponible';
@@ -436,7 +507,7 @@ function downloadFile(content: string, filename: string, mime: string) {
 }
 
 // ── Exports cards config ──────────────────────────────────────────────────────
-interface ExportCard { target: ExportTarget; label: string; desc: string; icon: string; color: string }
+interface ExportCard { target: ExportTarget; label: string; desc: string; icon: string; color: string; pdfOnly?: boolean }
 const EXPORTS: ExportCard[] = [
   { target: 'clubs',           label: 'Clubs',              desc: 'Clubs officiels MPL — table clubs Supabase',                                      icon: '🏟️', color: '#3b82f6' },
   { target: 'players',         label: 'Joueurs',            desc: 'Tous les joueurs actifs — table players Supabase (pagination)',                 icon: '👥', color: '#8b5cf6' },
@@ -448,7 +519,48 @@ const EXPORTS: ExportCard[] = [
   { target: 'rankings_all',    label: 'Classement Complet', desc: 'Supabase rankings toutes divisions → CSV officiel MPL en fallback',            icon: '📊', color: '#4ad569' },
   { target: 'results',         label: 'Résultats',          desc: 'Table tournament_results Supabase — export live',                              icon: '📋', color: '#10b981' },
   { target: 'registrations',   label: 'Inscriptions',       desc: 'Table registrations Supabase avec statuts',                                      icon: '📝', color: '#f97316' },
+  { target: 'missing_results', label: 'Tournois sans résultats', desc: 'Tournois terminés sans résultat saisi à ce jour — rapport PDF', icon: '⚠️', color: '#ef4444', pdfOnly: true },
 ];
+
+// ── Export PDF (jsPDF + autoTable) ───────────────────────────────────────────
+const PDF_COLUMNS: Record<string, { header: string; keys: string[] }> = {
+  missing_results: {
+    header: 'Tournois sans résultats saisis à ce jour',
+    keys: ['tournament_date', 'tournament_name', 'category', 'division', 'club_name', 'region'],
+  },
+};
+const PDF_HEADER_LABELS: Record<string, string> = {
+  tournament_date: 'Date', tournament_name: 'Tournoi', category: 'Catégorie',
+  division: 'Division', club_name: 'Club', region: 'Région',
+};
+
+function generatePdf(target: ExportTarget, rows: Record<string, unknown>[]): jsPDF {
+  const cfg = PDF_COLUMNS[target] ?? { header: target, keys: Object.keys(rows[0] ?? {}) };
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const ts = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  doc.setFontSize(16);
+  doc.setTextColor(20, 20, 20);
+  doc.text('Mauritius Padel League 2026', 14, 16);
+  doc.setFontSize(12);
+  doc.setTextColor(80, 80, 80);
+  doc.text(cfg.header, 14, 24);
+  doc.setFontSize(9);
+  doc.setTextColor(140, 140, 140);
+  doc.text(`Généré le ${ts} — ${rows.length} tournoi(s)`, 14, 30);
+
+  autoTable(doc, {
+    startY: 36,
+    head: [cfg.keys.map(k => PDF_HEADER_LABELS[k] ?? k)],
+    body: rows.map(row => cfg.keys.map(k => String(row[k] ?? ''))),
+    headStyles: { fillColor: [239, 68, 68], textColor: [255, 255, 255], fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [247, 247, 247] },
+    styles: { fontSize: 9, cellPadding: 3 },
+    margin: { left: 14, right: 14 },
+  });
+
+  return doc;
+}
 
 // ── Source badge ─────────────────────────────────────────────────────────────
 function SourceBadge({ source, label }: { source: DataSource; label: string }) {
@@ -516,6 +628,30 @@ export default function ExportsPage() {
     setLoading(null);
   };
 
+  const handleExportPdf = async (target: ExportTarget) => {
+    setLoading(target); setError(null);
+    try {
+      const result = await fetchData(target);
+      setLastResult(prev => ({ ...prev, [target]: result }));
+      if (result.source !== 'supabase') {
+        setError(`⚠️ "${EXPORTS.find(e => e.target === target)?.label}" — ${result.sourceLabel}`);
+        setLoading(null); return;
+      }
+      if (!result.rows.length) {
+        setError(`ℹ️ Aucun tournoi sans résultat à ce jour — rien à exporter.`);
+        setLoading(null); return;
+      }
+      const doc = generatePdf(target, result.rows);
+      const ts = new Date().toISOString().slice(0, 10);
+      doc.save(`mpl2026_${target}_${ts}.pdf`);
+      setDone(target);
+      setTimeout(() => setDone(null), 3000);
+    } catch (e) {
+      setError(`Erreur lors de l'export PDF: ${e}`);
+    }
+    setLoading(null);
+  };
+
   const handlePreview = async (target: ExportTarget) => {
     setLoading(target); setError(null);
     try {
@@ -534,7 +670,8 @@ export default function ExportsPage() {
   const handleExportAll = async () => {
     setError(null);
     for (const e of EXPORTS) {
-      await handleExport(e.target);
+      if (e.pdfOnly) await handleExportPdf(e.target);
+      else await handleExport(e.target);
       await new Promise(r => setTimeout(r, 400));
     }
   };
@@ -616,7 +753,7 @@ export default function ExportsPage() {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
-                <button onClick={() => handleExport(e.target)} disabled={loading === e.target}
+                <button onClick={() => e.pdfOnly ? handleExportPdf(e.target) : handleExport(e.target)} disabled={loading === e.target}
                   style={{ flex: 1, background: done === e.target ? 'rgba(74,213,105,0.15)' : `${e.color}18`,
                     color: done === e.target ? '#4ad569' : e.color,
                     border: `1px solid ${done === e.target ? 'rgba(74,213,105,0.4)' : e.color + '33'}`,
@@ -628,7 +765,7 @@ export default function ExportsPage() {
                     ? <><RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }} /> Chargement…</>
                     : done === e.target
                       ? <><CheckCircle size={13} /> Téléchargé !</>
-                      : <><Download size={13} /> {format.toUpperCase()}</>}
+                      : <><Download size={13} /> {e.pdfOnly ? 'PDF' : format.toUpperCase()}</>}
                 </button>
                 <button onClick={() => handlePreview(e.target)} disabled={loading === e.target}
                   style={{ background: 'rgba(255,255,255,0.05)', color: '#a0a0a0', border: '1px solid rgba(255,255,255,0.1)',
@@ -680,7 +817,7 @@ export default function ExportsPage() {
             </table>
           </div>
           <div style={{ marginTop: '14px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-            <button onClick={() => handleExport(preview.target)}
+            <button onClick={() => EXPORTS.find(e => e.target === preview.target)?.pdfOnly ? handleExportPdf(preview.target) : handleExport(preview.target)}
               style={{ background: '#4ad569', color: '#0a0a0a', border: 'none', borderRadius: '8px', padding: '8px 18px', fontWeight: 700, cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Download size={14} /> Télécharger tout ({preview.total.toLocaleString('fr-FR')} lignes)
             </button>
