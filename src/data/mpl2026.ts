@@ -306,8 +306,8 @@ export const MPL_TOURNAMENTS: Tournament[] = [
   {id:'t153h',name:'RM Club Tamarin M50 (Hommes)',club_id:'c06',club_name:'RM Club Tamarin',date:'2026-08-23',region:'Ouest',category:'M50',division:'men',type:'MEN',status:'upcoming',max_teams:24},
   {id:'t153f',name:'RM Club Tamarin M50 (Dames)',club_id:'c06',club_name:'RM Club Tamarin',date:'2026-08-23',region:'Ouest',category:'M50',division:'women',type:'WOMEN',status:'upcoming',max_teams:24},
   {id:'t154',name:'Caña Beau Plan M250 (Hommes)',club_id:'c01',club_name:'Caña Beau Plan',date:'2026-08-29',region:'Nord',category:'M250',division:'men',type:'MEN',status:'upcoming',max_teams:32},
-  {id:'t155h',name:'Club Med Albion M25 (Hommes)',club_id:'c02',club_name:'Club Med Albion',date:'2026-08-29',region:'Ouest',category:'M25',division:'men',type:'MEN',status:'upcoming',max_teams:16},
-  {id:'t155f',name:'Club Med Albion M25 (Dames)',club_id:'c02',club_name:'Club Med Albion',date:'2026-08-29',region:'Ouest',category:'M25',division:'women',type:'WOMEN',status:'upcoming',max_teams:16},
+  {id:'t155h',name:'Club Med Albion M25 (Hommes)',club_id:'c02',club_name:'Club Med Albion',date:'2026-08-29',region:'Ouest',category:'M25',division:'men',type:'MEN',status:'cancelled',max_teams:16},
+  {id:'t155f',name:'Club Med Albion M25 (Dames)',club_id:'c02',club_name:'Club Med Albion',date:'2026-08-29',region:'Ouest',category:'M25',division:'women',type:'WOMEN',status:'cancelled',max_teams:16},
   {id:'t156h',name:'Moka Rangers M100 (Hommes)',club_id:'c18',club_name:'Moka Rangers',date:'2026-08-29',region:'Centre',category:'M100',division:'men',type:'MEN',status:'upcoming',max_teams:32},
   {id:'t156f',name:'Moka Rangers M100 (Dames)',club_id:'c18',club_name:'Moka Rangers',date:'2026-08-29',region:'Centre',category:'M100',division:'women',type:'WOMEN',status:'upcoming',max_teams:32},
   {id:'t157h',name:'Energia Pointe aux Canonniers M25 (Hommes)',club_id:'c17',club_name:'Energia Pointe aux Canonniers',date:'2026-09-05',region:'Nord',category:'M25',division:'men',type:'MEN',status:'upcoming',max_teams:16},
@@ -341,8 +341,8 @@ export const MPL_TOURNAMENTS: Tournament[] = [
   {id:'t172f',name:'Caña Beau Plan M25 (Dames)',club_id:'c01',club_name:'Caña Beau Plan',date:'2026-09-26',region:'Nord',category:'M25',division:'women',type:'WOMEN',status:'upcoming',max_teams:16},
   {id:'t173h',name:'Club House Black River M25 (Hommes)',club_id:'c16',club_name:'Club House Black River',date:'2026-09-26',region:'Ouest',category:'M25',division:'men',type:'MEN',status:'upcoming',max_teams:16},
   {id:'t173f',name:'Club House Black River M25 (Dames)',club_id:'c16',club_name:'Club House Black River',date:'2026-09-26',region:'Ouest',category:'M25',division:'women',type:'WOMEN',status:'upcoming',max_teams:16},
-  {id:'t174h',name:'Club Med Albion M50 (Hommes)',club_id:'c02',club_name:'Club Med Albion',date:'2026-09-26',region:'Ouest',category:'M50',division:'men',type:'MEN',status:'upcoming',max_teams:24},
-  {id:'t174f',name:'Club Med Albion M50 (Dames)',club_id:'c02',club_name:'Club Med Albion',date:'2026-09-26',region:'Ouest',category:'M50',division:'women',type:'WOMEN',status:'upcoming',max_teams:24},
+  {id:'t174h',name:'Club Med Albion M50 (Hommes)',club_id:'c02',club_name:'Club Med Albion',date:'2026-09-26',region:'Ouest',category:'M50',division:'men',type:'MEN',status:'cancelled',max_teams:24},
+  {id:'t174f',name:'Club Med Albion M50 (Dames)',club_id:'c02',club_name:'Club Med Albion',date:'2026-09-26',region:'Ouest',category:'M50',division:'women',type:'WOMEN',status:'cancelled',max_teams:24},
   {id:'t175h',name:'Isla Padel Grand Baie M250 (Hommes)',club_id:'c12',club_name:'Isla Padel Grand Baie',date:'2026-09-26',region:'Nord',category:'M250',division:'men',type:'MEN',status:'upcoming',max_teams:32},
   {id:'t175f',name:'Isla Padel Grand Baie M250 (Dames)',club_id:'c12',club_name:'Isla Padel Grand Baie',date:'2026-09-26',region:'Nord',category:'M250',division:'women',type:'WOMEN',status:'upcoming',max_teams:32},
   {id:'t176h',name:'RM Club Grand Baie M50 (Hommes)',club_id:'c08',club_name:'RM Club Grand Baie',date:'2026-09-26',region:'Nord',category:'M50',division:'men',type:'MEN',status:'upcoming',max_teams:24},
@@ -463,8 +463,8 @@ export const MPL_TOURNAMENTS: Tournament[] = [
   {id:'t236f',name:'Caña Beau Plan M250 (Dames)',club_id:'c01',club_name:'Caña Beau Plan',date:'2026-12-26',region:'Nord',category:'M250',division:'women',type:'WOMEN',status:'upcoming',max_teams:32},
   {id:'t237h',name:'Club House Black River M250 (Hommes)',club_id:'c16',club_name:'Club House Black River',date:'2026-12-26',region:'Ouest',category:'M250',division:'men',type:'MEN',status:'upcoming',max_teams:32},
   {id:'t237f',name:'Club House Black River M250 (Dames)',club_id:'c16',club_name:'Club House Black River',date:'2026-12-26',region:'Ouest',category:'M250',division:'women',type:'WOMEN',status:'upcoming',max_teams:32},
-  {id:'t238h',name:'Club Med Albion M25 (Hommes)',club_id:'c02',club_name:'Club Med Albion',date:'2026-12-26',region:'Ouest',category:'M25',division:'men',type:'MEN',status:'upcoming',max_teams:16},
-  {id:'t238f',name:'Club Med Albion M25 (Dames)',club_id:'c02',club_name:'Club Med Albion',date:'2026-12-26',region:'Ouest',category:'M25',division:'women',type:'WOMEN',status:'upcoming',max_teams:16}
+  {id:'t238h',name:'Club Med Albion M25 (Hommes)',club_id:'c02',club_name:'Club Med Albion',date:'2026-12-26',region:'Ouest',category:'M25',division:'men',type:'MEN',status:'cancelled',max_teams:16},
+  {id:'t238f',name:'Club Med Albion M25 (Dames)',club_id:'c02',club_name:'Club Med Albion',date:'2026-12-26',region:'Ouest',category:'M25',division:'women',type:'WOMEN',status:'cancelled',max_teams:16}
 ];
 
 export const getClubById = (id: string): Club | undefined =>
