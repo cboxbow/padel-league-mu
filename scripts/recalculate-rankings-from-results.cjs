@@ -569,8 +569,13 @@ async function deleteByDivision(supabase, table, division) {
 }
 
 async function insertChunks(supabase, table, payload, chunkSize) {
+  // upsert (pas insert) : un chunk renvoye deux fois (retry reseau apres un
+  // timeout cote client alors que la requete avait deja abouti cote serveur)
+  // doit ecraser la meme ligne, pas en creer une copie. Deja vu se produire :
+  // ~344 lignes en double trouvees dans "rankings" (meme joueur/points/rang,
+  // meme updated_at a la milliseconde pres, id different) apres un recalcul.
   for (let i = 0; i < payload.length; i += chunkSize) {
-    const { error } = await supabase.from(table).insert(payload.slice(i, i + chunkSize));
+    const { error } = await supabase.from(table).upsert(payload.slice(i, i + chunkSize), { onConflict: 'id' });
     if (error) throw new Error(`${table}: ${error.message}`);
   }
 }
