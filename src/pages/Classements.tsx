@@ -472,10 +472,14 @@ function detailClubKey(detail: PlayerRankingDetail): string {
 
 function detailDedupKey(detail: PlayerRankingDetail): string {
   const date = detailIsoDate(detail) || detailMonthKey(detail);
+  // La categorie n'entre PAS dans la cle : le meme resultat reel apparait
+  // parfois deux fois en base avec des categories differentes (ex: "M500" et
+  // "MIXED" pour le meme match mixte), ce qui faisait passer ces doublons
+  // pour deux tournois distincts et gonflait le Top 8 affiche sur la fiche
+  // joueur (ex: 2600 pts au lieu des 2213 pts reellement publies).
   return [
     date,
     detail.division_key || '',
-    compactEventName(detail.category || inferCategory(detail.event_name)),
     detailClubKey(detail),
   ].join('|');
 }
