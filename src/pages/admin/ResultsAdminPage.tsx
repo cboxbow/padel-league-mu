@@ -5,7 +5,7 @@ import {
   Award, Calendar, MapPin, Users, Upload, Copy, Check,
   BarChart3,
 } from 'lucide-react';
-import { getSupabaseClient, isSupabaseConnected } from '@/lib/supabase';
+import { getSupabaseClient, isSupabaseConnected, safeSupabaseQuery } from '@/lib/supabase';
 import { normalizeJuniorCategory, normalizeTournamentDisplayName } from '@/lib/tournamentNames';
 import { computeTournamentStatus } from '@/hooks/useData';
 import { isCancelledTournament } from '@/lib/cancelledTournaments';
@@ -1701,24 +1701,42 @@ export default function ResultsAdminPage() {
         points: r.points ?? 0,
       }));
       try {
-        const { error: e } = await sb.from('tournament_results').upsert(batch, { onConflict: 'id' });
+        const { error: e, timedOut: t1 } = await safeSupabaseQuery(
+          () => sb.from('tournament_results').upsert(batch, { onConflict: 'id' }),
+          15000,
+        );
         const historicalBatch = batch.map(row => historicalPayload(row));
-        const { error: histError } = await sb.from('historical_tournament_results').upsert(historicalBatch, { onConflict: 'id' });
-        if (e || histError) {
+        const { error: histError, timedOut: t2 } = await safeSupabaseQuery(
+          () => sb.from('historical_tournament_results').upsert(historicalBatch, { onConflict: 'id' }),
+          15000,
+        );
+        if (t1 || t2) {
           fail += batch.length;
-          message = e?.message ?? histError?.message ?? 'Erreur import resultats';
+          message = 'Delai depasse (15s) -- verifiez la connexion et reessayez.';
+          setError(message);
+        } else if (e || histError) {
+          fail += batch.length;
+          message = (e as { message?: string } | null)?.message ?? (histError as { message?: string } | null)?.message ?? 'Erreur import resultats';
           setError(message);
         } else ok += batch.length;
       } catch (err) {
         // Un rejet non catche ici (ex: reseau) faisait planter tout l'import
         // sans retour au bouton "Importer", qui restait bloque indefiniment.
+        // safeSupabaseQuery couvre aussi le cas d'une requete qui ne repond
+        // jamais (ni succes ni erreur), qui bloquait le bouton pour de bon.
         fail += batch.length;
         message = err instanceof Error ? err.message : String(err);
         setError(message);
       }
     }
     if (ok > 0) markRankingsDirty(`${ok} resultats importes`);
-    await load(); return { ok, fail, message };
+    try {
+      await load();
+    } catch {
+      // load() a deja son propre timeout interne ; si elle rejette quand
+      // meme, ne pas laisser ca invalider un import par ailleurs reussi.
+    }
+    return { ok, fail, message };
   };
 
 
