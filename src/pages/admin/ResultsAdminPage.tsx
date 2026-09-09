@@ -435,19 +435,34 @@ function historicalPayload(row: Partial<TResult>) {
 async function fetchHistoricalAdminResults(sb: ReturnType<typeof getSupabaseClient>): Promise<TResult[]> {
   if (!sb) return [];
   const pageSize = 1000;
+  const baseQuery = () => sb
+    .from('historical_tournament_results')
+    .select(HISTORICAL_RESULT_COLUMNS)
+    .eq('event_year', 2026)
+    .order('event_date', { ascending: false, nullsFirst: false })
+    .order('rank_min', { ascending: true });
+
+  // Compter d'abord pour paginer en parallele plutot qu'en sequentiel : avec
+  // 3000+ lignes cette annee, 3-4 aller-retours l'un apres l'autre pouvaient
+  // a eux seuls approcher l'ancien timeout de 8s des que la connexion n'etait
+  // pas ideale.
+  const { count, error: countError } = await sb
+    .from('historical_tournament_results')
+    .select('id', { count: 'exact', head: true })
+    .eq('event_year', 2026);
+  if (countError) throw countError;
+
+  const totalPages = Math.max(1, Math.ceil((count ?? 0) / pageSize));
+  const pages = await Promise.all(
+    Array.from({ length: totalPages }, (_, i) => {
+      const from = i * pageSize;
+      return baseQuery().range(from, from + pageSize - 1);
+    }),
+  );
   const rows: HistoricalResultRow[] = [];
-  for (let from = 0; from < 8000; from += pageSize) {
-    const { data, error } = await sb
-      .from('historical_tournament_results')
-      .select(HISTORICAL_RESULT_COLUMNS)
-      .eq('event_year', 2026)
-      .order('event_date', { ascending: false, nullsFirst: false })
-      .order('rank_min', { ascending: true })
-      .range(from, from + pageSize - 1);
+  for (const { data, error } of pages) {
     if (error) throw error;
-    const batch = (data ?? []) as HistoricalResultRow[];
-    rows.push(...batch);
-    if (batch.length < pageSize) break;
+    rows.push(...((data ?? []) as HistoricalResultRow[]));
   }
   return rows.map(mapHistorical);
 }
@@ -1600,13 +1615,17 @@ export default function ResultsAdminPage() {
     setLoading(true); setError('');
     const sb = getSupabaseClient();
     if (isSupabaseConnected() && sb) {
-      // ── Timeout de sécurité : 8 secondes max ──────────────────────────────
+      // ── Timeout de sécurité : 25 secondes max ─────────────────────────────
+      // fetchHistoricalAdminResults() pagine sequentiellement (1000 lignes par
+      // appel) -- avec 3000+ lignes 2026 desormais, 8s etait trop juste des
+      // que la connexion n'etait pas ideale, et se declenchait meme quand
+      // l'ecriture (upsert) avait deja reussi.
       let timedOut = false;
       const timeoutId = setTimeout(() => {
         timedOut = true;
         setLoading(false);
         setError('⏱ Chargement trop long — vérifiez la connexion Supabase ou les permissions RLS.');
-      }, 8000);
+      }, 25000);
 
       try {
         const [rd, hd, td] = await Promise.all([
