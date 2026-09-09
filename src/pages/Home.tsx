@@ -18,18 +18,18 @@ function HeroLogo() {
       transition={{ type: 'spring', stiffness: 90, damping: 18, delay: 0.2 }}
       style={{ marginBottom: '36px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '18px' }}
     >
-      {/* Logo principal MPL + logo MSRA (fédération de tutelle) */}
+      {/* Logo MSRA (fédération de tutelle) + logo principal MPL */}
       <div className="hero-logo-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '22px', flexWrap: 'wrap', maxWidth: '100%' }}>
+        <img
+          src="/images/msra-logo.png"
+          alt="Mauritius Squash Rackets Association"
+          style={{ height: '120px', width: 'auto', maxWidth: '78vw', objectFit: 'contain' }}
+        />
+        <div className="hero-logo-divider" style={{ width: '1px', height: '90px', background: 'rgba(255,255,255,0.15)' }} />
         <img
           src="/images/mpl-logo.png"
           alt="Mauritius Padel League"
           style={{ height: '130px', width: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 0 28px rgba(74,213,105,0.4))' }}
-        />
-        <div className="hero-logo-divider" style={{ width: '1px', height: '70px', background: 'rgba(255,255,255,0.15)' }} />
-        <img
-          src="/images/msra-logo.png"
-          alt="Mauritius Squash Rackets Association"
-          style={{ height: '62px', width: 'auto', maxWidth: '78vw', objectFit: 'contain', opacity: 0.9 }}
         />
       </div>
       <style>{`
