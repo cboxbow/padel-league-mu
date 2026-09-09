@@ -19,26 +19,14 @@ function HeroLogo() {
       transition={{ type: 'spring', stiffness: 90, damping: 18, delay: 0.2 }}
       style={{ marginBottom: '36px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '18px' }}
     >
-      {/* Logo MSRA (fédération de tutelle) + logo principal MPL */}
-      <div className="hero-logo-row" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: '44px', flexWrap: 'wrap', maxWidth: '100%' }}>
-        <img
-          src="/images/msra-logo.png"
-          alt="Mauritius Squash Rackets Association"
-          style={{ height: '120px', width: 'auto', maxWidth: '78vw', objectFit: 'contain' }}
-        />
-        <div className="hero-logo-divider" style={{ width: '1px', height: '90px', background: 'rgba(255,255,255,0.15)' }} />
-        <img
-          src="/images/mpl-logo.png"
-          alt="Mauritius Padel League"
-          style={{ height: '130px', width: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 0 28px rgba(74,213,105,0.4))' }}
-        />
-      </div>
-      <style>{`
-        @media (max-width: 480px) {
-          .hero-logo-row { flex-direction: column; align-items: center; gap: 14px; }
-          .hero-logo-divider { display: none; }
-        }
-      `}</style>
+      {/* Logo MSRA (fédération de tutelle) + logo principal MPL — lockup officiel
+          unique (même fichier source que MPL MSRA.png) pour garantir l'alignement
+          et les proportions relatives exacts entre les deux marques. */}
+      <img
+        src="/images/mpl-msra-combo.png"
+        alt="Mauritius Squash Rackets Association — Mauritius Padel League"
+        style={{ width: 'min(440px, 90vw)', height: 'auto', filter: 'drop-shadow(0 0 22px rgba(74,213,105,0.25))' }}
+      />
       {/* ── Bandeau titre sponsor ── */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: '10px',
