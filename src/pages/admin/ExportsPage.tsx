@@ -20,13 +20,14 @@ const TIMEOUT_MS = 10_000;
 // ── sbQuery : retourne { rows, source } ─────────────────────────────────────
 async function sbQuery<T>(
   fn: () => PromiseLike<{ data: T[] | null; error: unknown }>,
-  label = ''
+  label = '',
+  timeoutMs = TIMEOUT_MS,
 ): Promise<{ rows: T[]; error: string | null }> {
   try {
     const result = await Promise.race([
       Promise.resolve(fn()),
       new Promise<{ data: null; error: string }>((resolve) =>
-        setTimeout(() => resolve({ data: null, error: 'timeout' }), TIMEOUT_MS)
+        setTimeout(() => resolve({ data: null, error: 'timeout' }), timeoutMs)
       ),
     ]);
     const { data, error } = result as { data: T[] | null; error: unknown };
@@ -48,12 +49,13 @@ async function sbQuery<T>(
 // réponse à 1000 lignes quel que soit le .limit() demandé ──────────────────
 async function sbQueryAllRanged<T>(
   buildQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
-  label = ''
+  label = '',
+  timeoutMs = TIMEOUT_MS,
 ): Promise<{ rows: T[]; error: string | null }> {
   const pageSize = 1000;
   const rows: T[] = [];
   for (let from = 0; ; from += pageSize) {
-    const { rows: page, error } = await sbQuery<T>(() => buildQuery(from, from + pageSize - 1), label);
+    const { rows: page, error } = await sbQuery<T>(() => buildQuery(from, from + pageSize - 1), label, timeoutMs);
     if (error) return { rows, error };
     rows.push(...page);
     if (page.length < pageSize) break;
@@ -392,10 +394,25 @@ async function fetchData(target: ExportTarget): Promise<FetchResult> {
   // correspond (par tournament_id OU par clé date+catégorie+club+division).
   if (target === 'missing_results') {
     if (sbOk) {
-      const { rows: tournRows, error: tErr } = await sbQueryAllRanged<TournRow>(
+      // Timeout plus long (25 s) : cette carte enchaîne 3 tables (dont
+      // historical_tournament_results, 7000+ lignes) — le TIMEOUT_MS de 10 s
+      // des autres cartes (une seule table simple) est trop juste ici, et un
+      // simple aller-retour lent le faisait échouer avec un faux "vide".
+      const MISSING_RES_TIMEOUT_MS = 25_000;
+      let { rows: tournRows, error: tErr } = await sbQueryAllRanged<TournRow>(
         (from, to) => sb!.from('tournaments').select('*').range(from, to),
-        'tournaments[missing_results]'
+        'tournaments[missing_results]',
+        MISSING_RES_TIMEOUT_MS,
       );
+      // Un seul essai supplémentaire si le premier a expiré (429 lignes ==
+      // 1 seule page ; un aller-retour isolé lent ne doit pas être fatal).
+      if (!tournRows.length && tErr === 'timeout') {
+        ({ rows: tournRows, error: tErr } = await sbQueryAllRanged<TournRow>(
+          (from, to) => sb!.from('tournaments').select('*').range(from, to),
+          'tournaments[missing_results:retry]',
+          MISSING_RES_TIMEOUT_MS,
+        ));
+      }
       if (!tournRows.length) {
         return { rows: [], source: 'supabase', sourceLabel: `Supabase tournaments vide${tErr ? ` (${tErr})` : ''}`, error: tErr };
       }
@@ -403,7 +420,8 @@ async function fetchData(target: ExportTarget): Promise<FetchResult> {
       const [legacyRes, historicalRes] = await Promise.all([
         sbQueryAllRanged<TResult>(
           (from, to) => sb!.from('tournament_results').select('*').range(from, to),
-          'tournament_results[missing_results]'
+          'tournament_results[missing_results]',
+          MISSING_RES_TIMEOUT_MS,
         ),
         fetchHistoricalAdminResults(sb).catch((e) => {
           console.warn('[Export] historical_tournament_results indisponible:', e);
@@ -633,7 +651,7 @@ export default function ExportsPage() {
     try {
       const result = await fetchData(target);
       setLastResult(prev => ({ ...prev, [target]: result }));
-      if (result.source !== 'supabase') {
+      if (result.source !== 'supabase' || (result.error && !result.rows.length)) {
         setError(`⚠️ "${EXPORTS.find(e => e.target === target)?.label}" — ${result.sourceLabel}`);
         setLoading(null); return;
       }
