@@ -11,8 +11,9 @@ const translations = {
     },
     hero: {
       subtitle: 'AfrAsia Bank Padel League — Saison 2026',
+      tagline: 'La compétition officielle de padel à Maurice',
       cta1: 'Découvrir la Ligue', cta2: 'Voir les Tournois',
-      stats: { clubs: 'Clubs', courts: 'Terrains', tournaments: 'Tournois', regions: 'Régions' },
+      stats: { clubs: 'Clubs affiliés', courts: 'Terrains', tournaments: 'Tournois', regions: 'Régions' },
     },
     league: {
       title: 'La Ligue', badge: 'Notre Vision',
@@ -86,8 +87,9 @@ const translations = {
     },
     hero: {
       subtitle: 'AfrAsia Bank Padel League — Season 2026',
+      tagline: 'The official padel competition in Mauritius',
       cta1: 'Discover the League', cta2: 'View Tournaments',
-      stats: { clubs: 'Clubs', courts: 'Courts', tournaments: 'Tournaments', regions: 'Regions' },
+      stats: { clubs: 'Affiliated clubs', courts: 'Courts', tournaments: 'Tournaments', regions: 'Regions' },
     },
     league: {
       title: 'The League', badge: 'Our Vision',

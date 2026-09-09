@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { Calendar, Users, ChevronRight, LayoutGrid, Trophy, MapPin } from 'lucide-react';
 import { Layout, GlassCard, CategoryBadge, RegionBadge } from '@/components/Layout';
-import { DotWaveBackground, FloatingParticles } from '@/components/DotWaveBackground';
+import { DotWaveBackground } from '@/components/DotWaveBackground';
 import { useI18n } from '@/hooks/useI18n';
 import { ROUTE_PATHS, MPL_STATS, CATEGORY_CONFIG, REGION_CONFIG } from '@/lib/index';
 import { useSeo } from '@/hooks/useSeo';
@@ -19,7 +20,7 @@ function HeroLogo() {
       style={{ marginBottom: '36px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '18px' }}
     >
       {/* Logo MSRA (fédération de tutelle) + logo principal MPL */}
-      <div className="hero-logo-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '44px', flexWrap: 'wrap', maxWidth: '100%' }}>
+      <div className="hero-logo-row" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: '44px', flexWrap: 'wrap', maxWidth: '100%' }}>
         <img
           src="/images/msra-logo.png"
           alt="Mauritius Squash Rackets Association"
@@ -34,7 +35,7 @@ function HeroLogo() {
       </div>
       <style>{`
         @media (max-width: 480px) {
-          .hero-logo-row { flex-direction: column; gap: 14px; }
+          .hero-logo-row { flex-direction: column; align-items: center; gap: 14px; }
           .hero-logo-divider { display: none; }
         }
       `}</style>
@@ -74,26 +75,60 @@ function HeroSection() {
   const nav = useNavigate();
 
   return (
-    <section style={{
+    <section className="hero-section" style={{
       minHeight: '100vh', display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center',
       padding: '80px 24px 40px',
       position: 'relative',
       overflow: 'hidden',
     }}>
-      {/* Dot-wave — droit */}
-      <DotWaveBackground variant="hero-right" opacity={0.22} animate={true} />
-      {/* Dot-wave — gauche atténué */}
-      <DotWaveBackground variant="hero-left" opacity={0.08} animate={false} />
-      {/* Particules flottantes */}
-      <FloatingParticles count={14} opacity={0.10} />
-      {/* Ligne de scan horizontale — effet sport-tech */}
-      <div style={{
-        position: 'absolute', top: '30%', left: 0, right: 0,
-        height: '1px',
-        background: 'linear-gradient(90deg, transparent 0%, rgba(74,213,105,0.08) 30%, rgba(74,213,105,0.18) 50%, rgba(74,213,105,0.08) 70%, transparent 100%)',
-        pointerEvents: 'none',
-      }} />
+      {/* Fallback mobile : dot-wave simple si la photo officielle est masquée (écran étroit) */}
+      <DotWaveBackground variant="hero-right" opacity={0.18} animate={true} />
+      {/* Fond officiel : joueur + tunnel de points, image unique fournie par le client */}
+      <img
+        src="/images/hero-background.png"
+        alt=""
+        className="hero-bg-image"
+        style={{
+          position: 'absolute', inset: 0,
+          width: '100%', height: '100%',
+          objectFit: 'contain', objectPosition: 'right center',
+          pointerEvents: 'none', zIndex: 0,
+        }}
+      />
+      {/* Tagline verticale gauche — décorative, hors flux i18n (slogan de marque) */}
+      <div className="hero-side-text" style={{
+        position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)',
+        zIndex: 1, pointerEvents: 'none',
+      }}>
+        {['PLAY', 'COMPETE', 'GROW', 'TOGETHER'].map((w) => (
+          <div key={w} style={{ color: 'rgba(255,255,255,0.55)', fontSize: '15px', fontWeight: 600, letterSpacing: '3px', lineHeight: 1.7 }}>{w}</div>
+        ))}
+        <div style={{ width: '28px', height: '2px', background: '#4ad569', margin: '14px 0 12px' }} />
+        <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px', letterSpacing: '1.5px', lineHeight: 1.6 }}>
+          MORE THAN A SPORT<br />A STRONGER MAURITIUS
+        </div>
+      </div>
+      {/* Tagline verticale droite */}
+      <div className="hero-side-text" style={{
+        position: 'absolute', right: '5%', bottom: '20%',
+        zIndex: 1, pointerEvents: 'none', textAlign: 'right',
+      }}>
+        {['MAURITIUS', 'PADEL', 'FOR A BRIGHTER', 'TOMORROW'].map((w) => (
+          <div key={w} style={{ color: 'rgba(255,255,255,0.45)', fontSize: '13px', fontWeight: 600, letterSpacing: '2.5px', lineHeight: 1.6 }}>{w}</div>
+        ))}
+        <div style={{ width: '28px', height: '2px', background: '#4ad569', margin: '10px 0 0', marginLeft: 'auto' }} />
+      </div>
+      <style>{`
+        @media (max-width: 1100px) {
+          .hero-side-text, .hero-bg-image { display: none; }
+        }
+        @media (min-width: 1101px) {
+          .hero-section { align-items: flex-start; padding-left: 9%; }
+        }
+      `}</style>
+
+      <div style={{ position: 'relative', zIndex: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: '820px' }}>
       <HeroLogo />
 
       <motion.h1
@@ -110,34 +145,37 @@ function HeroSection() {
         </span>
       </motion.h1>
 
-      <motion.p
+      <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.7 }}
-        style={{ color: 'rgba(200,200,200,0.85)', fontSize: '18px', marginTop: '20px', textAlign: 'center', maxWidth: '520px', lineHeight: 1.6, letterSpacing: '0.1px' }}
+        style={{ marginTop: '18px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}
       >
-        {t.hero.subtitle}
-      </motion.p>
+        <span style={{ color: 'rgba(220,220,220,0.85)', fontSize: '13px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '2px', textAlign: 'center' }}>
+          {t.hero.tagline}
+        </span>
+        <div style={{ width: '36px', height: '2px', background: '#4ad569', marginTop: '10px' }} />
+      </motion.div>
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.9 }}
-        style={{ display: 'flex', gap: '16px', marginTop: '40px', flexWrap: 'wrap', justifyContent: 'center' }}
+        style={{ display: 'flex', gap: '16px', marginTop: '32px', flexWrap: 'wrap', justifyContent: 'center' }}
       >
         <button
-          onClick={() => nav(ROUTE_PATHS.LEAGUE)}
+          onClick={() => nav(ROUTE_PATHS.CALENDAR)}
           className="mpl-btn-primary"
-          style={{ padding: '14px 32px', fontSize: '15px', borderRadius: '10px' }}
+          style={{ padding: '14px 28px', fontSize: '15px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}
         >
-          {t.hero.cta1}
+          <Calendar size={16} /> {t.hero.cta2} <ChevronRight size={16} />
         </button>
         <button
-          onClick={() => nav(ROUTE_PATHS.CALENDAR)}
+          onClick={() => nav(ROUTE_PATHS.LEAGUE)}
           className="mpl-btn-outline"
-          style={{ padding: '14px 32px', fontSize: '15px', borderRadius: '10px' }}
+          style={{ padding: '14px 28px', fontSize: '15px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}
         >
-          {t.hero.cta2}
+          <Users size={16} /> {t.hero.cta1} <ChevronRight size={16} />
         </button>
       </motion.div>
 
@@ -149,19 +187,21 @@ function HeroSection() {
         style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '16px', marginTop: '64px', width: '100%', maxWidth: '720px' }}
       >
         {[
-          { val: MPL_STATS.clubs,       label: t.hero.stats.clubs },
-          { val: MPL_STATS.courts,      label: t.hero.stats.courts },
-          { val: MPL_STATS.tournaments, label: t.hero.stats.tournaments },
-          { val: MPL_STATS.regions,     label: t.hero.stats.regions },
+          { val: MPL_STATS.clubs,       label: t.hero.stats.clubs,       Icon: Users },
+          { val: MPL_STATS.courts,      label: t.hero.stats.courts,      Icon: LayoutGrid },
+          { val: MPL_STATS.tournaments, label: t.hero.stats.tournaments, Icon: Trophy },
+          { val: MPL_STATS.regions,     label: t.hero.stats.regions,     Icon: MapPin },
         ].map((s, i) => (
           <GlassCard key={i} style={{ padding: '22px 12px', textAlign: 'center', position: 'relative' }}>
             {/* Gold accent top dot */}
             <div style={{ position: 'absolute', top: '-1px', left: '50%', transform: 'translateX(-50%)', width: '4px', height: '4px', borderRadius: '50%', background: '#c9a84c', opacity: 0.8 }} />
+            <s.Icon size={18} color="#4ad569" style={{ marginBottom: '8px' }} />
             <div className="mpl-stat-num" style={{ fontSize: 'clamp(22px,3.5vw,38px)' }}>{s.val}</div>
             <div style={{ color: '#888', fontSize: '12px', marginTop: '6px', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: 600 }}>{s.label}</div>
           </GlassCard>
         ))}
       </motion.div>
+      </div>
     </section>
   );
 }
