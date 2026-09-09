@@ -19,7 +19,7 @@ function HeroLogo() {
       style={{ marginBottom: '36px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '18px' }}
     >
       {/* Logo MSRA (fédération de tutelle) + logo principal MPL */}
-      <div className="hero-logo-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '22px', flexWrap: 'wrap', maxWidth: '100%' }}>
+      <div className="hero-logo-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '44px', flexWrap: 'wrap', maxWidth: '100%' }}>
         <img
           src="/images/msra-logo.png"
           alt="Mauritius Squash Rackets Association"
