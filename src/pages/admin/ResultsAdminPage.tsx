@@ -293,6 +293,26 @@ function newId() {
   return crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
 }
 
+// PostgREST plafonne toute reponse a 1000 lignes quel que soit le .limit()
+// demande -- paginer via .range() pour tout recuperer sur une table qui peut
+// depasser ce plafond (tournament_results a 2300+ lignes).
+async function fetchAllRanged<T>(
+  sb: NonNullable<ReturnType<typeof getSupabaseClient>>,
+  table: string,
+  buildQuery: (q: ReturnType<typeof sb.from>) => ReturnType<typeof sb.from>,
+): Promise<{ data: T[]; error: { message: string } | null }> {
+  const pageSize = 1000;
+  const rows: T[] = [];
+  for (let from = 0; from < 12000; from += pageSize) {
+    const { data, error } = await buildQuery(sb.from(table)).range(from, from + pageSize - 1);
+    if (error) return { data: rows, error };
+    const batch = (data ?? []) as T[];
+    rows.push(...batch);
+    if (batch.length < pageSize) break;
+  }
+  return { data: rows, error: null };
+}
+
 async function withAdminTimeout<T>(promise: PromiseLike<T>, label: string, ms = 25000): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
@@ -678,22 +698,32 @@ function assertRankingDetailsMatch(rows: ComputedRankingRow[]) {
 
 async function fetchPreviousOfficialRanks(sb: NonNullable<ReturnType<typeof getSupabaseClient>>) {
   const previous = new Map<string, number>();
-  let { data, error } = await withAdminTimeout(
-    sb.from('official_rankings').select('player_id,player_name,division,rank,batch_id,created_at').order('created_at', { ascending: false }).limit(5000),
-    'Lecture anciens classements officiels',
-    12000
-  );
-  if (error && isSchemaCacheError(error.message)) {
-    const fallback = await withAdminTimeout(
-      sb.from('official_rankings').select('player_name,division,rank,batch_id,created_at').order('created_at', { ascending: false }).limit(5000),
-      'Lecture anciens classements officiels',
+  // PostgREST plafonne toute reponse a 1000 lignes quel que soit le .limit()
+  // demande -- paginer via .range(), sinon la moitie des joueurs (players
+  // au-dela des 1000 premiers par created_at) n'a jamais de rang precedent
+  // ni de fleche de tendance.
+  const pageSize = 1000;
+  const rows: Record<string, unknown>[] = [];
+  let useFallbackSelect = false;
+  for (let from = 0; from < 12000; from += pageSize) {
+    const select = useFallbackSelect
+      ? 'player_name,division,rank,batch_id,created_at'
+      : 'player_id,player_name,division,rank,batch_id,created_at';
+    const { data, error } = await withAdminTimeout(
+      sb.from('official_rankings').select(select).order('created_at', { ascending: false }).range(from, from + pageSize - 1),
+      `Lecture anciens classements officiels ${from + 1}-${from + pageSize}`,
       12000
     );
-    data = fallback.data;
-    error = fallback.error;
+    if (error && !useFallbackSelect && isSchemaCacheError(error.message)) {
+      useFallbackSelect = true;
+      from -= pageSize; // retry this same page with the fallback select
+      continue;
+    }
+    if (error) throw new Error(`official_rankings: ${error.message}`);
+    const batch = (data ?? []) as Record<string, unknown>[];
+    rows.push(...batch);
+    if (batch.length < pageSize) break;
   }
-  if (error) throw new Error(`official_rankings: ${error.message}`);
-  const rows = (data ?? []) as Record<string, unknown>[];
   const latestBatch = String(rows.find(row => row.batch_id)?.batch_id ?? '');
   const latestCreatedAt = String(rows[0]?.created_at ?? '').slice(0, 16);
   for (const row of rows) {
@@ -708,13 +738,23 @@ async function fetchPreviousOfficialRanks(sb: NonNullable<ReturnType<typeof getS
 }
 
 async function fetchPlayerResolver(sb: NonNullable<ReturnType<typeof getSupabaseClient>>) {
-  const { data, error } = await withAdminTimeout(
-    sb.from('players').select('id,first_name,last_name').limit(5000),
-    'Lecture joueurs',
-    12000
-  );
-  if (error) throw new Error(`players: ${error.message}`);
-  return createPlayerResolver((data ?? []) as Record<string, unknown>[]);
+  // Meme plafond PostgREST a 1000 lignes : sans pagination, la resolution de
+  // player_id ne voyait jamais les joueurs au-dela des 1000 premiers (sur
+  // 1800+), les laissant tous non-resolus a chaque publication.
+  const pageSize = 1000;
+  const rows: Record<string, unknown>[] = [];
+  for (let from = 0; from < 12000; from += pageSize) {
+    const { data, error } = await withAdminTimeout(
+      sb.from('players').select('id,first_name,last_name').range(from, from + pageSize - 1),
+      `Lecture joueurs ${from + 1}-${from + pageSize}`,
+      12000
+    );
+    if (error) throw new Error(`players: ${error.message}`);
+    const batch = (data ?? []) as Record<string, unknown>[];
+    rows.push(...batch);
+    if (batch.length < pageSize) break;
+  }
+  return createPlayerResolver(rows);
 }
 
 async function fetchRollingRankingInputs(sb: NonNullable<ReturnType<typeof getSupabaseClient>>, period: ReturnType<typeof computeRollingPeriod>) {
@@ -737,16 +777,24 @@ async function fetchRollingRankingInputs(sb: NonNullable<ReturnType<typeof getSu
     if (batch.length < pageSize) break;
   }
 
-  const { data: legacyData, error: legacyError } = await withAdminTimeout(
-    sb.from('tournament_results')
-      .select('*')
-      .gte('tournament_date', period.startIso)
-      .lte('tournament_date', period.endIso)
-      .limit(5000),
-    'Lecture resultats recents',
-    12000
-  );
-  if (!legacyError) inputs.push(...((legacyData ?? []) as TResult[]).flatMap(resultToRankingInputs));
+  // Meme plafond PostgREST a 1000 lignes : tournament_results a 2300+ lignes,
+  // donc une partie des resultats "recents" (legacy, hors historical) etait
+  // silencieusement ignoree du calcul Top 8 au-dela de la 1000e ligne.
+  for (let from = 0; from < 12000; from += pageSize) {
+    const { data: legacyData, error: legacyError } = await withAdminTimeout(
+      sb.from('tournament_results')
+        .select('*')
+        .gte('tournament_date', period.startIso)
+        .lte('tournament_date', period.endIso)
+        .range(from, from + pageSize - 1),
+      `Lecture resultats recents ${from + 1}-${from + pageSize}`,
+      12000
+    );
+    if (legacyError) throw new Error(`tournament_results: ${legacyError.message}`);
+    const legacyBatch = (legacyData ?? []) as TResult[];
+    inputs.push(...legacyBatch.flatMap(resultToRankingInputs));
+    if (legacyBatch.length < pageSize) break;
+  }
   return dedupeRankingInputs(inputs);
 }
 
@@ -811,7 +859,7 @@ async function replaceRankingsFromComputed(sb: NonNullable<ReturnType<typeof get
     let tryNext = false;
     for (let i = 0; i < payload.length; i += 250) {
       const { error } = await withAdminTimeout(
-        sb.from('rankings').insert(payload.slice(i, i + 250)),
+        sb.from('rankings').upsert(payload.slice(i, i + 250), { onConflict: 'id' }),
         `Publication rankings ${i + 1}-${Math.min(i + 250, payload.length)}`,
         25000
       );
@@ -886,7 +934,7 @@ async function publishOfficialRankingsFromResults(onProgress?: (message: string)
     let tryNext = false;
     for (let i = 0; i < payload.length; i += 250) {
       const { error } = await withAdminTimeout(
-        sb.from('official_rankings').insert(payload.slice(i, i + 250)),
+        sb.from('official_rankings').upsert(payload.slice(i, i + 250), { onConflict: 'id' }),
         `Publication official_rankings ${i + 1}-${Math.min(i + 250, payload.length)}`,
         25000
       );
@@ -940,7 +988,7 @@ async function publishOfficialRankingsFromResults(onProgress?: (message: string)
     let tryNext = false;
     for (let i = 0; i < payload.length; i += 500) {
       const { error } = await withAdminTimeout(
-        sb.from('official_ranking_details').insert(payload.slice(i, i + 500)),
+        sb.from('official_ranking_details').upsert(payload.slice(i, i + 500), { onConflict: 'id' }),
         `Publication details ${i + 1}-${Math.min(i + 500, payload.length)}`,
         25000
       );
@@ -1629,7 +1677,7 @@ export default function ResultsAdminPage() {
 
       try {
         const [rd, hd, td] = await Promise.all([
-          sb.from('tournament_results').select('*').limit(2000),
+          fetchAllRanged<TResult>(sb, 'tournament_results', q => q.select('*')),
           fetchHistoricalAdminResults(sb).then(data => ({ data, error: null })).catch(error => ({ data: [] as TResult[], error })),
           sb.from('tournaments').select('*').limit(1000),
         ]);
