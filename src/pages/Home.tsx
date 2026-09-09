@@ -97,13 +97,14 @@ function HeroSection() {
           MORE THAN A SPORT<br />A STRONGER MAURITIUS
         </div>
       </div>
-      {/* Tagline verticale droite */}
+      {/* Tagline verticale droite — descendue sous le tamis de la raquette,
+          avec ombre de texte pour rester lisible quel que soit le fond */}
       <div className="hero-side-text" style={{
-        position: 'absolute', right: '5%', bottom: '20%',
+        position: 'absolute', right: '3%', bottom: '6%',
         zIndex: 1, pointerEvents: 'none', textAlign: 'right',
       }}>
         {['MAURITIUS', 'PADEL', 'FOR A BRIGHTER', 'TOMORROW'].map((w) => (
-          <div key={w} style={{ color: 'rgba(255,255,255,0.45)', fontSize: '13px', fontWeight: 600, letterSpacing: '2.5px', lineHeight: 1.6 }}>{w}</div>
+          <div key={w} style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', fontWeight: 600, letterSpacing: '2.5px', lineHeight: 1.6, textShadow: '0 2px 10px rgba(0,0,0,0.9)' }}>{w}</div>
         ))}
         <div style={{ width: '28px', height: '2px', background: '#4ad569', margin: '10px 0 0', marginLeft: 'auto' }} />
       </div>
@@ -112,11 +113,14 @@ function HeroSection() {
           .hero-side-text, .hero-bg-image { display: none; }
         }
         @media (min-width: 1101px) {
-          .hero-section { align-items: flex-start; padding-left: 9%; }
+          .hero-section { align-items: flex-start; padding-left: 10%; }
+        }
+        @media (min-aspect-ratio: 207/100) {
+          .hero-bg-image { object-fit: cover !important; }
         }
       `}</style>
 
-      <div style={{ position: 'relative', zIndex: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: '820px' }}>
+      <div style={{ position: 'relative', zIndex: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: '740px' }}>
       <HeroLogo />
 
       <motion.h1
