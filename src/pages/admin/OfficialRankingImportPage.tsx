@@ -451,7 +451,7 @@ async function replaceRankingsTable(rows: OfficialRankingRow[], onProgress?: (me
     for (let i = 0; i < payload.length; i += BATCH) {
       onProgress?.(`Insertion rankings ${i + 1}-${Math.min(i + BATCH, payload.length)} / ${payload.length}...`);
       const { error } = await withTimeout(
-        sb.from('rankings').insert(payload.slice(i, i + BATCH)),
+        sb.from('rankings').upsert(payload.slice(i, i + BATCH), { onConflict: 'id' }),
         `Insertion rankings ${i + 1}-${Math.min(i + BATCH, payload.length)}`
       );
 
@@ -589,7 +589,7 @@ async function insertOfficialRankingRows(importId: string | null, rows: Official
 
     for (let i = 0; i < payload.length; i += BATCH) {
       const { error } = await withTimeout(
-        sb.from('official_rankings').insert(payload.slice(i, i + BATCH)),
+        sb.from('official_rankings').upsert(payload.slice(i, i + BATCH), { onConflict: 'id' }),
         `Insertion official_rankings ${i + 1}-${Math.min(i + BATCH, payload.length)}`
       );
 
@@ -642,7 +642,7 @@ async function insertOfficialRankingDetails(importId: string | null, rows: Offic
   const BATCH = 500;
   for (let i = 0; i < payload.length; i += BATCH) {
     const { error } = await withTimeout(
-      sb.from('official_ranking_details').insert(payload.slice(i, i + BATCH)),
+      sb.from('official_ranking_details').upsert(payload.slice(i, i + BATCH), { onConflict: 'id' }),
       `Insertion official_ranking_details ${i + 1}-${Math.min(i + BATCH, payload.length)}`
     );
     if (error) throw new Error(`official_ranking_details: ${error.message}`);

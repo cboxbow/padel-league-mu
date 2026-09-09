@@ -272,6 +272,25 @@ async function fetchHistoricalPresenceRows(
   return rows;
 }
 
+async function fetchLegacyResultPresenceRows(
+  supabase: NonNullable<ReturnType<typeof getSupabaseClient>>
+): Promise<ResultPresenceRow[]> {
+  const rows: ResultPresenceRow[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .from('tournament_results')
+      .select('tournament_id,tournament_date,category,division,club_name,rank')
+      .range(from, from + 999);
+    if (error) {
+      console.warn('[useTournaments] tournament_results unavailable:', error);
+      break;
+    }
+    rows.push(...((data ?? []) as ResultPresenceRow[]));
+    if (!data || data.length < 1000) break;
+  }
+  return rows;
+}
+
 export function useTournaments(filters?: {
   region?: string; category?: string; division?: string;
   status?: string; month?: string; club_id?: string;
@@ -339,13 +358,9 @@ export function useTournaments(filters?: {
           const countByKey = new Map<string, number>();
           const countByLooseKey = new Map<string, number>();
 
-          const { data: legacyData } = await safeSupabaseQuery(() =>
-            supabase!.from('tournament_results')
-              .select('tournament_id,tournament_date,category,division,club_name,rank')
-              .limit(10000)
-          );
+          const legacyData = await fetchLegacyResultPresenceRows(supabase!);
 
-          for (const row of ((legacyData ?? []) as ResultPresenceRow[])) {
+          for (const row of legacyData) {
             const rank = resultPresenceRank(row);
             if (row.tournament_id) {
               const previous = countById.get(row.tournament_id) ?? 0;

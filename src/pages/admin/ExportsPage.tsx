@@ -36,6 +36,23 @@ async function sbQuery<T>(
   }
 }
 
+// ── sbQueryAllRanged : pagine par .range() -- PostgREST plafonne toute
+// réponse à 1000 lignes quel que soit le .limit() demandé ──────────────────
+async function sbQueryAllRanged<T>(
+  buildQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+  label = ''
+): Promise<{ rows: T[]; error: string | null }> {
+  const pageSize = 1000;
+  const rows: T[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const { rows: page, error } = await sbQuery<T>(() => buildQuery(from, from + pageSize - 1), label);
+    if (error) return { rows, error };
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return { rows, error: null };
+}
+
 // ── Découverte des tables Supabase disponibles ────────────────────────────────
 async function discoverTables(): Promise<{ table: string; count: number }[]> {
   const sb = getSupabaseClient();
@@ -310,16 +327,16 @@ async function fetchData(target: ExportTarget): Promise<FetchResult> {
   if (target === 'results') {
     if (sbOk) {
       // 1. Essai principal: tournament_results
-      const { rows: r1, error: e1 } = await sbQuery<Record<string, unknown>>(
-        () => sb!.from('tournament_results').select('*').order('tournament_date', { ascending: false }).limit(2000),
+      const { rows: r1, error: e1 } = await sbQueryAllRanged<Record<string, unknown>>(
+        (from, to) => sb!.from('tournament_results').select('*').order('tournament_date', { ascending: false }).range(from, to),
         'tournament_results'
       );
       if (r1.length) return { rows: normalizeExportTournamentRows(r1), source: 'supabase', sourceLabel: `Supabase tournament_results (${r1.length} résultats)`, error: null };
       console.warn('[Export] tournament_results error:', e1);
 
       // 2. Fallback: matches (même si vide, essayer)
-      const { rows: r2, error: e2 } = await sbQuery<Record<string, unknown>>(
-        () => sb!.from('matches').select('*').order('created_at', { ascending: false }).limit(2000),
+      const { rows: r2, error: e2 } = await sbQueryAllRanged<Record<string, unknown>>(
+        (from, to) => sb!.from('matches').select('*').order('created_at', { ascending: false }).range(from, to),
         'matches'
       );
       if (r2.length) return { rows: normalizeExportTournamentRows(r2.map(flattenRow)), source: 'supabase', sourceLabel: `Supabase matches (${r2.length} résultats)`, error: null };
@@ -342,15 +359,15 @@ async function fetchData(target: ExportTarget): Promise<FetchResult> {
   // → select('*') simple, pas de join
   if (target === 'registrations') {
     if (sbOk) {
-      const { rows: r1 } = await sbQuery<Record<string, unknown>>(
-        () => sb!.from('registrations').select('*').order('registered_at', { ascending: false }).limit(2000),
+      const { rows: r1 } = await sbQueryAllRanged<Record<string, unknown>>(
+        (from, to) => sb!.from('registrations').select('*').order('registered_at', { ascending: false }).range(from, to),
         'registrations'
       );
       if (r1.length) return { rows: r1, source: 'supabase', sourceLabel: `Supabase registrations (${r1.length} inscriptions)`, error: null };
 
       // Essai alternatif
-      const { rows: r2 } = await sbQuery<Record<string, unknown>>(
-        () => sb!.from('tournament_registrations').select('*').limit(2000),
+      const { rows: r2 } = await sbQueryAllRanged<Record<string, unknown>>(
+        (from, to) => sb!.from('tournament_registrations').select('*').range(from, to),
         'tournament_registrations'
       );
       if (r2.length) return { rows: r2, source: 'supabase', sourceLabel: `Supabase tournament_registrations (${r2.length} inscriptions)`, error: null };

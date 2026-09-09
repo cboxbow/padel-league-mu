@@ -18,12 +18,18 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 
 async function main() {
   console.log(`Lots is_current=true actuellement (hors ${KEEP_BATCH_ID})...`);
-  const { data: staleRows, error: readErr } = await supabase
-    .from('official_rankings')
-    .select('id,batch_id')
-    .eq('is_current', true)
-    .neq('batch_id', KEEP_BATCH_ID);
-  if (readErr) throw new Error(`read: ${readErr.message}`);
+  const staleRows = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error: readErr } = await supabase
+      .from('official_rankings')
+      .select('id,batch_id')
+      .eq('is_current', true)
+      .neq('batch_id', KEEP_BATCH_ID)
+      .range(from, from + 999);
+    if (readErr) throw new Error(`read: ${readErr.message}`);
+    staleRows.push(...data);
+    if (data.length < 1000) break;
+  }
 
   const staleBatches = [...new Set(staleRows.map((r) => r.batch_id))];
   console.log(`Lots perimes trouves: ${staleBatches.join(', ') || '(aucun)'} (${staleRows.length} lignes)`);

@@ -1017,7 +1017,7 @@ function PlayersAdminPage() {
 
       for (let index = 0; index < payload.length; index += 400) {
         const batch = payload.slice(index, index + 400);
-        const { error: insertError } = await sb.from('players').insert(batch);
+        const { error: insertError } = await sb.from('players').upsert(batch, { onConflict: 'id' });
         if (insertError) throw new Error(insertError.message);
       }
 

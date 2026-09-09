@@ -694,7 +694,7 @@ export default function RankingsAdminPage() {
         updated_at:         new Date().toISOString(),
       };
       const { error } = isNew
-        ? await sb.from('rankings').insert({ id: r.id, ...payload })
+        ? await sb.from('rankings').upsert({ id: r.id, ...payload }, { onConflict: 'id' })
         : await sb.from('rankings').update(payload).eq('id', r.id);
 
       if (error) {
@@ -771,7 +771,7 @@ export default function RankingsAdminPage() {
           season:             r.season ?? 2026,
           updated_at:         new Date().toISOString(),
         }));
-        const { error } = await sb.from('rankings').insert(batch);
+        const { error } = await sb.from('rankings').upsert(batch, { onConflict: 'id' });
         if (error) { flash(`❌ Insert batch ${i / BATCH + 1} : ${error.message}`, 'err'); setSaving(false); return; }
       }
       flash(`✅ ${withIds.length} joueurs importés dans Supabase`, 'ok');
