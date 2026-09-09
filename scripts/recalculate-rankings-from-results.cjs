@@ -585,22 +585,38 @@ async function main() {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  console.log('1/5 Correction tournoi Women Urban GB Oct 2025...');
-  const { data: badRows, error: readBadError } = await supabase
-    .from('historical_tournament_results')
-    .select('id,event_name,division,category,player1_name,player2_name,points')
-    .ilike('event_name', '%URBAN GB%OCT%25%WOME%');
-  if (readBadError) throw readBadError;
-
-  const idsToFix = (badRows ?? []).filter((row) => row.division !== 'women').map((row) => row.id);
-  if (idsToFix.length) {
+  console.log('1/5 Correction division vs sheet_name (import mal etiquete)...');
+  // Le nom de feuille source (sheet_name) fait foi : au moins deux imports
+  // Excel ont produit des lignes ou la colonne division ne correspond pas au
+  // sexe indique par la feuille elle-meme (ex: "M250 - URBAN GB - APR 25 -
+  // WOME" -> division="men" au lieu de "women"). On scanne TOUTE la table
+  // plutot que de corriger un seul evenement connu en dur, pour attraper
+  // aussi les futurs cas du meme genre sans intervention manuelle.
+  const allSheetRows = await fetchAll(
+    supabase,
+    'historical_tournament_results',
+    'id,sheet_name,division',
+  );
+  const idsToFix = [];
+  for (const row of allSheetRows) {
+    const sheet = String(row.sheet_name ?? '').toUpperCase();
+    const div = String(row.division ?? '').toLowerCase();
+    const sheetSaysMixed = /MIX/.test(sheet);
+    const sheetSaysWomen = !sheetSaysMixed && /WOME/.test(sheet);
+    const sheetSaysMen = !sheetSaysMixed && !sheetSaysWomen && /\bMEN\b/.test(sheet);
+    const expected = sheetSaysMixed ? 'mixed' : sheetSaysWomen ? 'women' : sheetSaysMen ? 'men' : null;
+    if (expected && div && expected !== div) idsToFix.push({ id: row.id, expected });
+  }
+  for (const division of ['men', 'women', 'mixed']) {
+    const ids = idsToFix.filter((row) => row.expected === division).map((row) => row.id);
+    if (!ids.length) continue;
     const { error } = await supabase
       .from('historical_tournament_results')
-      .update({ division: 'women' })
-      .in('id', idsToFix);
+      .update({ division })
+      .in('id', ids);
     if (error) throw error;
   }
-  console.log(`   ${idsToFix.length} lignes corrigees en women.`);
+  console.log(`   ${idsToFix.length} lignes corrigees.`);
 
   const period = computeFixedMauritiusPeriod();
   console.log(`2/5 Lecture resultats ${period.startIso} -> ${period.endIso}...`);
