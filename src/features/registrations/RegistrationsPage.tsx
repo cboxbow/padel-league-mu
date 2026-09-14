@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Users, Plus, Upload, Search, Check, X, RefreshCw,
-  ChevronDown, AlertTriangle, CheckCircle2, Download, Trash2, Eye,
+  ChevronDown, AlertTriangle, CheckCircle2, Download, Trash2, Eye, UserMinus,
 } from 'lucide-react';
 import { GlassCard } from '@/components/Layout';
 import { getSupabaseClient, isSupabaseConnected } from '@/lib/supabase';
@@ -837,6 +837,61 @@ export default function RegistrationsPage() {
     await loadAllPlayerRequests();
   }, [demo, supabase, selectedTournId, loadPlayerRequests, loadAllPlayerRequests]);
 
+  // ── Desistement d'une paire deja approuvee ──────────────────────────────────
+  // Retire vraiment l'inscription (au lieu d'un simple flag "withdrawn" que
+  // rien d'autre dans l'app ne filtre pour l'instant) : la paire disparait
+  // immediatement des compteurs, de la liste publique et des brackets.
+  const handleWithdrawRequest = useCallback(async (request: PlayerRegistrationRequest) => {
+    if (!confirm(`Confirmer le desistement de ${request.player1_name} / ${request.player2_name} ?`)) return;
+
+    const targetTournamentId = request.tournament_id ?? selectedTournId;
+    const requestPairKey = pairKey(request.player1_name, request.player2_name);
+    const matchingRegs = registrations.filter(
+      r => pairKey(r.player1_name, r.player2_name) === requestPairKey
+    );
+
+    if (demo || !supabase) {
+      setRegistrations(prev => prev.filter(r => pairKey(r.player1_name, r.player2_name) !== requestPairKey));
+      setPlayerRequests(prev => prev.map(r => r.id === request.id ? { ...r, status: 'withdrawn' } : r));
+      setRequestMsg({ type: 'success', text: 'Desistement enregistre en mode demo.' });
+      return;
+    }
+
+    if (matchingRegs.length) {
+      const { error: deleteError } = await supabase
+        .from('registrations')
+        .delete()
+        .in('id', matchingRegs.map(r => r.id));
+      if (deleteError) {
+        setRequestMsg({ type: 'error', text: `Desistement impossible: ${deleteError.message}` });
+        return;
+      }
+    }
+
+    let { error: updateError } = await supabase
+      .from('player_registration_requests')
+      .update({ status: 'withdrawn' })
+      .eq('id', request.id);
+    if (updateError?.code === '23514') {
+      // Contrainte check existante sur la colonne status ne connait pas
+      // encore "withdrawn" (migration SQL pas encore appliquee) -> on
+      // retombe sur "rejected" (deja autorise) en gardant la trace du
+      // desistement dans admin_note pour ne pas le confondre avec un refus.
+      ({ error: updateError } = await supabase
+        .from('player_registration_requests')
+        .update({ status: 'rejected', admin_note: 'Desistement (paire retiree apres approbation)' })
+        .eq('id', request.id));
+    }
+    if (updateError) {
+      setRequestMsg({ type: 'warn', text: `Inscription retiree, mais statut demande non mis a jour: ${updateError.message}` });
+    } else {
+      setRequestMsg({ type: 'success', text: 'Paire retiree suite au desistement.' });
+    }
+    await loadRegistrations(targetTournamentId);
+    await loadPlayerRequests(targetTournamentId);
+    await loadAllPlayerRequests();
+  }, [demo, supabase, registrations, selectedTournId, loadRegistrations, loadPlayerRequests, loadAllPlayerRequests]);
+
   // ── CSV parsing ───────────────────────────────────────────────────────────
   const handleFileRead = useCallback((file: File) => {
     setCsvMsg(null);
@@ -1146,7 +1201,8 @@ export default function RegistrationsPage() {
           <div style={{ display: 'grid', gap: 8, maxHeight: 190, overflowY: 'auto', paddingRight: 2 }}>
             {playerRequests.map(request => {
               const isPending = (request.status ?? 'pending') === 'pending';
-              const statusColor = isPending ? T.warn : request.status === 'approved' ? T.accent : T.error;
+              const isApproved = request.status === 'approved';
+              const statusColor = isPending ? T.warn : isApproved ? T.accent : request.status === 'withdrawn' ? T.muted : T.error;
               const alreadyRegistered = registrations.some(r => pairKey(r.player1_name, r.player2_name) === pairKey(request.player1_name, request.player2_name));
               return (
                 <div
@@ -1177,12 +1233,20 @@ export default function RegistrationsPage() {
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                    <Btn onClick={() => handleRejectRequest(request)} variant="danger" size="sm" disabled={!isPending}>
-                      <X size={12} /> Refuser
-                    </Btn>
-                    <Btn onClick={() => handleApproveRequest(request)} variant="accent" size="sm" disabled={!isPending}>
-                      <Check size={12} /> {alreadyRegistered ? 'Marquer OK' : 'Approuver'}
-                    </Btn>
+                    {isApproved ? (
+                      <Btn onClick={() => handleWithdrawRequest(request)} variant="warn" size="sm">
+                        <UserMinus size={12} /> Se désiste
+                      </Btn>
+                    ) : (
+                      <>
+                        <Btn onClick={() => handleRejectRequest(request)} variant="danger" size="sm" disabled={!isPending}>
+                          <X size={12} /> Refuser
+                        </Btn>
+                        <Btn onClick={() => handleApproveRequest(request)} variant="accent" size="sm" disabled={!isPending}>
+                          <Check size={12} /> {alreadyRegistered ? 'Marquer OK' : 'Approuver'}
+                        </Btn>
+                      </>
+                    )}
                   </div>
                 </div>
               );
