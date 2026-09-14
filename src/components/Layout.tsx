@@ -144,6 +144,10 @@ export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  // Entre 820px et 1400px, le header (limité à 1440px) n'a pas la place pour
+  // les 3 logos (MPL+MSRA+AfrAsia) ET tous les liens de nav sans se chevaucher
+  // -> on masque MSRA+AfrAsia (comme sur mobile) et on garde juste le logo MPL.
+  const [isCompact, setIsCompact] = useState(false);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40);
@@ -160,6 +164,14 @@ export function Navbar() {
     syncMobile();
     mediaQuery.addEventListener('change', syncMobile);
     return () => mediaQuery.removeEventListener('change', syncMobile);
+  }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 1400px)');
+    const syncCompact = () => setIsCompact(mediaQuery.matches);
+    syncCompact();
+    mediaQuery.addEventListener('change', syncCompact);
+    return () => mediaQuery.removeEventListener('change', syncCompact);
   }, []);
 
   const links = [
@@ -193,7 +205,7 @@ export function Navbar() {
       overflowX: 'hidden' as const,
     }}>
       <div style={{
-        maxWidth: '1280px',
+        maxWidth: '1440px',
         margin: '0 auto',
         padding: isMobile ? '0 14px' : '0 24px',
         height: isMobile ? '58px' : '64px',
@@ -202,19 +214,30 @@ export function Navbar() {
         justifyContent: 'space-between',
         gap: isMobile ? '10px' : '18px',
       }}>
-        {/* Logo MPL + badge AfrAsia */}
-        <Link to={ROUTE_PATHS.HOME} style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <MPLLogo size={isMobile ? 28 : 36} />
+        {/* Logo MPL + MSRA + badge AfrAsia */}
+        <Link to={ROUTE_PATHS.HOME} style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: isMobile ? '10px' : '14px' }}>
+          <MPLLogo size={isMobile ? 32 : 44} />
+          {/* Séparateur + logo MSRA (fédération de tutelle) */}
+          <div style={{
+            display: (isMobile || isCompact) ? 'none' : 'flex', alignItems: 'center', gap: '10px', flexShrink: 0,
+            borderLeft: '1px solid rgba(255,255,255,0.1)', paddingLeft: '12px',
+          }}>
+            <img
+              src="/images/msra-logo.png"
+              alt="Mauritius Squash Rackets Association"
+              style={{ height: '37px', width: '79px', flexShrink: 0, objectFit: 'contain' }}
+            />
+          </div>
           {/* Séparateur + logo AfrAsia Bank Padel League */}
           <div style={{
-            display: isMobile ? 'none' : 'flex', alignItems: 'center', gap: '8px',
+            display: (isMobile || isCompact) ? 'none' : 'flex', alignItems: 'center', gap: '8px', flexShrink: 0,
             borderLeft: '1px solid rgba(255,255,255,0.1)', paddingLeft: '12px',
           }}>
             <img
               src="/logos/afrasia-padel-league.png"
               alt="AfrAsia Bank Padel League"
               style={{
-                height: '22px', width: 'auto', objectFit: 'contain',
+                height: '26px', width: 'auto', flexShrink: 0, objectFit: 'contain',
                 filter: 'brightness(1.1)',
                 opacity: 0.9,
               }}
