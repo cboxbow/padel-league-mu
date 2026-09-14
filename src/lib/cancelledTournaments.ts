@@ -23,30 +23,29 @@ type CancelledTournamentRule = {
 };
 
 export const CANCELLED_TOURNAMENTS_2026: CancelledTournamentRule[] = [
-  // Calendar Update 2026: active events stay visible; only obsolete/replaced rows are hidden.
+  // Official CALENDRIER MPL 2026 DATABASE red rows: tournaments that did not take place.
+  { date: '2026-02-14', club: 'Mont Choisy Golf', category: 'M50', divisions: ['men', 'women'] },
   { date: '2026-03-01', club: 'I Padel by RM Hennessy', category: 'JUNIOR', divisions: ['junior'] },
+  { date: '2026-03-14', club: 'Oxygen Moka', category: 'M100', divisions: ['men', 'women'] },
   { date: '2026-04-04', club: 'Club Med Albion', category: 'MIXED', divisions: ['mixed'] },
+  { date: '2026-04-11', club: 'SPARC Cascavelle', category: 'M50', divisions: ['men', 'women'] },
   { date: '2026-04-25', club: 'Club Med Albion', category: 'M25', divisions: ['men'] },
   { date: '2026-04-25', club: 'RM Club Tamarin', category: 'JUNIOR', divisions: ['junior'] },
   { date: '2026-05-16', club: 'Moka Rangers', category: 'M50', divisions: ['men', 'women'] },
   { date: '2026-05-30', club: 'Club Med Albion', category: 'M50', divisions: ['men'] },
   { date: '2026-05-30', club: 'Moka Rangers', category: 'JUNIOR', divisions: ['junior'] },
-  { date: '2026-06-06', club: 'Cana Beau Plan', category: 'JUNIOR', divisions: ['junior'] },
+  { date: '2026-06-06', club: 'Cana Beau Plan', category: 'U11', divisions: ['junior'] },
+  { date: '2026-06-06', club: 'Cana Beau Plan', category: 'U13', divisions: ['junior'] },
   { date: '2026-06-07', club: 'Studio by RM Azuri', category: 'M100', divisions: ['men'] },
   { date: '2026-06-20', club: 'Moka Rangers', category: 'M250', divisions: ['men', 'women'] },
+  { date: '2026-06-20', club: 'Oxygen Moka', category: 'M50', divisions: ['men'] },
   { date: '2026-06-27', club: 'Club Med Albion', category: 'JUNIOR', divisions: ['junior'] },
   { date: '2026-07-25', club: 'Moka Rangers', category: 'M25', divisions: ['men', 'women'] },
   { date: '2026-07-25', club: 'Urban Sport Black River', category: 'JUNIOR', divisions: ['junior'] },
   { date: '2026-08-08', club: 'I Padel by RM Port Chambly', category: 'JUNIOR', divisions: ['junior'] },
   { date: '2026-08-15', club: 'Moka Rangers', category: 'MIXED', divisions: ['mixed'] },
+  { date: '2026-08-22', club: 'Oxygen Moka', category: 'M250', divisions: ['men', 'women'] },
   { date: '2026-08-29', club: 'Club Med Albion', category: 'M25', divisions: ['men', 'women'] },
-  { date: '2026-09-26', club: 'Club Med Albion', category: 'M50', divisions: ['men', 'women'] },
-  { date: '2026-10-03', club: 'Terres Brunes Sports & Leisure', category: 'M250', divisions: ['men', 'women'] },
-  { date: '2026-10-17', club: 'Urban Sport Grand Baie', category: 'JUNIOR', divisions: ['junior'] },
-  { date: '2026-10-31', club: 'Club Med Albion', category: 'M100', divisions: ['men', 'women'] },
-  { date: '2026-11-07', club: 'Labourdonnais Mapou', category: 'JUNIOR', divisions: ['junior'] },
-  { date: '2026-12-05', club: 'Studio by RM Azuri', category: 'JUNIOR', divisions: ['junior'] },
-  { date: '2026-12-26', club: 'Club Med Albion', category: 'M25', divisions: ['men', 'women'] },
 ];
 
 function clean(value: unknown): string {
@@ -87,7 +86,9 @@ function normalizeClub(value: unknown): string {
 
 function normalizeCategory(value: unknown, fallbackText?: unknown): string {
   const text = norm(`${clean(value)} ${clean(fallbackText)}`);
-  if (text.includes('JUNIOR') || /\bU1[135]\b/.test(text) || /\bU1[024]\b/.test(text)) return 'JUNIOR';
+  const juniorMatch = text.match(/\bU1[135]\b/);
+  if (juniorMatch) return juniorMatch[0];
+  if (text.includes('JUNIOR') || /\bU1[024]\b/.test(text)) return 'JUNIOR';
   if (text.includes('MIXED') || text.includes('MIXTE')) return 'MIXED';
   const match = text.match(/\bM(25|50|100|250|500|1000)\b/);
   return match ? `M${match[1]}` : norm(value);
@@ -118,7 +119,9 @@ export function isCancelledTournament(tournament: TournamentLike): boolean {
 
   return CANCELLED_TOURNAMENTS_2026.some(rule => {
     if (rule.date !== date) return false;
-    if (normalizeCategory(rule.category) !== category) return false;
+    const ruleCategory = normalizeCategory(rule.category);
+    const isJuniorCategory = category === 'U11' || category === 'U13' || category === 'U15';
+    if (ruleCategory !== category && !(ruleCategory === 'JUNIOR' && (isJuniorCategory || division === 'junior'))) return false;
     if (rule.divisions?.length && division && !rule.divisions.includes(division)) return false;
     const ruleClub = normalizeClub(rule.club);
     return club === ruleClub || club.includes(ruleClub) || ruleClub.includes(club);
