@@ -67,9 +67,25 @@ async function main() {
     .map(row => row.id)
     .filter(id => /^(t|j)/.test(id) && !keepIds.has(id));
 
+  const staleResultCounts = {};
+  for (let index = 0; index < staleIds.length; index += 100) {
+    const chunk = staleIds.slice(index, index + 100);
+    const { data, error } = await supabase
+      .from('tournament_results')
+      .select('tournament_id')
+      .in('tournament_id', chunk);
+    if (error) throw error;
+    for (const row of data || []) {
+      staleResultCounts[row.tournament_id] = (staleResultCounts[row.tournament_id] || 0) + 1;
+    }
+  }
+
+  const deletableStaleIds = staleIds.filter(id => !staleResultCounts[id]);
+  const protectedStaleIds = staleIds.filter(id => staleResultCounts[id]);
+
   if (deleteStale) {
-    for (let index = 0; index < staleIds.length; index += 100) {
-      const chunk = staleIds.slice(index, index + 100);
+    for (let index = 0; index < deletableStaleIds.length; index += 100) {
+      const chunk = deletableStaleIds.slice(index, index + 100);
       const { error } = await supabase.from('tournaments').delete().in('id', chunk);
       if (error) throw error;
     }
@@ -79,7 +95,8 @@ async function main() {
   console.log(JSON.stringify({
     upserted: tournaments.length,
     staleFound: staleIds.length,
-    deleted: deleteStale ? staleIds.length : 0,
+    deleted: deleteStale ? deletableStaleIds.length : 0,
+    protectedWithResults: protectedStaleIds.map(id => ({ id, results: staleResultCounts[id] })),
     october: october.map(t => ({ id: t.id, date: t.date, name: t.name, status: t.status })),
   }, null, 2));
 }

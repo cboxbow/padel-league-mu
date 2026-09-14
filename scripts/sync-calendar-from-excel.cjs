@@ -9,6 +9,7 @@ const outputTs = path.resolve('src/data/mpl2026.ts');
 const outputSql = path.resolve('public/sync_calendar_mpl2026_official.sql');
 const today = '2026-07-31';
 const CATEGORY_SHEETS = ['M25', 'M50', 'M100', 'M250', 'M500', 'M1000', 'MIXED', 'JUNIOR'];
+const OFFICIAL_SHEET = 'DATABASE';
 
 const clubMap = {
   CANA: { id: 'c01', name: 'Caña Beau Plan', slug: 'cana-beau-plan', region: 'Nord', city: 'Beau Plan', courts: 5, contact: 'Mathieu Vallet', phone: '+230 5979 2962' },
@@ -34,6 +35,30 @@ const clubMap = {
 
 const regionMap = { NORD: 'Nord', OUEST: 'Ouest', CENTRE: 'Centre', EST: 'Est', SUD: 'Sud' };
 const maxTeams = { M25: 16, M50: 24, M100: 32, M250: 32, M500: 48, M1000: 48, MIXED: 24, U11: 12, U13: 16, U15: 16 };
+const cancelledTournamentRules = [
+  { date: '2026-02-14', club: 'Mont Choisy Golf', category: 'M50', divisions: ['men', 'women'] },
+  { date: '2026-03-01', club: 'I Padel by RM Hennessy', category: 'JUNIOR', divisions: ['junior'] },
+  { date: '2026-03-14', club: 'Oxygen Moka', category: 'M100', divisions: ['men', 'women'] },
+  { date: '2026-04-04', club: 'Club Med Albion', category: 'MIXED', divisions: ['mixed'] },
+  { date: '2026-04-11', club: 'SPARC Cascavelle', category: 'M50', divisions: ['men', 'women'] },
+  { date: '2026-04-25', club: 'Club Med Albion', category: 'M25', divisions: ['men'] },
+  { date: '2026-04-25', club: 'RM Club Tamarin', category: 'JUNIOR', divisions: ['junior'] },
+  { date: '2026-05-16', club: 'Moka Rangers', category: 'M50', divisions: ['men', 'women'] },
+  { date: '2026-05-30', club: 'Club Med Albion', category: 'M50', divisions: ['men'] },
+  { date: '2026-05-30', club: 'Moka Rangers', category: 'JUNIOR', divisions: ['junior'] },
+  { date: '2026-06-06', club: 'Caña Beau Plan', category: 'U11', divisions: ['junior'] },
+  { date: '2026-06-06', club: 'Caña Beau Plan', category: 'U13', divisions: ['junior'] },
+  { date: '2026-06-07', club: 'Studio by RM Azuri', category: 'M100', divisions: ['men'] },
+  { date: '2026-06-20', club: 'Moka Rangers', category: 'M250', divisions: ['men', 'women'] },
+  { date: '2026-06-20', club: 'Oxygen Moka', category: 'M50', divisions: ['men'] },
+  { date: '2026-06-27', club: 'Club Med Albion', category: 'JUNIOR', divisions: ['junior'] },
+  { date: '2026-07-25', club: 'Moka Rangers', category: 'M25', divisions: ['men', 'women'] },
+  { date: '2026-07-25', club: 'Urban Sport Black River', category: 'JUNIOR', divisions: ['junior'] },
+  { date: '2026-08-08', club: 'I Padel by RM Port Chambly', category: 'JUNIOR', divisions: ['junior'] },
+  { date: '2026-08-15', club: 'Moka Rangers', category: 'MIXED', divisions: ['mixed'] },
+  { date: '2026-08-22', club: 'Oxygen Moka', category: 'M250', divisions: ['men', 'women'] },
+  { date: '2026-08-29', club: 'Club Med Albion', category: 'M25', divisions: ['men', 'women'] },
+];
 
 function parseDisplayedDate(value) {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
@@ -72,6 +97,30 @@ function tournamentKey(tournament) {
     tournament.category,
     tournament.division,
   ].map(value => String(value).trim().toUpperCase()).join('|');
+}
+
+function norm(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/&/g, ' AND ')
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim();
+}
+
+function isCancelledTournament(tournament) {
+  const club = norm(tournament.club_name);
+  const category = norm(tournament.category);
+  const isJuniorCategory = ['U11', 'U13', 'U15'].includes(category);
+
+  return cancelledTournamentRules.some(rule => {
+    const ruleCategory = norm(rule.category);
+    if (rule.date !== tournament.date) return false;
+    if (ruleCategory !== category && !(ruleCategory === 'JUNIOR' && isJuniorCategory)) return false;
+    if (rule.divisions?.length && !rule.divisions.includes(tournament.division)) return false;
+    return club === norm(rule.club);
+  });
 }
 
 function parseTournamentBlock(text) {
@@ -146,7 +195,12 @@ function rowToEvents(row, eventNumber, juniorNumberRef) {
 const workbook = XLSX.readFile(sourcePath, { cellDates: true });
 
 function normaliseRow(row) {
-  const date = parseDisplayedDate(row.DATE);
+  let date;
+  try {
+    date = parseDisplayedDate(row.DATE);
+  } catch {
+    return null;
+  }
   const club = String(row.CLUB || '').trim().toUpperCase();
   const zone = String(row.ZONE || '').trim().toUpperCase();
   const category = String(row.CATEGORIE || '').trim().toUpperCase();
@@ -156,17 +210,14 @@ function normaliseRow(row) {
 }
 
 function readOfficialRows() {
-  const rows = [];
-  for (const sheetName of CATEGORY_SHEETS) {
-    const sheet = workbook.Sheets[sheetName];
-    if (!sheet) continue;
-    const sheetRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
-    for (const row of sheetRows) {
-      if (!row.DATE || !row.CLUB || !row.ZONE || !row.CATEGORIE || !row.TYPE) continue;
-      const normalized = normaliseRow(row);
-      if (normalized) rows.push(normalized);
-    }
-  }
+  const sheet = workbook.Sheets[OFFICIAL_SHEET];
+  if (!sheet) throw new Error(`Onglet officiel introuvable: ${OFFICIAL_SHEET}`);
+
+  const rows = XLSX.utils
+    .sheet_to_json(sheet, { defval: '', raw: false })
+    .filter(row => row.DATE && row.CLUB && row.ZONE && row.CATEGORIE && row.TYPE)
+    .map(normaliseRow)
+    .filter(Boolean);
 
   const unique = new Map();
   for (const row of rows) {
@@ -256,13 +307,17 @@ for (const tournament of tournaments) {
   delete tournament.__stableId;
 }
 
+for (const tournament of tournaments) {
+  if (isCancelledTournament(tournament)) tournament.status = 'cancelled';
+}
+
 const clubs = Object.values(clubMap)
   .filter((club, index, arr) => arr.findIndex(item => item.id === club.id) === index)
   .sort((a, b) => a.id.localeCompare(b.id))
   .map(club => ({ ...club, total_events: sourceClubCounts.get(club.id) || 0 }));
 
 const ts = `// MPL 2026 - Donnees issues de CALENDRIER MPL 2026.xlsx / DATABASE
-// Source officielle regeneree le 2026-09-14 depuis les onglets categories
+// Source officielle regeneree le 2026-09-14 depuis l'onglet DATABASE
 // ${clubs.length} clubs · ${database.length} lignes calendrier · ${tournaments.length} evenements affichables
 // Saison 10/01/2026 - 26/12/2026
 
@@ -314,7 +369,7 @@ const sqlRows = tournaments.map(t => {
 });
 
 const sqlText = `-- MPL 2026 - Synchronisation calendrier officiel
--- Source: CALENDRIER MPL 2026.xlsx / onglets categories
+-- Source: CALENDRIER MPL 2026.xlsx / onglet DATABASE
 -- Genere le 2026-09-14
 
 ALTER TABLE public.tournaments ADD COLUMN IF NOT EXISTS date DATE;
@@ -367,7 +422,8 @@ ON CONFLICT (id) DO UPDATE SET
 DELETE FROM public.tournaments t
 WHERE (t.date BETWEEN DATE '2026-01-01' AND DATE '2026-12-31' OR t.tournament_date BETWEEN DATE '2026-01-01' AND DATE '2026-12-31')
   AND (t.id LIKE 't%' OR t.id LIKE 'j%')
-  AND NOT EXISTS (SELECT 1 FROM _mpl2026_official_calendar o WHERE o.id = t.id);
+  AND NOT EXISTS (SELECT 1 FROM _mpl2026_official_calendar o WHERE o.id = t.id)
+  AND NOT EXISTS (SELECT 1 FROM public.tournament_results r WHERE r.tournament_id = t.id);
 
 SELECT
   COUNT(*) AS total_lignes,
