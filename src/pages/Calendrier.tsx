@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, MapPin, Trophy, Filter, Search, X, ChevronUp, ChevronDown, RefreshCw, Award, Maximize2, Download, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, MapPin, Trophy, Filter, Search, X, ChevronUp, ChevronDown, RefreshCw, Award, Maximize2, Download, ChevronLeft, ChevronRight, Users } from 'lucide-react';
 import { Layout, GlassCard } from '@/components/Layout';
 import { DotWaveBackground } from '@/components/DotWaveBackground';
 import { useI18n } from '@/hooks/useI18n';
@@ -551,9 +551,10 @@ export default function Calendrier() {
 
   // ── États filtres ──
   const [region,   setRegion]   = useState('all');
-  const [category, setCategory] = useState('all');
+  const [category, setCategory] = useState<string[]>([]); // vide = Toutes ; multi-select
+  const [division, setDivision] = useState('all'); // 'all' | 'men' | 'women'
   const [status,   setStatus]   = useState('all');
-  const [month,    setMonth]    = useState('all');
+  const [month,    setMonth]    = useState<string[]>([]); // vide = Tous ; multi-select
   const [search,   setSearch]   = useState('');
   const [page,     setPage]     = useState(1);
   const [sortField, setSortField] = useState<SortField>('date');
@@ -561,7 +562,10 @@ export default function Calendrier() {
   const [selectedCalendar, setSelectedCalendar] = useState<OfficialCalendarAsset | null>(null);
   const PER_PAGE = 30;
 
-  const { tournaments, loading } = useTournaments({ region, category, status, month });
+  const { tournaments, loading } = useTournaments({ region, category, division, status, month });
+
+  const toggleInArray = (arr: string[], val: string) =>
+    arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val];
 
   // ── Recherche ──
   const filtered = useMemo(() => {
@@ -607,10 +611,11 @@ export default function Calendrier() {
 
   }), [filtered]);
 
-  const activeCount = [region, category, status, month].filter(f => f !== 'all').length + (search ? 1 : 0);
+  const activeCount = [region, division, status].filter(f => f !== 'all').length
+    + (category.length ? 1 : 0) + (month.length ? 1 : 0) + (search ? 1 : 0);
 
   const clearAll = () => {
-    setRegion('all'); setCategory('all'); setStatus('all'); setMonth('all');
+    setRegion('all'); setCategory([]); setDivision('all'); setStatus('all'); setMonth([]);
     setSearch(''); resetPage();
   };
 
@@ -738,36 +743,59 @@ export default function Calendrier() {
                 })}
               </div>
 
-              {/* Ligne 3 : Catégorie */}
+              {/* Ligne 3 : Catégorie (multi-select) */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 <span style={{ color: '#505050', fontSize: '11px', fontWeight: 700, minWidth: '68px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <Trophy size={11} />CATÉG.
                 </span>
-                {CATEGORIES.map(c => (
+                <FilterPill label={lang === 'fr' ? 'Toutes' : 'All'} active={category.length === 0}
+                  color="#4ad569" bg="rgba(74,213,105,0.15)"
+                  onClick={() => { setCategory([]); resetPage(); }} />
+                {CATEGORIES.filter(c => c !== 'all').map(c => (
                   <FilterPill key={c}
-                    label={CAT_LABELS[c] ?? (c === 'all' ? (lang === 'fr' ? 'Toutes' : 'All') : c)}
-                    active={category === c}
+                    label={CAT_LABELS[c] ?? c}
+                    active={category.includes(c)}
                     color={CAT_COLORS[c] ?? '#4ad569'}
                     bg={`${CAT_COLORS[c] ?? '#4ad569'}20`}
-                    onClick={() => { setCategory(c); resetPage(); }}
+                    onClick={() => { setCategory(prev => toggleInArray(prev, c)); resetPage(); }}
                   />
                 ))}
               </div>
 
-              {/* Ligne 4 : Mois */}
+              {/* Ligne 4 : Genre */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ color: '#505050', fontSize: '11px', fontWeight: 700, minWidth: '68px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Users size={11} />GENRE
+                </span>
+                {[
+                  { key: 'all',   label_fr: 'Tous',   label_en: 'All' },
+                  { key: 'men',   label_fr: 'Hommes', label_en: 'Men' },
+                  { key: 'women', label_fr: 'Dames',  label_en: 'Women' },
+                ].map(g => (
+                  <FilterPill key={g.key}
+                    label={lang === 'fr' ? g.label_fr : g.label_en}
+                    active={division === g.key}
+                    color={g.key === 'women' ? '#ec4899' : g.key === 'men' ? '#60a5fa' : '#4ad569'}
+                    bg={g.key === 'women' ? 'rgba(236,72,153,0.15)' : g.key === 'men' ? 'rgba(96,165,250,0.15)' : 'rgba(74,213,105,0.15)'}
+                    onClick={() => { setDivision(g.key); resetPage(); }}
+                  />
+                ))}
+              </div>
+
+              {/* Ligne 5 : Mois (multi-select) */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 <span style={{ color: '#505050', fontSize: '11px', fontWeight: 700, minWidth: '68px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <Calendar size={11} />MOIS
                 </span>
-                <FilterPill label={lang === 'fr' ? 'Tous' : 'All'} active={month === 'all'}
+                <FilterPill label={lang === 'fr' ? 'Tous' : 'All'} active={month.length === 0}
                   color="#4ad569" bg="rgba(74,213,105,0.15)"
-                  onClick={() => { setMonth('all'); resetPage(); }} />
+                  onClick={() => { setMonth([]); resetPage(); }} />
                 {Object.entries(MONTHS_FR).map(([k]) => (
                   <FilterPill key={k}
                     label={lang === 'fr' ? MONTHS_FR_SHORT[k] : MONTHS_EN_SHORT[k]}
-                    active={month === k}
+                    active={month.includes(k)}
                     color="#c084fc" bg="rgba(192,132,252,0.15)"
-                    onClick={() => { setMonth(k); resetPage(); }}
+                    onClick={() => { setMonth(prev => toggleInArray(prev, k)); resetPage(); }}
                   />
                 ))}
               </div>

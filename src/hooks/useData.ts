@@ -292,8 +292,8 @@ async function fetchLegacyResultPresenceRows(
 }
 
 export function useTournaments(filters?: {
-  region?: string; category?: string; division?: string;
-  status?: string; month?: string; club_id?: string;
+  region?: string; category?: string | string[]; division?: string;
+  status?: string; month?: string | string[]; club_id?: string;
 }) {
   const [dbData, setDbData]   = useState<TournamentData[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -454,15 +454,15 @@ export function useTournaments(filters?: {
     }));
 
     if (filters?.region   && filters.region   !== 'all') result = result.filter(t => t.region   === filters.region);
-    if (filters?.category && filters.category !== 'all') {
-      if (filters.category === 'JUNIOR') {
-        // JUNIOR regroupe U11, U13, U15 et les anciennes valeurs Supabase U10, U12, U14.
-        result = result.filter(t =>
-          t.category === 'JUNIOR' || ['U11','U13','U15','U10','U12','U14'].includes(t.category) ||
-          t.type === 'JUNIOR'
-        );
-      } else {
-        result = result.filter(t => t.category === filters.category);
+    if (filters?.category) {
+      const cats = (Array.isArray(filters.category) ? filters.category : [filters.category]).filter(c => c !== 'all');
+      if (cats.length) {
+        result = result.filter(t => cats.some(cat =>
+          cat === 'JUNIOR'
+            // JUNIOR regroupe U11, U13, U15 et les anciennes valeurs Supabase U10, U12, U14.
+            ? (t.category === 'JUNIOR' || ['U11','U13','U15','U10','U12','U14'].includes(t.category) || t.type === 'JUNIOR')
+            : t.category === cat
+        ));
       }
     }
     if (filters?.division && filters.division !== 'all') {
@@ -473,8 +473,9 @@ export function useTournaments(filters?: {
     }
     if (filters?.status   && filters.status   !== 'all') result = result.filter(t => t.status   === filters.status);
     if (filters?.club_id)                                result = result.filter(t => t.club_id  === filters.club_id);
-    if (filters?.month    && filters.month    !== 'all') {
-      result = result.filter(t => t.date && t.date.slice(5, 7) === filters.month);
+    if (filters?.month) {
+      const months = (Array.isArray(filters.month) ? filters.month : [filters.month]).filter(m => m !== 'all');
+      if (months.length) result = result.filter(t => t.date && months.includes(t.date.slice(5, 7)));
     }
     return result;
   }, [dbData, filters?.region, filters?.category, filters?.division, filters?.status, filters?.month, filters?.club_id]);
