@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 const XLSX = require('xlsx');
 
 const DEFAULT_SOURCE = 'D:/MEGA/PADEL LEAGUE/02 TOURNOIS/2026/DESIGN PADEL LEAGUE/WEB OFFICIAL MPL/galerie_rls_401_fix/CALENDRIER MPL 2026.xlsx';
@@ -7,6 +8,7 @@ const sourcePath = process.argv[2] || DEFAULT_SOURCE;
 const outputTs = path.resolve('src/data/mpl2026.ts');
 const outputSql = path.resolve('public/sync_calendar_mpl2026_official.sql');
 const today = '2026-07-31';
+const CATEGORY_SHEETS = ['M25', 'M50', 'M100', 'M250', 'M500', 'M1000', 'MIXED', 'JUNIOR'];
 
 const clubMap = {
   CANA: { id: 'c01', name: 'Caña Beau Plan', slug: 'cana-beau-plan', region: 'Nord', city: 'Beau Plan', courts: 5, contact: 'Mathieu Vallet', phone: '+230 5979 2962' },
@@ -34,6 +36,12 @@ const regionMap = { NORD: 'Nord', OUEST: 'Ouest', CENTRE: 'Centre', EST: 'Est', 
 const maxTeams = { M25: 16, M50: 24, M100: 32, M250: 32, M500: 48, M1000: 48, MIXED: 24, U11: 12, U13: 16, U15: 16 };
 
 function parseDisplayedDate(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(value).trim())) {
+    return String(value).trim();
+  }
   const [m, d, yy] = String(value).trim().split('/').map(Number);
   if (!m || !d || !yy) throw new Error(`Date invalide: ${value}`);
   return `${2000 + yy}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
@@ -55,6 +63,47 @@ function eventName(clubName, category, division) {
   if (division === 'mixed') return `${clubName} Mixed Open`;
   if (division === 'junior') return `${clubName} Junior ${category}`;
   return `${clubName} ${category} (${divisionLabel(division)})`;
+}
+
+function tournamentKey(tournament) {
+  return [
+    tournament.club_name,
+    tournament.date,
+    tournament.category,
+    tournament.division,
+  ].map(value => String(value).trim().toUpperCase()).join('|');
+}
+
+function parseTournamentBlock(text) {
+  const block = text.match(/export const MPL_TOURNAMENTS: Tournament\[] = \[\n([\s\S]*?)\n\];/);
+  if (!block) return [];
+  const rowRe = /\{id:'([^']+)',name:'([^']+)',club_id:'([^']+)',club_name:'([^']+)',date:'([^']+)',region:'([^']+)',category:'([^']+)',division:'([^']+)',type:'([^']+)',status:'([^']+)',max_teams:(\d+)\}/g;
+  const tournaments = [];
+  let match;
+  while ((match = rowRe.exec(block[1]))) {
+    const [, id, name, club_id, club_name, date, region, category, division, type, status, max_teams] = match;
+    tournaments.push({ id, name, club_id, club_name, date, region, category, division, type, status, max_teams: Number(max_teams) });
+  }
+  return tournaments;
+}
+
+function readExistingIdMap() {
+  const texts = [];
+  try {
+    texts.push(execSync('git show HEAD:src/data/mpl2026.ts', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }));
+  } catch {
+    // Git history is optional when generating the calendar outside the repo.
+  }
+  if (fs.existsSync(outputTs)) texts.push(fs.readFileSync(outputTs, 'utf8'));
+
+  const idMap = new Map();
+  for (const text of texts) {
+    for (const tournament of parseTournamentBlock(text)) {
+      const key = tournamentKey(tournament);
+      if (!idMap.has(key)) idMap.set(key, tournament.id);
+    }
+  }
+  return idMap;
 }
 
 function rowToEvents(row, eventNumber, juniorNumberRef) {
@@ -95,28 +144,47 @@ function rowToEvents(row, eventNumber, juniorNumberRef) {
 }
 
 const workbook = XLSX.readFile(sourcePath, { cellDates: true });
-function findDateInClubSheet(row) {
-  const sheetName = String(row.CLUB).trim().toUpperCase();
-  const sheet = workbook.Sheets[sheetName];
-  if (!sheet) return '';
-  const rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
-  const match = rows.find(item =>
-    String(item.CLUB).trim().toUpperCase() === String(row.CLUB).trim().toUpperCase() &&
-    String(item.ZONE).trim().toUpperCase() === String(row.ZONE).trim().toUpperCase() &&
-    String(item.CATEGORIE).trim().toUpperCase() === String(row.CATEGORIE).trim().toUpperCase() &&
-    String(item.TYPE).trim().toUpperCase() === String(row.TYPE).trim().toUpperCase() &&
-    /^\d{1,2}\/\d{1,2}\/\d{2}$/.test(String(item.DATE).trim())
-  );
-  return match ? String(match.DATE).trim() : '';
+
+function normaliseRow(row) {
+  const date = parseDisplayedDate(row.DATE);
+  const club = String(row.CLUB || '').trim().toUpperCase();
+  const zone = String(row.ZONE || '').trim().toUpperCase();
+  const category = String(row.CATEGORIE || '').trim().toUpperCase();
+  const type = String(row.TYPE || '').trim().toUpperCase();
+  if (!date || !club || !zone || !category || !type) return null;
+  return { DATE: date, CLUB: club, ZONE: zone, CATEGORIE: category, TYPE: type };
 }
 
-const database = XLSX.utils.sheet_to_json(workbook.Sheets.DATABASE, { defval: '', raw: false })
-  .filter(row => row.DATE && row.CLUB && row.ZONE && row.CATEGORIE && row.TYPE)
-  .map(row => {
-    if (/^\d{1,2}\/\d{1,2}\/\d{2}$/.test(String(row.DATE).trim())) return row;
-    return { ...row, DATE: findDateInClubSheet(row) };
-  })
-  .filter(row => /^\d{1,2}\/\d{1,2}\/\d{2}$/.test(String(row.DATE).trim()));
+function readOfficialRows() {
+  const rows = [];
+  for (const sheetName of CATEGORY_SHEETS) {
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) continue;
+    const sheetRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+    for (const row of sheetRows) {
+      if (!row.DATE || !row.CLUB || !row.ZONE || !row.CATEGORIE || !row.TYPE) continue;
+      const normalized = normaliseRow(row);
+      if (normalized) rows.push(normalized);
+    }
+  }
+
+  const unique = new Map();
+  for (const row of rows) {
+    const key = [row.DATE, row.CLUB, row.ZONE, row.CATEGORIE, row.TYPE].join('|');
+    unique.set(key, row);
+  }
+
+  const categoryOrder = new Map(CATEGORY_SHEETS.map((category, index) => [category, index]));
+  return Array.from(unique.values()).sort((a, b) =>
+    a.DATE.localeCompare(b.DATE) ||
+    (categoryOrder.get(a.CATEGORIE) ?? 99) - (categoryOrder.get(b.CATEGORIE) ?? 99) ||
+    a.CLUB.localeCompare(b.CLUB) ||
+    a.TYPE.localeCompare(b.TYPE)
+  );
+}
+
+const database = readOfficialRows();
+const existingIdMap = readExistingIdMap();
 
 let eventNumber = 1;
 const juniorNumberRef = { value: 1000 };
@@ -128,8 +196,64 @@ for (const row of database) {
   const club = clubMap[sourceClub];
   sourceClubCounts.set(club.id, (sourceClubCounts.get(club.id) || 0) + 1);
   const isJunior = String(row.CATEGORIE).trim().toUpperCase() === 'JUNIOR' || String(row.TYPE).trim().toUpperCase() === 'JUNIOR';
-  tournaments.push(...rowToEvents(row, eventNumber, juniorNumberRef));
+  tournaments.push(...rowToEvents(row, eventNumber, juniorNumberRef).map(tournament => {
+    const existingId = existingIdMap.get(tournamentKey(tournament));
+    return {
+      ...tournament,
+      id: existingId || tournament.id,
+      __stableId: Boolean(existingId),
+    };
+  }));
   if (!isJunior) eventNumber += 1;
+}
+
+function nextFreeTournamentId(tournament, usedIds, counters) {
+  if (tournament.division === 'junior') {
+    do counters.junior += 1;
+    while (usedIds.has(`j${counters.junior}`));
+    return `j${counters.junior}`;
+  }
+
+  const suffix = tournament.division === 'men' ? 'h' : tournament.division === 'women' ? 'f' : '';
+  let id;
+  do {
+    counters.tournament += 1;
+    id = `t${String(counters.tournament).padStart(3, '0')}${suffix}`;
+  } while (usedIds.has(id));
+  return id;
+}
+
+const counters = tournaments.reduce((acc, tournament) => {
+  const match = /^([tj])(\d+)/.exec(tournament.id);
+  if (!match) return acc;
+  const value = Number(match[2]);
+  if (match[1] === 't') acc.tournament = Math.max(acc.tournament, value);
+  if (match[1] === 'j') acc.junior = Math.max(acc.junior, value);
+  return acc;
+}, { tournament: 0, junior: 0 });
+
+const usedIds = new Set();
+for (const tournament of tournaments) {
+  if (!usedIds.has(tournament.id)) {
+    usedIds.add(tournament.id);
+    delete tournament.__stableId;
+    continue;
+  }
+
+  if (tournament.__stableId) {
+    const duplicate = tournaments.find(item => item !== tournament && item.id === tournament.id);
+    if (duplicate && !duplicate.__stableId) {
+      duplicate.id = nextFreeTournamentId(duplicate, usedIds, counters);
+      usedIds.add(duplicate.id);
+      usedIds.add(tournament.id);
+      delete tournament.__stableId;
+      continue;
+    }
+  }
+
+  tournament.id = nextFreeTournamentId(tournament, usedIds, counters);
+  usedIds.add(tournament.id);
+  delete tournament.__stableId;
 }
 
 const clubs = Object.values(clubMap)
@@ -138,7 +262,7 @@ const clubs = Object.values(clubMap)
   .map(club => ({ ...club, total_events: sourceClubCounts.get(club.id) || 0 }));
 
 const ts = `// MPL 2026 - Donnees issues de CALENDRIER MPL 2026.xlsx / DATABASE
-// Source officielle regeneree le 2026-07-31
+// Source officielle regeneree le 2026-09-14 depuis les onglets categories
 // ${clubs.length} clubs · ${database.length} lignes calendrier · ${tournaments.length} evenements affichables
 // Saison 10/01/2026 - 26/12/2026
 
@@ -190,8 +314,8 @@ const sqlRows = tournaments.map(t => {
 });
 
 const sqlText = `-- MPL 2026 - Synchronisation calendrier officiel
--- Source: CALENDRIER MPL 2026.xlsx / DATABASE
--- Genere le 2026-07-31
+-- Source: CALENDRIER MPL 2026.xlsx / onglets categories
+-- Genere le 2026-09-14
 
 ALTER TABLE public.tournaments ADD COLUMN IF NOT EXISTS date DATE;
 ALTER TABLE public.tournaments ADD COLUMN IF NOT EXISTS tournament_date DATE;
