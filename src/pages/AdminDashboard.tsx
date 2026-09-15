@@ -989,8 +989,15 @@ function PlayersAdminPage() {
         existingLicenses.push(...((data ?? []) as { license_no: string | null }[]));
         if (!data || data.length < 1000) break;
       }
-      const licenseNums = existingLicenses.map(r => Number(r.license_no)).filter(n => Number.isFinite(n));
-      let nextLicense = (licenseNums.length ? Math.max(...licenseNums) : 0) + 1;
+      // Format licence : "MPL" + 7 chiffres (ex. MPL0000223). On extrait la
+      // partie numerique pour trouver le prochain numero disponible.
+      const licenseNums = existingLicenses
+        .map(r => {
+          const m = /^MPL(\d+)$/.exec(r.license_no || '');
+          return m ? Number(m[1]) : NaN;
+        })
+        .filter(n => Number.isFinite(n));
+      let nextLicenseNum = (licenseNums.length ? Math.max(...licenseNums) : 0) + 1;
 
       const payload = Array.from(deduped.values()).map(row => {
         const clean = {
@@ -1002,7 +1009,7 @@ function PlayersAdminPage() {
           gender: row.gender,
           region: row.region,
           division: row.division,
-          license_no: String(nextLicense++),
+          license_no: `MPL${String(nextLicenseNum++).padStart(7, '0')}`,
           // Pas de club_id : colonne uuid (FK clubs.id) en base, alors que
           // row.club_id est un pseudo-id local "c01".."c18" (MPL_CLUBS_LIST) --
           // l'envoyer declenche "invalid input syntax for type uuid".
@@ -1380,7 +1387,7 @@ function PlayersAdminPage() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <Field label="N° Licence">
-              <input style={inputCss} value={editing.license_no || ''} onChange={e => setEditing(p => ({ ...p!, license_no: e.target.value }))} placeholder="MPL-XXX" />
+              <input style={inputCss} value={editing.license_no || ''} onChange={e => setEditing(p => ({ ...p!, license_no: e.target.value }))} placeholder="MPL0000223" />
             </Field>
             <Field label="Statut">
               <select style={selectCss} value={editing.active ? 'true' : 'false'} onChange={e => setEditing(p => ({ ...p!, active: e.target.value === 'true' }))}>
