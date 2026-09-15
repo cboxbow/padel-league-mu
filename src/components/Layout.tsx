@@ -144,9 +144,13 @@ export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  // Entre 820px et 1400px, le header (limité à 1440px) n'a pas la place pour
-  // les 3 logos (MPL+MSRA+AfrAsia) ET tous les liens de nav sans se chevaucher
-  // -> on masque MSRA+AfrAsia (comme sur mobile) et on garde juste le logo MPL.
+  // Le header (limité à 1600px) n'a la place pour les 3 logos
+  // (MPL+MSRA+AfrAsia) ET tous les liens de nav (+ Admin +
+  // Se connecter + FR/EN) sans se chevaucher qu'au-dela de ~1600px
+  // -> on masque MSRA+AfrAsia en dessous (comme sur mobile) et on
+  // garde juste le logo MPL. Seuil volontairement large : chaque ajout
+  // au header (bouton Se connecter, lien Admin) a deja fait deborder ce
+  // calcul deux fois par le passe, mieux vaut trop de marge que pas assez.
   const [isCompact, setIsCompact] = useState(false);
 
   useEffect(() => {
@@ -156,7 +160,13 @@ export function Navbar() {
   }, []);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia('(max-width: 820px)');
+    // Meme en cachant MSRA+AfrAsia (isCompact), le seul logo MPL + les 10
+    // liens de nav + (Admin en version admin) + Se connecter + FR/EN ne
+    // rentrent plus en dessous de ~1300px sans deborder - verifie a la main
+    // en mesurant chaque lien jusqu'a ce que rien ne depasse. Seuil au menu
+    // mobile releve en consequence (au lieu de 820px) pour que ce soit fiable
+    // sur les deux versions (admin, plus chargee d'un lien, y compris).
+    const mediaQuery = window.matchMedia('(max-width: 1320px)');
     const syncMobile = () => {
       setIsMobile(mediaQuery.matches);
       if (!mediaQuery.matches) setOpen(false);
@@ -167,7 +177,7 @@ export function Navbar() {
   }, []);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia('(max-width: 1400px)');
+    const mediaQuery = window.matchMedia('(max-width: 1600px)');
     const syncCompact = () => setIsCompact(mediaQuery.matches);
     syncCompact();
     mediaQuery.addEventListener('change', syncCompact);
@@ -205,7 +215,7 @@ export function Navbar() {
       overflowX: 'hidden' as const,
     }}>
       <div style={{
-        maxWidth: '1440px',
+        maxWidth: '1600px',
         margin: '0 auto',
         padding: isMobile ? '0 14px' : '0 24px',
         height: isMobile ? '58px' : '64px',
@@ -215,7 +225,7 @@ export function Navbar() {
         gap: isMobile ? '10px' : '18px',
       }}>
         {/* Logo MPL + MSRA + badge AfrAsia */}
-        <Link to={ROUTE_PATHS.HOME} style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: isMobile ? '10px' : '14px' }}>
+        <Link to={ROUTE_PATHS.HOME} style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: isMobile ? '10px' : '14px', flexShrink: 0 }}>
           <MPLLogo size={isMobile ? 32 : 44} />
           {/* Séparateur + logo MSRA (fédération de tutelle) */}
           <div style={{
