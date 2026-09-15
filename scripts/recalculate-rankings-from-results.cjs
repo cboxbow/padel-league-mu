@@ -731,7 +731,7 @@ async function main() {
   for (const division of divisions) {
     await deleteByDivision(supabase, 'official_ranking_details', division);
   }
-  const details = rows.flatMap((row) => row.details.map((detail) => ({
+  const rawDetails = rows.flatMap((row) => row.details.map((detail) => ({
     id: newId(),
     player_id: row.player_id,
     player_name: row.player_name,
@@ -746,6 +746,21 @@ async function main() {
     season: Number(detail.event_date.slice(0, 4)) || row.season,
     batch_id: batchId,
   })).map((row) => withOptionalFields(row, schema.officialDetailsPlayerId ? new Set(['player_id']) : new Set())));
+  // historical_tournament_results et tournament_results decrivent parfois le
+  // meme match reel avec un event_name different (import CSV vs nom du site)
+  // -> dedupeRankingInputs() ne les fusionne pas toujours (event_key absent
+  // d'un des deux cotes), et le meme resultat finit stocke deux fois ici.
+  // Un joueur/division/date/points/rang/partenaire identiques ne peuvent pas
+  // correspondre a deux matchs reels distincts : on ne garde qu'une ligne.
+  const detailGroups = new Map();
+  for (const detail of rawDetails) {
+    const key = [detail.player_name, detail.division, detail.event_date, detail.points, detail.rank_label, detail.partner_name].join('|');
+    const existing = detailGroups.get(key);
+    if (!existing || (!/\((Hommes|Dames|Mixte)\)/i.test(existing.event_name) && /\((Hommes|Dames|Mixte)\)/i.test(detail.event_name))) {
+      detailGroups.set(key, detail);
+    }
+  }
+  const details = [...detailGroups.values()];
   const leanDetails = details.map((detail) => ({
     id: detail.id,
     player_name: detail.player_name,
