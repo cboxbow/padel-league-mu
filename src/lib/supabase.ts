@@ -31,7 +31,14 @@ function buildClient(): SupabaseClient | null {
     auth: {
       autoRefreshToken: true,
       persistSession: true,       // session stockée dans localStorage par Supabase lui-même
-      detectSessionInUrl: true,   // nécessaire pour le callback OTP (#access_token=...)
+      detectSessionInUrl: true,   // nécessaire pour le callback OTP
+      // PKCE (?code=...) plutot que le flow implicite (#access_token=...) :
+      // le site utilise HashRouter (URLs en /#/route), donc un fragment
+      // #access_token=... ajoute un DEUXIEME "#" dans l'URL, dans lequel
+      // supabase-js ne retrouve plus access_token= comme cle valide -> le
+      // lien magique semblait expirer alors qu'il etait juste mal lu.
+      // Le code PKCE arrive en query string (avant le #), non affectee.
+      flowType: 'pkce',
     },
   });
   return _client;
