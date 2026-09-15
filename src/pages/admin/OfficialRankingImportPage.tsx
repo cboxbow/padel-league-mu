@@ -649,6 +649,31 @@ async function insertOfficialRankingDetails(importId: string | null, rows: Offic
   }
 }
 
+// Sans cette etape, un nouvel import laisse l'ancien lot marque
+// is_current=true en meme temps que le nouveau : deux classements "actifs"
+// pour les memes joueurs/divisions, avec des rangs/points differents selon
+// lequel une requete lit en premier. Doit tourner AVANT l'insertion du
+// nouveau lot.
+async function retirePreviousCurrentBatch(divisions: Division[]) {
+  const sb = getSupabaseClient();
+  if (!sb) throw new Error('Supabase non configure.');
+
+  for (const division of divisions) {
+    const { error } = await withTimeout(
+      sb
+        .from('official_rankings')
+        .update({ is_current: false })
+        .eq('division', divToDb(division))
+        .eq('is_current', true),
+      `Retrait ancien classement officiel ${DIV_LABELS[division].label}`
+    );
+
+    if (error) {
+      throw new Error(`Retrait ancien classement officiel ${DIV_LABELS[division].label}: ${error.message}`);
+    }
+  }
+}
+
 async function clearOfficialRankingDetails(divisions: Division[]) {
   const sb = getSupabaseClient();
   if (!sb) throw new Error('Supabase non configure.');
@@ -683,6 +708,9 @@ async function saveOfficialImport(
 
   onProgress?.(`Preparation import: ${rows.length} joueurs, ${totalDetails} details tournoi...`);
   const importId = await insertOfficialImportMetadata(fileName, rows.length, publish);
+
+  onProgress?.('Retrait de l ancien classement officiel...');
+  await retirePreviousCurrentBatch(divisions);
 
   onProgress?.('Insertion classement officiel courant...');
   await tryInsertOfficialRankingRows(importId, rows, batchId);
