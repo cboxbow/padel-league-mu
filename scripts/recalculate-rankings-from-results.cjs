@@ -468,14 +468,30 @@ function computeRankingRows(inputs, previousRanks, period) {
   // eventIdentity()/event_key, absent d'un des deux cotes pour certains
   // resultats. Verifie: le meme match reste alors compte deux fois dans le
   // Top 8 d'un joueur, gonflant son total officiel (ex. Mathieu Vallet
-  // +1000 pts). Un joueur/date/points/partenaire identiques ne peuvent pas
-  // correspondre a deux matchs reels distincts -> dernier filet de securite
-  // ici, juste avant de retenir le Top 8.
+  // +1000 pts). Dernier filet de securite ici, juste avant de retenir le
+  // Top 8. La date seule n'est PAS fiable comme cle : un import "backfill"
+  // peut dater le meme match a J+1 par rapport a l'import historique (ex.
+  // Fabrice Nayna / Oxygen Moka M250, memes player_id des deux cotes,
+  // 2026-04-11 vs 2026-04-12) - on se base plutot sur qui a joue
+  // (player_id fiable si present, sinon nom) + club + categorie + points +
+  // rang, qui ne peuvent raisonnablement coincider deux fois pour un vrai
+  // match distinct.
   const dedupePlayerRows = (playerRows) => {
     const byKey = new Map();
     for (const row of playerRows) {
-      const key = [row.event_date, parseRankingPoints(row.points), normKey(cleanText(row.partner_name))].join('|');
-      if (!byKey.has(key)) byKey.set(key, row);
+      const partnerKey = cleanText(row.partner_id) || normKey(cleanText(row.partner_name));
+      const key = [
+        row.category,
+        normKey(cleanText(row.club_name)),
+        partnerKey,
+        parseRankingPoints(row.points),
+        Number(row.rank) || 0,
+      ].join('|');
+      const existing = byKey.get(key);
+      // Si deux dates differentes se disputent la meme cle, garde la plus
+      // ancienne (source historique) pour rester coherent avec le reste du
+      // calcul, qui trie par date.
+      if (!existing || row.event_date < existing.event_date) byKey.set(key, row);
     }
     return [...byKey.values()];
   };
