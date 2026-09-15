@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, NavLink } from 'react-router-dom';
-import { Menu, X, ChevronRight } from 'lucide-react';
+import { Menu, X, ChevronRight, UserRound } from 'lucide-react';
 import { useI18n } from '@/hooks/useI18n';
 import { ROUTE_PATHS, REGION_CONFIG, CATEGORY_CONFIG, MPL_STATS } from '@/lib/index';
 import type { Region, TournamentCategory, Language } from '@/lib/index';
@@ -284,8 +284,19 @@ export function Navbar() {
           )}
         </div>
 
-        {/* Right side: lang toggle */}
+        {/* Right side: connexion joueur + lang toggle */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <Link
+            to={ROUTE_PATHS.PLAYER_SPACE}
+            style={{
+              display: isMobile ? 'none' : 'flex', alignItems: 'center', gap: '6px',
+              padding: '7px 14px', borderRadius: '20px', textDecoration: 'none',
+              fontSize: '13px', fontWeight: 700, color: '#0a0a0a',
+              background: '#4ad569', whiteSpace: 'nowrap',
+            }}
+          >
+            <UserRound size={15} /> {t.nav.login}
+          </Link>
           <div style={{
             display: 'flex', background: 'rgba(255,255,255,0.05)',
             borderRadius: '20px', padding: '3px', border: '1px solid rgba(255,255,255,0.1)',
@@ -336,6 +347,17 @@ export function Navbar() {
           maxHeight: 'calc(100vh - 58px)',
           overflowY: 'auto',
         }}>
+          <Link
+            to={ROUTE_PATHS.PLAYER_SPACE}
+            onClick={() => setOpen(false)}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+              padding: '13px 10px', margin: '0 0 10px', borderRadius: '8px', textDecoration: 'none',
+              fontSize: '14px', fontWeight: 700, color: '#0a0a0a', background: '#4ad569',
+            }}
+          >
+            <UserRound size={16} /> {t.nav.login}
+          </Link>
           {[...links, ...(!IS_PUBLIC_MODE ? [{ to: ROUTE_PATHS.ADMIN, label: t.nav.admin }] : [])].map(link => (
             <NavLink
               key={link.to}

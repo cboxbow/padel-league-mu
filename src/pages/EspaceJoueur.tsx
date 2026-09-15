@@ -441,6 +441,14 @@ export default function EspaceJoueur() {
   const [authMessage, setAuthMessage] = useState('');
   const [linkedPlayer, setLinkedPlayer] = useState<PlayerAccountRow | null>(null);
   const [linkMessage, setLinkMessage] = useState('');
+  const [magicEmail, setMagicEmail] = useState('');
+  const [magicLoading, setMagicLoading] = useState(false);
+  const [magicSent, setMagicSent] = useState(false);
+  const [magicMessage, setMagicMessage] = useState('');
+  const [needsLicenseClaim, setNeedsLicenseClaim] = useState(false);
+  const [claimLicense, setClaimLicense] = useState('');
+  const [claimLoading, setClaimLoading] = useState(false);
+  const [showLegacyAuth, setShowLegacyAuth] = useState(false);
   const [registrationDraft, setRegistrationDraft] = useState<RegistrationDraft | null>(null);
   const [partnerQuery, setPartnerQuery] = useState('');
   const [selectedPartnerKey, setSelectedPartnerKey] = useState('');
@@ -625,6 +633,38 @@ export default function EspaceJoueur() {
     }
   }, []);
 
+  // Session Supabase reelle (lien magique) : la restaurer au chargement de
+  // la page, et reagir a une connexion etablie pendant qu'on est deja sur
+  // cette page (rare, mais couvre le cas ou le lien s'ouvre dans le meme
+  // onglet plutot que via /joueur/callback).
+  useEffect(() => {
+    const client = getSupabaseClient();
+    if (!client) return;
+    let cancelled = false;
+
+    client.auth.getSession().then(({ data }) => {
+      if (cancelled || !data.session) return;
+      linkAccountFromSession();
+    });
+
+    const { data: sub } = client.auth.onAuthStateChange((event, session) => {
+      if (cancelled) return;
+      if (event === 'SIGNED_IN' && session) {
+        linkAccountFromSession();
+      } else if (event === 'SIGNED_OUT') {
+        setAccountEmail('');
+        setLinkedPlayer(null);
+        setNeedsLicenseClaim(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      sub.subscription.unsubscribe();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function verifyPlayerAccess() {
     const email = authEmail.trim();
     const license = authLicense.trim();
@@ -728,6 +768,82 @@ export default function EspaceJoueur() {
     setAuthMessage('Profil MPL connecte.');
   }
 
+  // Associe (ou retrouve) la fiche players liee a la session Supabase active.
+  // Appelee au chargement de page (session restauree) et juste apres le
+  // clic sur le lien magique (evenement SIGNED_IN).
+  async function linkAccountFromSession(license?: string) {
+    const client = getSupabaseClient();
+    if (!client) return;
+
+    const { data, error } = await client.rpc('link_player_account', { p_license: license ?? null });
+    if (error) {
+      setMagicMessage(`Association impossible: ${errorMessage(error)}`);
+      return;
+    }
+
+    const rows = Array.isArray(data) ? data : data ? [data] : [];
+    if (!rows.length) {
+      setNeedsLicenseClaim(true);
+      return;
+    }
+
+    const player = rows[0] as PlayerAccountRow;
+    if (player.active === false) {
+      setMagicMessage('Profil trouve, mais la licence est inactive. Contacte l admin MPL.');
+      return;
+    }
+
+    const { data: sessionData } = await client.auth.getSession();
+    const sessionEmail = String(sessionData.session?.user.email ?? player.email ?? '').trim().toLowerCase();
+    const fullName = `${player.first_name ?? ''} ${player.last_name ?? ''}`.trim();
+    const playerKey = normalizeName(fullName);
+    const matchingProfile = profiles.find(profile => profile.key === playerKey);
+
+    setAccountEmail(sessionEmail);
+    setLinkedPlayer(player);
+    setLinkMessage(matchingProfile ? 'Profil joueur verifie.' : 'Compte trouve, classement a associer manuellement.');
+    if (matchingProfile) setSelectedKey(matchingProfile.key);
+    setNeedsLicenseClaim(false);
+    setMagicMessage('');
+  }
+
+  async function sendMagicLink() {
+    const email = magicEmail.trim();
+    if (!email) {
+      setMagicMessage('Entre ton email pour recevoir le lien de connexion.');
+      return;
+    }
+    const client = getSupabaseClient();
+    if (!client) {
+      setMagicMessage('Connexion indisponible pour le moment.');
+      return;
+    }
+    setMagicLoading(true);
+    setMagicMessage('');
+    const { error } = await client.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: `${window.location.origin}/#${ROUTE_PATHS.PLAYER_CALLBACK}` },
+    });
+    setMagicLoading(false);
+    if (error) {
+      setMagicMessage(`Envoi impossible: ${errorMessage(error)}`);
+      return;
+    }
+    setMagicSent(true);
+    setMagicMessage(`Lien envoye a ${email} - verifie ta boite mail (et les spams).`);
+  }
+
+  async function submitClaimLicense() {
+    const license = claimLicense.trim();
+    if (!license) {
+      setMagicMessage('Entre ton numero de licence MPL pour associer ton compte.');
+      return;
+    }
+    setClaimLoading(true);
+    await linkAccountFromSession(license);
+    setClaimLoading(false);
+  }
+
   async function signOutPlayer() {
     const client = getSupabaseClient();
     if (client) await client.auth.signOut();
@@ -736,6 +852,11 @@ export default function EspaceJoueur() {
     setAccountEmail('');
     setLinkedPlayer(null);
     setLinkMessage('');
+    setMagicEmail('');
+    setMagicSent(false);
+    setMagicMessage('');
+    setNeedsLicenseClaim(false);
+    setClaimLicense('');
     setAuthMessage('Session joueur fermee.');
   }
 
@@ -998,7 +1119,9 @@ export default function EspaceJoueur() {
             </div>
             <h2>{accountEmail ? 'Profil MPL connecte' : 'Connecte ton profil MPL'}</h2>
             <p>
-              Verifie ton profil avec ton email et ta licence, ou directement avec ton numero de telephone.
+              {accountEmail
+                ? 'Verifie ton profil avec ton email et ta licence, ou directement avec ton numero de telephone.'
+                : 'Recois un lien de connexion par email - un clic et tu es connecte, sans mot de passe.'}
             </p>
             <div className="account-steps">
               <span className={accountEmail ? 'done' : ''}>Acces controle</span>
@@ -1027,50 +1150,125 @@ export default function EspaceJoueur() {
                   <LogOut size={16} /> Se deconnecter
                 </button>
               </>
-            ) : (
+            ) : needsLicenseClaim ? (
               <>
-                <span className={`account-status ${supabaseReady ? '' : 'offline'}`}>
-                  {supabaseReady ? 'Acces securise' : 'Connexion indisponible'}
-                </span>
+                <span className="account-status">Boite mail verifiee</span>
+                <small>
+                  Aucun profil MPL n est encore associe a cet email. Entre ton numero de licence pour l associer.
+                </small>
                 <div className="email-input">
                   <input
-                    id="player-email"
-                    value={authEmail}
-                    onChange={event => setAuthEmail(event.target.value)}
-                    placeholder="Email MPL"
-                    type="email"
-                  />
-                </div>
-                <div className="email-input">
-                  <input
-                    id="player-license"
-                    value={authLicense}
-                    onChange={event => setAuthLicense(event.target.value)}
-                    placeholder="Numero de licence"
-                    inputMode="numeric"
-                  />
-                </div>
-                <div className="email-input">
-                  <input
-                    id="player-phone"
-                    value={authPhone}
-                    onChange={event => setAuthPhone(event.target.value)}
-                    placeholder="Ou numero de telephone"
-                    inputMode="tel"
-                    type="tel"
+                    id="player-claim-license"
+                    value={claimLicense}
+                    onChange={event => setClaimLicense(event.target.value)}
+                    placeholder="Numero de licence (ex: MPL0000223)"
                   />
                 </div>
                 <button
                   type="button"
                   className="account-button"
-                  onClick={verifyPlayerAccess}
-                  disabled={authLoading || !supabaseReady}
+                  onClick={submitClaimLicense}
+                  disabled={claimLoading}
                 >
-                  {authLoading ? 'Verification...' : 'Acceder a mon profil'}
+                  {claimLoading ? 'Association...' : 'Associer mon profil'}
                 </button>
+                <button type="button" className="account-button secondary" onClick={signOutPlayer}>
+                  Annuler
+                </button>
+              </>
+            ) : (
+              <>
+                <span className={`account-status ${supabaseReady ? '' : 'offline'}`}>
+                  {supabaseReady ? 'Acces securise' : 'Connexion indisponible'}
+                </span>
+
+                {magicSent ? (
+                  <>
+                    <small>
+                      Lien envoye a <strong>{magicEmail.trim()}</strong>. Ouvre ta boite mail (et les spams) et clique dessus pour te connecter.
+                    </small>
+                    <button
+                      type="button"
+                      className="account-button secondary"
+                      onClick={() => { setMagicSent(false); setMagicMessage(''); }}
+                    >
+                      Changer d email
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="email-input">
+                      <input
+                        id="player-magic-email"
+                        value={magicEmail}
+                        onChange={event => setMagicEmail(event.target.value)}
+                        placeholder="Ton email MPL"
+                        type="email"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className="account-button"
+                      onClick={sendMagicLink}
+                      disabled={magicLoading || !supabaseReady}
+                    >
+                      <Send size={16} /> {magicLoading ? 'Envoi...' : 'Recevoir mon lien de connexion'}
+                    </button>
+                  </>
+                )}
+
+                <button
+                  type="button"
+                  className="account-button secondary"
+                  onClick={() => setShowLegacyAuth(show => !show)}
+                >
+                  {showLegacyAuth ? 'Masquer l autre methode' : 'Autre methode de connexion'}
+                </button>
+
+                {showLegacyAuth && (
+                  <>
+                    <div className="email-input">
+                      <input
+                        id="player-email"
+                        value={authEmail}
+                        onChange={event => setAuthEmail(event.target.value)}
+                        placeholder="Email MPL"
+                        type="email"
+                      />
+                    </div>
+                    <div className="email-input">
+                      <input
+                        id="player-license"
+                        value={authLicense}
+                        onChange={event => setAuthLicense(event.target.value)}
+                        placeholder="Numero de licence"
+                        inputMode="numeric"
+                      />
+                    </div>
+                    <div className="email-input">
+                      <input
+                        id="player-phone"
+                        value={authPhone}
+                        onChange={event => setAuthPhone(event.target.value)}
+                        placeholder="Ou numero de telephone"
+                        inputMode="tel"
+                        type="tel"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className="account-button"
+                      onClick={verifyPlayerAccess}
+                      disabled={authLoading || !supabaseReady}
+                    >
+                      {authLoading ? 'Verification...' : 'Acceder a mon profil'}
+                    </button>
+                  </>
+                )}
               </>
             )}
             {authMessage && <p className="auth-message">{authMessage}</p>}
+            {magicMessage && <p className="auth-message">{magicMessage}</p>}
           </div>
         </div>
 
