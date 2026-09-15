@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
@@ -634,9 +634,8 @@ export default function EspaceJoueur() {
   }, []);
 
   // Session Supabase reelle (lien magique) : la restaurer au chargement de
-  // la page, et reagir a une connexion etablie pendant qu'on est deja sur
-  // cette page (rare, mais couvre le cas ou le lien s'ouvre dans le meme
-  // onglet plutot que via /joueur/callback).
+  // la page, et reagir a une connexion etablie apres redirection depuis
+  // App.tsx (usePlayerMagicLinkRedirect) ou une restauration de session.
   useEffect(() => {
     const client = getSupabaseClient();
     if (!client) return;
@@ -664,6 +663,26 @@ export default function EspaceJoueur() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // linkAccountFromSession() peut s'executer avant que les classements
+  // (profiles, charges de facon asynchrone depuis Supabase) soient prets -
+  // le matching par nom echoue alors silencieusement a ce moment-la. On le
+  // retente ici des que profiles se charge, une seule fois par joueur lie.
+  const autoSelectedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!linkedPlayer || !profiles.length) return;
+    const license = linkedPlayer.license_no ?? linkedPlayer.email ?? '';
+    if (!license || autoSelectedForRef.current === license) return;
+
+    const fullName = `${linkedPlayer.first_name ?? ''} ${linkedPlayer.last_name ?? ''}`.trim();
+    const playerKey = normalizeName(fullName);
+    const matchingProfile = profiles.find(profile => profile.key === playerKey);
+    if (matchingProfile) {
+      autoSelectedForRef.current = license;
+      setSelectedKey(matchingProfile.key);
+      setLinkMessage('Profil joueur verifie.');
+    }
+  }, [linkedPlayer, profiles]);
 
   async function verifyPlayerAccess() {
     const email = authEmail.trim();
