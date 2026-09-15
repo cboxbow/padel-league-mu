@@ -857,7 +857,12 @@ function PlayerDetailModal({
   const calculatedTop8Total = retainedDetails.reduce((sum, detail) => sum + detail.points, 0);
   const real12MonthTotal = windowDetails.reduce((sum, detail) => sum + detail.points, 0);
   const outOfTop8Count = Math.max(0, windowDetails.length - retainedDetails.length);
-  const rankingTotal = calculatedTop8Total || player.points;
+  // Le total officiel (player.points, calcule et publie cote serveur) fait
+  // foi. calculatedTop8Total est une reconstruction cote client a partir du
+  // detail des matchs (utile pour surligner "RETENU" dans l'historique),
+  // mais peut diverger si le detail est incomplet/pas encore synchronise -
+  // et affichait alors silencieusement un total errone a la place du bon.
+  const rankingTotal = player.points;
   const rankingGap = Math.max(0, real12MonthTotal - rankingTotal);
   const bestPartner = topCountLabel(combinedDetails.map(detail => detailPartnerLabel(detail, player.player_name)));
   const bestClub = topCountLabel(combinedDetails.map(detail => detail.club_name || ''));
