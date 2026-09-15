@@ -2393,8 +2393,28 @@ function DashboardPage() {
 export default function AdminDashboard({ onLogout, role, userName }: Props) {
   const { lang } = useI18n();
   const [activePage, setActivePage] = useState<AdminPage>('dashboard');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Bureau : sidebar ouverte par defaut, toggle icone-seule/complete.
+  // Mobile/tablette etroite : elle n'a pas la place a cote du contenu (elle
+  // le comprimait/le recouvrait en pratique sur un vrai telephone) -> ferme
+  // par defaut, s'ouvre en panneau plein ecran par-dessus via le bouton menu.
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 860);
+  const [sidebarOpen, setSidebarOpen] = useState(() => !(typeof window !== 'undefined' && window.innerWidth <= 860));
   const isViewer = role === 'viewer';
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 860px)');
+    const sync = () => {
+      setIsMobile(mediaQuery.matches);
+      setSidebarOpen(!mediaQuery.matches);
+    };
+    mediaQuery.addEventListener('change', sync);
+    return () => mediaQuery.removeEventListener('change', sync);
+  }, []);
+
+  const selectPage = (key: AdminPage) => {
+    setActivePage(key);
+    if (isMobile) setSidebarOpen(false);
+  };
 
   const navItems: { key: AdminPage; label: string; icon: React.ElementType }[] = [
     { key: 'dashboard',   label: 'Dashboard',    icon: LayoutDashboard },
@@ -2417,9 +2437,25 @@ export default function AdminDashboard({ onLogout, role, userName }: Props) {
 
   return (
     <AdminRoleContext.Provider value={role}>
-    <div style={{ display: 'flex', height: '100vh', background: '#0a0a0a', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', height: '100vh', background: '#0a0a0a', overflow: 'hidden', position: 'relative' }}>
+      {/* Fond semi-transparent derriere la sidebar mobile (ferme au clic) */}
+      {isMobile && sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 59 }}
+        />
+      )}
       {/* Sidebar */}
-      <aside style={{ width: sidebarOpen ? '220px' : '64px', transition: 'width 0.3s', background: '#0d0d0d', borderRight: '1px solid rgba(74,213,105,0.08)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+      <aside style={{
+        width: isMobile ? '240px' : (sidebarOpen ? '220px' : '64px'),
+        transition: isMobile ? 'transform 0.25s ease' : 'width 0.3s',
+        background: '#0d0d0d', borderRight: '1px solid rgba(74,213,105,0.08)',
+        display: 'flex', flexDirection: 'column', flexShrink: 0,
+        ...(isMobile ? {
+          position: 'fixed', top: 0, left: 0, height: '100vh', zIndex: 60,
+          transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
+        } : {}),
+      }}>
         <div style={{ padding: '16px 12px', borderBottom: '1px solid rgba(74,213,105,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           {sidebarOpen && <MPLLogo size={28} />}
           <button onClick={() => setSidebarOpen(o => !o)} style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', marginLeft: sidebarOpen ? 0 : 'auto', marginRight: sidebarOpen ? 0 : 'auto' }}>
@@ -2431,7 +2467,7 @@ export default function AdminDashboard({ onLogout, role, userName }: Props) {
             const Icon = item.icon;
             const isActive = activePage === item.key;
             return (
-              <button key={item.key} onClick={() => setActivePage(item.key)}
+              <button key={item.key} onClick={() => selectPage(item.key)}
                 style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', width: '100%', background: isActive ? 'rgba(74,213,105,0.1)' : 'none', border: isActive ? '1px solid rgba(74,213,105,0.2)' : '1px solid transparent', borderRadius: '10px', cursor: 'pointer', color: isActive ? '#4ad569' : '#a0a0a0', transition: 'all 0.2s' }}
                 onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
                 onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'none'; }}
@@ -2455,33 +2491,44 @@ export default function AdminDashboard({ onLogout, role, userName }: Props) {
 
         {/* Main */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <header style={{ height: '56px', borderBottom: '1px solid rgba(74,213,105,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', background: 'rgba(10,10,10,0.9)', flexShrink: 0 }}>
-          <h1 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'white' }}>
-            {navItems.find(n => n.key === activePage)?.label}
-          </h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <header style={{ height: '56px', borderBottom: '1px solid rgba(74,213,105,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: isMobile ? '0 12px' : '0 24px', background: 'rgba(10,10,10,0.9)', flexShrink: 0, gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+            {isMobile && (
+              <button onClick={() => setSidebarOpen(o => !o)} style={{ background: 'none', border: 'none', color: '#a0a0a0', cursor: 'pointer', flexShrink: 0, display: 'flex' }}>
+                <Menu size={20} />
+              </button>
+            )}
+            <h1 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {navItems.find(n => n.key === activePage)?.label}
+            </h1>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '12px', flexShrink: 0 }}>
             {/* Badge rôle */}
             {isViewer ? (
-              <span style={{ display: 'flex', alignItems: 'center', gap: '5px', background: 'rgba(99,179,237,0.1)', color: '#63b3ed', border: '1px solid rgba(99,179,237,0.25)', borderRadius: '20px', padding: '3px 10px', fontSize: '11px', fontWeight: 700 }}>
-                <Eye size={11} /> Lecture seule
+              <span style={{ display: 'flex', alignItems: 'center', gap: '5px', background: 'rgba(99,179,237,0.1)', color: '#63b3ed', border: '1px solid rgba(99,179,237,0.25)', borderRadius: '20px', padding: '3px 10px', fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                <Eye size={11} /> {isMobile ? 'Lecture' : 'Lecture seule'}
               </span>
             ) : (
-              <span style={{ display: 'flex', alignItems: 'center', gap: '5px', background: 'rgba(74,213,105,0.1)', color: '#4ad569', border: '1px solid rgba(74,213,105,0.25)', borderRadius: '20px', padding: '3px 10px', fontSize: '11px', fontWeight: 700 }}>
-                <ShieldCheck size={11} /> Admin complet
+              <span style={{ display: 'flex', alignItems: 'center', gap: '5px', background: 'rgba(74,213,105,0.1)', color: '#4ad569', border: '1px solid rgba(74,213,105,0.25)', borderRadius: '20px', padding: '3px 10px', fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                <ShieldCheck size={11} /> {isMobile ? 'Admin' : 'Admin complet'}
               </span>
             )}
-            <span style={{ fontSize: '12px', color: isSupabaseConnected() ? '#4ad569' : '#f59e0b' }}>
-              '● Supabase connecté'
-            </span>
-            <button style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer' }}><Bell size={16} /></button>
+            {!isMobile && (
+              <span style={{ fontSize: '12px', color: isSupabaseConnected() ? '#4ad569' : '#f59e0b', whiteSpace: 'nowrap' }}>
+                '● Supabase connecté'
+              </span>
+            )}
+            {!isMobile && (
+              <button style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer' }}><Bell size={16} /></button>
+            )}
             {/* Avatar avec initiales du user */}
-            <div title={userName} style={{ background: isViewer ? '#63b3ed' : '#4ad569', borderRadius: '50%', width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0a0a0a', fontWeight: 700, fontSize: '12px', cursor: 'default' }}>
+            <div title={userName} style={{ background: isViewer ? '#63b3ed' : '#4ad569', borderRadius: '50%', width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0a0a0a', fontWeight: 700, fontSize: '12px', cursor: 'default', flexShrink: 0 }}>
               {userName ? userName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2) : 'A'}
             </div>
           </div>
         </header>
 
-        <main style={{ flex: 1, padding: '28px 24px', overflowY: 'auto' }}>
+        <main style={{ flex: 1, padding: isMobile ? '16px 12px' : '28px 24px', overflowY: 'auto', minWidth: 0 }}>
           <AdminErrorBoundary page={activePage}>
             {activePage === 'dashboard'   && <DashboardPage />}
             {activePage === 'clubs'       && <ClubsAdminPage />}
