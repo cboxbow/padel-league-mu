@@ -822,7 +822,12 @@ export default function EspaceJoueur() {
     setMagicMessage('');
     const { error } = await client.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/#${ROUTE_PATHS.PLAYER_CALLBACK}` },
+      // Racine du site, SANS route dans le hash : le HashRouter du site
+      // utilise deja "#/route" pour naviguer, et un ?code=... colle a un
+      // hash de route casse soit la lecture du hash par React Router, soit
+      // celle du code par supabase-js. La redirection est geree au niveau
+      // de App.tsx (usePlayerMagicLinkRedirect) une fois la session etablie.
+      options: { emailRedirectTo: window.location.origin },
     });
     setMagicLoading(false);
     if (error) {
