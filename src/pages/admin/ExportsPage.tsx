@@ -496,6 +496,11 @@ function toCSV(data: Record<string, unknown>[]): string {
   const esc = (v: unknown) => {
     if (v === null || v === undefined) return '';
     const s = String(v);
+    // Nombres purement numeriques de 10 chiffres ou plus (telephones
+    // internationaux, etc.) : Excel les convertit sinon en notation
+    // scientifique a l'ouverture (ex. "263772264193" -> "2,63772E+11").
+    // Le wrapper ="..." force Excel a garder la valeur en texte tel quel.
+    if (/^\d{10,}$/.test(s)) return `="${s}"`;
     return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
   };
   return [keys.join(','), ...data.map(row => keys.map(k => esc(row[k])).join(','))].join('\n');
