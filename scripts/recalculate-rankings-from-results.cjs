@@ -462,10 +462,29 @@ function computeRankingRows(inputs, previousRanks, period) {
     playerRows.set(key, [...(playerRows.get(key) ?? []), { ...row, player_name: playerName }]);
   }
 
+  // dedupeRankingInputs() (avant l'appel a computeRankingRows) manque
+  // parfois deux lignes decrivant le meme vrai match sous un event_name
+  // different (import historique vs nom du site) - sa cle repose sur
+  // eventIdentity()/event_key, absent d'un des deux cotes pour certains
+  // resultats. Verifie: le meme match reste alors compte deux fois dans le
+  // Top 8 d'un joueur, gonflant son total officiel (ex. Mathieu Vallet
+  // +1000 pts). Un joueur/date/points/partenaire identiques ne peuvent pas
+  // correspondre a deux matchs reels distincts -> dernier filet de securite
+  // ici, juste avant de retenir le Top 8.
+  const dedupePlayerRows = (playerRows) => {
+    const byKey = new Map();
+    for (const row of playerRows) {
+      const key = [row.event_date, parseRankingPoints(row.points), normKey(cleanText(row.partner_name))].join('|');
+      if (!byKey.has(key)) byKey.set(key, row);
+    }
+    return [...byKey.values()];
+  };
+
   const computed = [];
   for (const [division, players] of byDivision) {
     const divisionRows = Array.from(players.values())
-      .map((playerRows) => {
+      .map((rawPlayerRows) => {
+        const playerRows = dedupePlayerRows(rawPlayerRows);
         const sortedDetails = [...playerRows].sort((a, b) =>
           b.points - a.points ||
           b.event_date.localeCompare(a.event_date) ||
