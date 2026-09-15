@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import {
   ArrowRight,
   CalendarCheck,
@@ -423,6 +423,8 @@ export default function EspaceJoueur() {
     path: ROUTE_PATHS.PLAYER_SPACE,
   });
 
+  const location = useLocation();
+
   const men = useRankings('men');
   const women = useRankings('women');
   const junior = useRankings('junior');
@@ -449,6 +451,8 @@ export default function EspaceJoueur() {
   const [claimLicense, setClaimLicense] = useState('');
   const [claimLoading, setClaimLoading] = useState(false);
   const [showLegacyAuth, setShowLegacyAuth] = useState(false);
+  const [showAllUpcoming, setShowAllUpcoming] = useState(false);
+  const [upcomingCategoryFilter, setUpcomingCategoryFilter] = useState('all');
   const [registrationDraft, setRegistrationDraft] = useState<RegistrationDraft | null>(null);
   const [partnerQuery, setPartnerQuery] = useState('');
   const [selectedPartnerKey, setSelectedPartnerKey] = useState('');
@@ -587,6 +591,35 @@ export default function EspaceJoueur() {
     return nextPerTier.sort((a, b) => tournamentDateValue(a) - tournamentDateValue(b));
   }, [tournaments]);
 
+  // Liste complete des tournois a venir (pas juste "1 par palier") - pour le
+  // joueur qui veut voir toutes ses options, pas seulement la plus proche
+  // dans chaque categorie.
+  const allUpcomingTournaments = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return tournaments
+      .filter(t => tournamentDateValue(t) >= today.getTime())
+      .filter(t => t.status !== 'cancelled')
+      .filter(t => upcomingCategoryFilter === 'all' || t.category === upcomingCategoryFilter)
+      .sort((a, b) => tournamentDateValue(a) - tournamentDateValue(b));
+  }, [tournaments, upcomingCategoryFilter]);
+
+  const upcomingCategories = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const cats = new Set(
+      tournaments
+        .filter(t => tournamentDateValue(t) >= today.getTime() && t.status !== 'cancelled')
+        .map(t => t.category)
+    );
+    return Array.from(cats).sort((a, b) => {
+      const order = ['M25', 'M50', 'M100', 'M250', 'M500', 'M1000'];
+      return order.indexOf(a) - order.indexOf(b);
+    });
+  }, [tournaments]);
+
+  const displayedTournaments = showAllUpcoming ? allUpcomingTournaments : upcomingTournaments;
+
   const selectedBestRankings = selectedProfile?.rankings
     .slice()
     .sort((a, b) => a.rank - b.rank || b.points - a.points) ?? [];
@@ -631,6 +664,15 @@ export default function EspaceJoueur() {
       setAuthEmail(storedEmail);
       window.localStorage.removeItem('mpl_player_login_email');
     }
+  }, []);
+
+  // Lien profond depuis le Calendrier ("Inscriptions" -> /joueurs?tournament=ID) :
+  // le tournoi vise n'est pas forcement dans l'apercu "1 par palier", on
+  // bascule donc sur la liste complete pour qu'il soit visible.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('tournament')) setShowAllUpcoming(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Session Supabase reelle (lien magique) : la restaurer au chargement de
@@ -1466,15 +1508,43 @@ export default function EspaceJoueur() {
         <div id="tournois-eligibles" className="player-panel registration-panel">
           <div className="section-title split">
             <span><CalendarCheck size={18} /> Tournois a venir et eligibilite</span>
-            <small>{tournamentsLoading ? 'Chargement...' : `${upcomingTournaments.length} suggestions`}</small>
+            <small>{tournamentsLoading ? 'Chargement...' : `${displayedTournaments.length} ${showAllUpcoming ? 'tournois' : 'suggestions'}`}</small>
           </div>
           <div className="registration-intro">
             <span><i /> Les opens restent ouverts aux licencies</span>
             <span><i /> Les categories M25/M50/M100/M250 appliquent les seuils MPL</span>
             <span><i /> La paire sera controlee a l etape suivante</span>
           </div>
+          <div className="upcoming-toggle">
+            <button
+              type="button"
+              className={`upcoming-toggle-btn ${!showAllUpcoming ? 'active' : ''}`}
+              onClick={() => setShowAllUpcoming(false)}
+            >
+              Apercu (1 par palier)
+            </button>
+            <button
+              type="button"
+              className={`upcoming-toggle-btn ${showAllUpcoming ? 'active' : ''}`}
+              onClick={() => setShowAllUpcoming(true)}
+            >
+              Voir tous les tournois a venir
+            </button>
+            {showAllUpcoming && (
+              <select
+                className="upcoming-category-select"
+                value={upcomingCategoryFilter}
+                onChange={event => setUpcomingCategoryFilter(event.target.value)}
+              >
+                <option value="all">Toutes categories</option>
+                {upcomingCategories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            )}
+          </div>
           <div className="tournament-grid">
-            {upcomingTournaments.map(tournament => {
+            {displayedTournaments.map(tournament => {
               const eligibility = eligibilityFor(selectedProfile, tournament);
               return (
                 <article key={tournament.id} className="tournament-card">
@@ -2200,6 +2270,38 @@ export default function EspaceJoueur() {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 14px;
+        }
+        .upcoming-toggle {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          align-items: center;
+          margin: -4px 0 16px;
+        }
+        .upcoming-toggle-btn {
+          padding: 7px 14px;
+          border-radius: 20px;
+          border: 1px solid rgba(255,255,255,0.12);
+          background: rgba(255,255,255,0.04);
+          color: rgba(255,255,255,0.7);
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .upcoming-toggle-btn.active {
+          background: rgba(74,213,105,0.15);
+          border-color: rgba(74,213,105,0.4);
+          color: #4ad569;
+        }
+        .upcoming-category-select {
+          padding: 7px 12px;
+          border-radius: 20px;
+          border: 1px solid rgba(255,255,255,0.12);
+          background: rgba(255,255,255,0.04);
+          color: white;
+          font-size: 13px;
+          font-weight: 600;
         }
         .registration-panel {
           position: relative;

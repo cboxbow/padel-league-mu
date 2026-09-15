@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, MapPin, Trophy, Filter, Search, X, ChevronUp, ChevronDown, RefreshCw, Award, Maximize2, Download, ChevronLeft, ChevronRight, Users } from 'lucide-react';
+import { Calendar, MapPin, Trophy, Filter, Search, X, ChevronUp, ChevronDown, RefreshCw, Award, Maximize2, Download, ChevronLeft, ChevronRight, Users, MessageCircle } from 'lucide-react';
 import { Layout, GlassCard } from '@/components/Layout';
 import { DotWaveBackground } from '@/components/DotWaveBackground';
 import { useI18n } from '@/hooks/useI18n';
@@ -128,8 +128,8 @@ function getAppStoreUrl(): string {
   return PLAY_STORE_URL;
 }
 
-function StatusBadge({ status, lang, whatsappUrl, contactName, isAppOnly }: {
-  status: string; lang: string; whatsappUrl?: string | null; contactName?: string; isAppOnly?: boolean;
+function StatusBadge({ status, lang, whatsappUrl, contactName, isAppOnly, registerHref }: {
+  status: string; lang: string; whatsappUrl?: string | null; contactName?: string; isAppOnly?: boolean; registerHref?: string;
 }) {
   const sc = STATUS_CONFIG[status] ?? STATUS_CONFIG.upcoming;
   const isOpen = status === 'open' || status === 'draw';
@@ -171,7 +171,51 @@ function StatusBadge({ status, lang, whatsappUrl, contactName, isAppOnly }: {
     );
   }
 
-  // ── Autres catégories : inscrire via WhatsApp du club ──────────────────────
+  // ── Autres categories : inscription en ligne (Espace Joueur), WhatsApp en secours ──
+  if (isOpen && registerHref) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <a
+          href={registerHref}
+          title="S'inscrire en ligne"
+          style={{
+            ...baseStyle,
+            cursor: 'pointer', textDecoration: 'none',
+            border: `1px solid ${sc.color}50`,
+            transition: 'all 0.15s',
+            boxShadow: `0 0 0 0 ${sc.color}00`,
+          }}
+          onMouseEnter={e => {
+            (e.currentTarget as HTMLAnchorElement).style.background = sc.color + '30';
+            (e.currentTarget as HTMLAnchorElement).style.boxShadow = `0 0 8px ${sc.color}40`;
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget as HTMLAnchorElement).style.background = sc.bg;
+            (e.currentTarget as HTMLAnchorElement).style.boxShadow = `0 0 0 0 ${sc.color}00`;
+          }}
+        >
+          {label}
+        </a>
+        {whatsappUrl && (
+          <a
+            href={whatsappUrl}
+            target="_blank"
+            rel="noreferrer"
+            title={`Ou via WhatsApp${contactName ? ` — ${contactName}` : ''}`}
+            style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: '24px', height: '24px', borderRadius: '6px',
+              border: '1px solid rgba(37,211,102,0.35)', background: 'rgba(37,211,102,0.1)',
+              color: '#25d366', textDecoration: 'none', flexShrink: 0,
+            }}
+          >
+            <MessageCircle size={13} />
+          </a>
+        )}
+      </div>
+    );
+  }
+  // ── Cas de secours (registerHref indisponible) : WhatsApp seul ────────────
   if (isOpen && whatsappUrl) {
     return (
       <a
@@ -985,6 +1029,7 @@ export default function Calendrier() {
                                 isAppOnly={t.category === 'M500' || t.category === 'M1000'}
                                 whatsappUrl={getClubWhatsApp(t.club_id, t.club_name)}
                                 contactName={MPL_CLUBS.find(c => c.id === t.club_id)?.contact}
+                                registerHref={`#${ROUTE_PATHS.PLAYER_SPACE}?tournament=${t.id}`}
                               />
                             )}
                             {/* Badge Résultats si résultats disponibles */}
