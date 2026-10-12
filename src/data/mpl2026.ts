@@ -1,6 +1,7 @@
 // MPL 2026 - Donnees issues de CALENDRIER MPL 2026.xlsx / DATABASE
 // Source officielle regeneree le 2026-09-14 depuis l'onglet DATABASE
-// 18 clubs · 243 lignes calendrier · 406 evenements affichables
+// 18 clubs · 243 lignes calendrier · 405 evenements affichables
+// Du 2026-10-12 au 2026-12-31 : aligne sur "CALENDRIER MPL 2026 updated 12 oct.xlsx" (2026-10-12)
 // Saison 10/01/2026 - 26/12/2026
 
 export interface Club {
@@ -357,6 +358,7 @@ export const MPL_TOURNAMENTS: Tournament[] = [
   {id:'t187h',name:'I Padel by RM Hennessy M250 (Hommes)',club_id:'c07',club_name:'I Padel by RM Hennessy',date:'2026-10-17',region:'Centre',category:'M250',division:'men',type:'MEN',status:'upcoming',max_teams:32},
   {id:'t187f',name:'I Padel by RM Hennessy M250 (Dames)',club_id:'c07',club_name:'I Padel by RM Hennessy',date:'2026-10-17',region:'Centre',category:'M250',division:'women',type:'WOMEN',status:'upcoming',max_teams:32},
   {id:'t189',name:'SPARC Cascavelle M250 (Hommes)',club_id:'c05',club_name:'SPARC Cascavelle',date:'2026-10-17',region:'Ouest',category:'M250',division:'men',type:'MEN',status:'upcoming',max_teams:32},
+  {id:'t265',name:'Energia Pointe aux Canonniers M50 (Hommes)',club_id:'c17',club_name:'Energia Pointe aux Canonniers',date:'2026-10-17',region:'Nord',category:'M50',division:'men',type:'MEN',status:'upcoming',max_teams:24},
   {id:'t190h',name:'Studio by RM Azuri M100 (Hommes)',club_id:'c11',club_name:'Studio by RM Azuri',date:'2026-10-18',region:'Est',category:'M100',division:'men',type:'MEN',status:'upcoming',max_teams:32},
   {id:'t190f',name:'Studio by RM Azuri M100 (Dames)',club_id:'c11',club_name:'Studio by RM Azuri',date:'2026-10-18',region:'Est',category:'M100',division:'women',type:'WOMEN',status:'upcoming',max_teams:32},
   {id:'t192h',name:'Isla Padel Grand Baie M25 (Hommes)',club_id:'c12',club_name:'Isla Padel Grand Baie',date:'2026-10-24',region:'Nord',category:'M25',division:'men',type:'MEN',status:'upcoming',max_teams:16},
@@ -406,8 +408,6 @@ export const MPL_TOURNAMENTS: Tournament[] = [
   {id:'t213',name:'Caña Beau Plan M100 (Hommes)',club_id:'c01',club_name:'Caña Beau Plan',date:'2026-11-28',region:'Nord',category:'M100',division:'men',type:'MEN',status:'upcoming',max_teams:32},
   {id:'t214h',name:'Club House Black River M250 (Hommes)',club_id:'c16',club_name:'Club House Black River',date:'2026-11-28',region:'Ouest',category:'M250',division:'men',type:'MEN',status:'upcoming',max_teams:32},
   {id:'t214f',name:'Club House Black River M250 (Dames)',club_id:'c16',club_name:'Club House Black River',date:'2026-11-28',region:'Ouest',category:'M250',division:'women',type:'WOMEN',status:'upcoming',max_teams:32},
-  {id:'t218h',name:'Moka Rangers M500 (Hommes)',club_id:'c18',club_name:'Moka Rangers',date:'2026-11-28',region:'Centre',category:'M500',division:'men',type:'MEN',status:'upcoming',max_teams:48},
-  {id:'t218f',name:'Moka Rangers M500 (Dames)',club_id:'c18',club_name:'Moka Rangers',date:'2026-11-28',region:'Centre',category:'M500',division:'women',type:'WOMEN',status:'upcoming',max_teams:48},
   {id:'t219h',name:'Studio by RM Azuri M250 (Hommes)',club_id:'c11',club_name:'Studio by RM Azuri',date:'2026-11-29',region:'Est',category:'M250',division:'men',type:'MEN',status:'upcoming',max_teams:32},
   {id:'t219f',name:'Studio by RM Azuri M250 (Dames)',club_id:'c11',club_name:'Studio by RM Azuri',date:'2026-11-29',region:'Est',category:'M250',division:'women',type:'WOMEN',status:'upcoming',max_teams:32},
   {id:'t222',name:'Urban Sport Grand Baie M25 (Hommes)',club_id:'c03',club_name:'Urban Sport Grand Baie',date:'2026-12-05',region:'Nord',category:'M25',division:'men',type:'MEN',status:'upcoming',max_teams:16},
