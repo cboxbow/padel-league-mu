@@ -1,7 +1,8 @@
 // MPL 2026 - Donnees issues de CALENDRIER MPL 2026.xlsx / DATABASE
 // Source officielle regeneree le 2026-09-14 depuis l'onglet DATABASE
-// 18 clubs · 243 lignes calendrier · 405 evenements affichables
+// 18 clubs · 243 lignes calendrier · 406 evenements affichables
 // Du 2026-10-12 au 2026-12-31 : aligne sur "CALENDRIER MPL 2026 updated 12 oct.xlsx" (2026-10-12)
+// Mise a jour 2026-10-16 ("CALENDRIER MPL 2026 16 octobre.xlsx") : tournois a venir uniquement
 // Saison 10/01/2026 - 26/12/2026
 
 export interface Club {
@@ -349,18 +350,19 @@ export const MPL_TOURNAMENTS: Tournament[] = [
   {id:'t248h',name:'Moka Rangers M100 (Hommes)',club_id:'c18',club_name:'Moka Rangers',date:'2026-10-10',region:'Centre',category:'M100',division:'men',type:'MEN',status:'upcoming',max_teams:32},
   {id:'t249f',name:'Moka Rangers M100 (Dames)',club_id:'c18',club_name:'Moka Rangers',date:'2026-10-10',region:'Centre',category:'M100',division:'women',type:'WOMEN',status:'upcoming',max_teams:32},
   {id:'t181',name:'Urban Sport Black River M25 (Hommes)',club_id:'c04',club_name:'Urban Sport Black River',date:'2026-10-17',region:'Ouest',category:'M25',division:'men',type:'MEN',status:'upcoming',max_teams:16},
-  {id:'t188h',name:'Oxygen Moka M50 (Hommes)',club_id:'c15',club_name:'Oxygen Moka',date:'2026-10-17',region:'Centre',category:'M50',division:'men',type:'MEN',status:'upcoming',max_teams:24},
-  {id:'t188f',name:'Oxygen Moka M50 (Dames)',club_id:'c15',club_name:'Oxygen Moka',date:'2026-10-17',region:'Centre',category:'M50',division:'women',type:'WOMEN',status:'upcoming',max_teams:24},
+  {id:'t266',name:'Urban Sport Black River M25 (Dames)',club_id:'c04',club_name:'Urban Sport Black River',date:'2026-10-17',region:'Ouest',category:'M25',division:'women',type:'WOMEN',status:'upcoming',max_teams:16},
+  {id:'t188h',name:'Oxygen Moka M50 (Hommes)',club_id:'c15',club_name:'Oxygen Moka',date:'2026-10-25',region:'Centre',category:'M50',division:'men',type:'MEN',status:'upcoming',max_teams:24},
+  {id:'t188f',name:'Oxygen Moka M50 (Dames)',club_id:'c15',club_name:'Oxygen Moka',date:'2026-10-25',region:'Centre',category:'M50',division:'women',type:'WOMEN',status:'upcoming',max_teams:24},
   {id:'t183h',name:'Terres Brunes Sports & Leisure M100 (Hommes)',club_id:'c13',club_name:'Terres Brunes Sports & Leisure',date:'2026-10-17',region:'Ouest',category:'M100',division:'men',type:'MEN',status:'upcoming',max_teams:32},
   {id:'t183f',name:'Terres Brunes Sports & Leisure M100 (Dames)',club_id:'c13',club_name:'Terres Brunes Sports & Leisure',date:'2026-10-17',region:'Ouest',category:'M100',division:'women',type:'WOMEN',status:'upcoming',max_teams:32},
   {id:'t184h',name:'Urban Sport Grand Baie M100 (Hommes)',club_id:'c03',club_name:'Urban Sport Grand Baie',date:'2026-10-17',region:'Nord',category:'M100',division:'men',type:'MEN',status:'upcoming',max_teams:32},
-  {id:'t184f',name:'Urban Sport Grand Baie M100 (Dames)',club_id:'c03',club_name:'Urban Sport Grand Baie',date:'2026-10-17',region:'Nord',category:'M100',division:'women',type:'WOMEN',status:'upcoming',max_teams:32},
+  {id:'t184f',name:'Urban Sport Grand Baie M100 (Dames)',club_id:'c03',club_name:'Urban Sport Grand Baie',date:'2026-10-17',region:'Nord',category:'M100',division:'women',type:'WOMEN',status:'cancelled',max_teams:32},
   {id:'t187h',name:'I Padel by RM Hennessy M250 (Hommes)',club_id:'c07',club_name:'I Padel by RM Hennessy',date:'2026-10-17',region:'Centre',category:'M250',division:'men',type:'MEN',status:'upcoming',max_teams:32},
   {id:'t187f',name:'I Padel by RM Hennessy M250 (Dames)',club_id:'c07',club_name:'I Padel by RM Hennessy',date:'2026-10-17',region:'Centre',category:'M250',division:'women',type:'WOMEN',status:'upcoming',max_teams:32},
-  {id:'t189',name:'SPARC Cascavelle M250 (Hommes)',club_id:'c05',club_name:'SPARC Cascavelle',date:'2026-10-17',region:'Ouest',category:'M250',division:'men',type:'MEN',status:'upcoming',max_teams:32},
-  {id:'t265',name:'Energia Pointe aux Canonniers M50 (Hommes)',club_id:'c17',club_name:'Energia Pointe aux Canonniers',date:'2026-10-17',region:'Nord',category:'M50',division:'men',type:'MEN',status:'upcoming',max_teams:24},
+  {id:'t189',name:'SPARC Cascavelle M250 (Hommes)',club_id:'c05',club_name:'SPARC Cascavelle',date:'2026-10-18',region:'Ouest',category:'M250',division:'men',type:'MEN',status:'upcoming',max_teams:32},
+  {id:'t265',name:'Energia Pointe aux Canonniers M50 (Hommes)',club_id:'c17',club_name:'Energia Pointe aux Canonniers',date:'2026-10-17',region:'Nord',category:'M50',division:'men',type:'MEN',status:'cancelled',max_teams:24},
   {id:'t190h',name:'Studio by RM Azuri M100 (Hommes)',club_id:'c11',club_name:'Studio by RM Azuri',date:'2026-10-18',region:'Est',category:'M100',division:'men',type:'MEN',status:'upcoming',max_teams:32},
-  {id:'t190f',name:'Studio by RM Azuri M100 (Dames)',club_id:'c11',club_name:'Studio by RM Azuri',date:'2026-10-18',region:'Est',category:'M100',division:'women',type:'WOMEN',status:'upcoming',max_teams:32},
+  {id:'t190f',name:'Studio by RM Azuri M100 (Dames)',club_id:'c11',club_name:'Studio by RM Azuri',date:'2026-10-18',region:'Est',category:'M100',division:'women',type:'WOMEN',status:'cancelled',max_teams:32},
   {id:'t192h',name:'Isla Padel Grand Baie M25 (Hommes)',club_id:'c12',club_name:'Isla Padel Grand Baie',date:'2026-10-24',region:'Nord',category:'M25',division:'men',type:'MEN',status:'upcoming',max_teams:16},
   {id:'t192f',name:'Isla Padel Grand Baie M25 (Dames)',club_id:'c12',club_name:'Isla Padel Grand Baie',date:'2026-10-24',region:'Nord',category:'M25',division:'women',type:'WOMEN',status:'upcoming',max_teams:16},
   {id:'t191h',name:'Club House Black River M50 (Hommes)',club_id:'c16',club_name:'Club House Black River',date:'2026-10-24',region:'Ouest',category:'M50',division:'men',type:'MEN',status:'upcoming',max_teams:24},
