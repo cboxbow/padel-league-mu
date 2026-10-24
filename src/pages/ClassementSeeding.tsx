@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, Fragment } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Lock, CalendarDays, ShieldCheck, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronUp, Trophy } from 'lucide-react';
+import { Search, Lock, CalendarDays, ShieldCheck, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronUp, Trophy, Download } from 'lucide-react';
 import { Layout, GlassCard } from '@/components/Layout';
 import { DotWaveBackground } from '@/components/DotWaveBackground';
 import { useI18n } from '@/hooks/useI18n';
@@ -25,7 +25,20 @@ interface Snapshot {
   published_at: string;
   entries_count: number;
   revision_reason: string | null;
+  // Periode de validite figee a la publication (lot L4) ; absente avant la migration.
+  validity_start?: string | null;
+  validity_end?: string | null;
 }
+
+interface ValidityPeriod {
+  reference_month: string;
+  validity_start: string;
+  validity_end: string;
+  registration_opening_month: string;
+  status: 'confirmed' | 'provisional';
+}
+
+type SeedingStatus = 'approved' | 'proposed' | 'pending_snapshot' | 'rejected' | 'not_assigned' | 'no_period';
 
 interface Entry {
   entry_id: number;
@@ -42,6 +55,8 @@ interface MonthTournament {
   date: string;
   division: string;
   category: string | null;
+  seeding_status?: SeedingStatus;
+  snapshot_version?: number | null;
 }
 
 interface Result {
@@ -67,6 +82,8 @@ function monthLabel(iso: string, lang: string): string {
   const [y, m] = iso.split('-').map(Number);
   return `${(lang === 'fr' ? MONTHS_FR : MONTHS_EN)[m - 1]} ${y}`;
 }
+
+const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 
 function dateFr(iso: string): string {
   const [y, m, d] = iso.slice(0, 10).split('-');
@@ -123,6 +140,54 @@ async function fetchEntries(snapshotId: string): Promise<Entry[]> {
   }
   return out;
 }
+
+function exportBaseName(s: Snapshot): string {
+  return `MPL_classement_officiel_${s.reference_month.slice(0, 7)}_${s.division}_v${s.version}`;
+}
+
+function downloadBlob(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportRows(entries: Entry[]) {
+  return entries.map(e => ({ Rang: e.rank, Joueur: e.player_name, Points: Number(e.points), 'Rang precedent': e.previous_rank ?? '', 'Resultats retenus': e.results_counted }));
+}
+
+function exportCsv(s: Snapshot, entries: Entry[]) {
+  const rows = exportRows(entries);
+  const head = Object.keys(rows[0] ?? { Rang: '', Joueur: '', Points: '', 'Rang precedent': '', 'Resultats retenus': '' });
+  const esc = (v: unknown) => { const t = String(v ?? ''); return /[;"\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+  const csv = [head.join(';'), ...rows.map(r => head.map(h => esc((r as Record<string, unknown>)[h])).join(';'))].join('\r\n');
+  downloadBlob(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }), `${exportBaseName(s)}.csv`);
+}
+
+async function exportXlsx(s: Snapshot, entries: Entry[], period: { start?: string | null; end?: string | null }) {
+  const XLSX = await import('xlsx');
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(exportRows(entries)), 'Classement');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
+    { Element: 'Classement officiel', Valeur: s.reference_month.slice(0, 7) },
+    { Element: 'Division', Valeur: s.division },
+    { Element: 'Version', Valeur: s.version },
+    { Element: 'Publie le', Valeur: s.published_at },
+    { Element: 'Valable pour les tournois commencant du', Valeur: period.start ?? 'a confirmer' },
+    { Element: 'au', Valeur: period.end ?? 'a confirmer' },
+    { Element: 'Finales prises en compte', Valeur: `${s.window_start} -> ${s.window_end}` },
+  ]), 'Informations');
+  XLSX.writeFile(wb, `${exportBaseName(s)}.xlsx`);
+}
+
+const STATUS_LABEL: Record<SeedingStatus, { fr: string; en: string; color: string }> = {
+  approved: { fr: 'approuve', en: 'approved', color: '#4ad569' },
+  proposed: { fr: 'propose', en: 'proposed', color: '#93c5fd' },
+  pending_snapshot: { fr: 'en attente', en: 'pending', color: '#f59e0b' },
+  rejected: { fr: 'refuse', en: 'rejected', color: '#ef4444' },
+  not_assigned: { fr: '', en: '', color: '#777' },
+  no_period: { fr: '', en: '', color: '#777' },
+};
 
 function Evolution({ entry }: { entry: Entry }) {
   if (entry.previous_rank == null) {
@@ -194,6 +259,7 @@ export default function ClassementSeeding() {
 
   const [snapshots, setSnapshots] = useState<Snapshot[] | null>(null);
   const [monthTournaments, setMonthTournaments] = useState<MonthTournament[] | null>(null);
+  const [periods, setPeriods] = useState<Record<string, ValidityPeriod>>({});
   const [error, setError] = useState('');
   const [month, setMonth] = useState('');
   const [division, setDivision] = useState<DivKey>('men');
@@ -218,22 +284,36 @@ export default function ClassementSeeding() {
       try {
         list = (await withRetry<Snapshot[]>(() => sb
           .from('ranking_snapshots')
-          .select('id,division,reference_month,applicable_month,window_start,window_end,version,published_at,entries_count,revision_reason')
+          .select('*')
           .eq('status', 'published')
-          .order('applicable_month', { ascending: false }))) ?? [];
+          .order('reference_month', { ascending: false }))) ?? [];
       } catch {
         if (!cancelled) { setError(loadError); setSnapshots([]); }
         return;
       }
       if (cancelled) return;
       setSnapshots(list);
-      if (list.length) setMonth(m => (m && list.some(x => x.applicable_month === m) ? m : list[0].applicable_month));
+      if (list.length) setMonth(m => (m && list.some(x => x.reference_month === m) ? m : list[0].reference_month));
+      // Periodes de validite (table absente avant la migration L4 : ignore).
+      const per = await withRetry<ValidityPeriod[]>(() => sb.from('ranking_validity_periods').select('*'), 2).catch((): null => null);
+      if (!cancelled && per) setPeriods(Object.fromEntries(per.map(p => [p.reference_month, p])));
     })();
     return () => { cancelled = true; };
   }, [lang, reloadKey]);
 
-  const months = useMemo(() => [...new Set((snapshots ?? []).map(s => s.applicable_month))], [snapshots]);
-  const monthSnapshots = useMemo(() => (snapshots ?? []).filter(s => s.applicable_month === month), [snapshots, month]);
+  const months = useMemo(() => [...new Set((snapshots ?? []).map(s => s.reference_month))], [snapshots]);
+  const monthSnapshots = useMemo(() => (snapshots ?? []).filter(s => s.reference_month === month), [snapshots, month]);
+  // Periode : celle figee sur le classement publie, sinon la periode CONFIRMEE de la table.
+  const periodOf = (s: Snapshot | null | undefined) => {
+    if (!s) return { start: null as string | null, end: null as string | null, registration: null as string | null };
+    const p = periods[s.reference_month];
+    const confirmed = p && p.status === 'confirmed' ? p : null;
+    return {
+      start: s.validity_start ?? confirmed?.validity_start ?? null,
+      end: s.validity_end ?? confirmed?.validity_end ?? null,
+      registration: confirmed?.registration_opening_month ?? s.applicable_month,
+    };
+  };
   const availableDivs = DIVS.filter(d => monthSnapshots.some(s => s.division === d.key));
   const snapshot = monthSnapshots.find(s => s.division === division) ?? null;
   const divConfig = DIVS.find(d => d.key === division)!;
@@ -242,24 +322,30 @@ export default function ClassementSeeding() {
     if (availableDivs.length && !availableDivs.some(d => d.key === division)) setDivision(availableDivs[0].key);
   }, [availableDivs, division]);
 
-  // Tous les tournois du mois d'application : ce classement sert a leurs tetes de serie.
+  // Tournois dont la DATE DE DEBUT tombe dans la periode de validite du classement.
+  const monthPeriod = periodOf(monthSnapshots[0]);
   useEffect(() => {
     setMonthTournaments(null);
     const sb = getSupabaseClient();
-    if (!sb || !month) return;
-    const [y, m] = month.split('-').map(Number);
-    const next = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-01`;
+    if (!sb || !monthPeriod.start || !monthPeriod.end) return;
     let cancelled = false;
-    withRetry<MonthTournament[]>(() => sb.from('tournaments')
-      .select('id,name,date,division,category')
-      .gte('date', month).lt('date', next)
-      .neq('status', 'cancelled')
-      .order('date', { ascending: true })
-      .order('name', { ascending: true }))
-      .then(rows => { if (!cancelled) setMonthTournaments(rows ?? []); })
-      .catch(() => { if (!cancelled) setMonthTournaments([]); });
+    (async () => {
+      const rows = await withRetry<MonthTournament[]>(() => sb.from('tournaments')
+        .select('id,name,date,division,category')
+        .gte('date', monthPeriod.start!).lte('date', monthPeriod.end!)
+        .neq('status', 'cancelled')
+        .order('date', { ascending: true })
+        .order('name', { ascending: true })).catch(() => [] as MonthTournament[]);
+      const ids = (rows ?? []).map(t => t.id);
+      const st = ids.length
+        ? await withRetry<{ tournament_id: string; seeding_status: SeedingStatus; snapshot_version: number | null }[]>(() => sb
+          .from('tournament_seeding_status').select('tournament_id,seeding_status,snapshot_version').in('tournament_id', ids), 2).catch((): null => null)
+        : null;
+      const byId = new Map((st ?? []).map(x => [x.tournament_id, x]));
+      if (!cancelled) setMonthTournaments((rows ?? []).map(t => ({ ...t, seeding_status: byId.get(t.id)?.seeding_status, snapshot_version: byId.get(t.id)?.snapshot_version })));
+    })();
     return () => { cancelled = true; };
-  }, [month, reloadKey]);
+  }, [month, monthPeriod.start, monthPeriod.end, reloadKey]);
 
   const divisionTournaments = useMemo(
     () => (monthTournaments ?? []).filter(t => String(t.division).toLowerCase() === division),
@@ -318,8 +404,8 @@ export default function ClassementSeeding() {
             </h1>
             <p style={{ color: '#9ca3af', margin: 0, fontSize: '15px', lineHeight: 1.6, maxWidth: '760px' }}>
               {lang === 'fr'
-                ? "Les tetes de serie d'un tournoi sont etablies sur le classement officiel du mois precedent : 8 meilleurs resultats des tournois dont la finale a eu lieu sur les 12 derniers mois calendaires. Une fois publie, ce classement ne change plus. Le classement en direct, lui, evolue chaque jour."
-                : "Tournament seeds are based on the previous month's official ranking: best 8 results from tournaments whose final took place over the last 12 calendar months. Once published, it never changes. The live ranking, by contrast, moves every day."}
+                ? "Les tetes de serie d'un tournoi sont etablies sur le classement officiel dont la periode de validite (du 21 au 20) contient la date de debut du tournoi : 8 meilleurs resultats des tournois dont la finale a eu lieu sur les 12 mois calendaires du classement. Une fois publie, ce classement ne change plus. Le classement en direct, lui, evolue chaque jour."
+                : "Tournament seeds use the official ranking whose validity period (21st to 20th) contains the tournament start date: best 8 results from tournaments whose final took place over the ranking's 12 calendar months. Once published, it never changes. The live ranking, by contrast, moves every day."}
             </p>
           </div>
 
@@ -342,13 +428,17 @@ export default function ClassementSeeding() {
               {/* Mois de tournois */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '14px' }}>
                 <span style={{ color: '#777', fontSize: '12px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                  <CalendarDays size={13} />{lang === 'fr' ? 'Tournois de :' : 'Tournaments of:'}
+                  <CalendarDays size={13} />{lang === 'fr' ? 'Classement de :' : 'Ranking of:'}
                 </span>
-                {months.map(m => (
-                  <button key={m} onClick={() => setMonth(m)} style={pill(m === month, '#f59e0b')}>
-                    {monthLabel(m, lang)}
-                  </button>
-                ))}
+                {months.map(m => {
+                  const p = periodOf((snapshots ?? []).find(x => x.reference_month === m));
+                  return (
+                    <button key={m} onClick={() => setMonth(m)} style={pill(m === month, '#f59e0b')} title={p.start ? `${dateFr(p.start)} -> ${dateFr(p.end!)}` : ''}>
+                      {monthLabel(m, lang)}
+                      {p.start && <span style={{ color: '#9ca3af', fontWeight: 600, marginLeft: '6px', fontSize: '11px' }}>{dateFr(p.start).slice(0, 5)}-{dateFr(p.end!).slice(0, 5)}</span>}
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Divisions */}
@@ -381,14 +471,15 @@ export default function ClassementSeeding() {
                     display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginBottom: '18px',
                   }}>
                     {[
-                      { label: lang === 'fr' ? 'Classement officiel' : 'Official ranking', val: monthLabel(snapshot.reference_month, lang), color: divConfig.color },
-                      { label: lang === 'fr' ? 'Tetes de serie des tournois de' : 'Seeds for tournaments of', val: monthLabel(snapshot.applicable_month, lang), color: '#f59e0b' },
+                      { label: lang === 'fr' ? 'Classement officiel' : 'Official ranking', val: cap(monthLabel(snapshot.reference_month, lang)), color: divConfig.color },
+                      { label: lang === 'fr' ? 'Valable pour les tournois commencant' : 'Valid for tournaments starting', val: monthPeriod.start ? `${lang === 'fr' ? 'du' : 'from'} ${dateFr(monthPeriod.start)} ${lang === 'fr' ? 'au' : 'to'} ${dateFr(monthPeriod.end!)}` : (lang === 'fr' ? 'periode a confirmer' : 'period to be confirmed'), color: '#f59e0b' },
+                      { label: lang === 'fr' ? 'Inscriptions ouvertes en' : 'Registrations open in', val: cap(monthLabel(monthPeriod.registration ?? snapshot.applicable_month, lang)), color: '#fbbf24' },
                       { label: lang === 'fr' ? 'Finales prises en compte' : 'Finals counted', val: `${dateFr(snapshot.window_start)} -> ${dateFr(snapshot.window_end)}`, color: '#93c5fd' },
                       { label: lang === 'fr' ? 'Publie le' : 'Published on', val: `${dateFr(snapshot.published_at)} · v${snapshot.version}`, color: '#4ad569' },
                     ].map(c => (
                       <div key={c.label} style={{ border: `1px solid ${c.color}30`, background: `${c.color}0d`, borderRadius: '12px', padding: '12px 14px' }}>
                         <div style={{ color: '#777', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '5px' }}>{c.label}</div>
-                        <div style={{ color: c.color, fontWeight: 900, fontSize: '15px', textTransform: 'capitalize' }}>{c.val}</div>
+                        <div style={{ color: c.color, fontWeight: 900, fontSize: '15px' }}>{c.val}</div>
                       </div>
                     ))}
                   </div>
@@ -397,27 +488,38 @@ export default function ClassementSeeding() {
                       <ShieldCheck size={13} />{lang === 'fr' ? `Revision v${snapshot.version} : ${snapshot.revision_reason}` : `Revision v${snapshot.version}: ${snapshot.revision_reason}`}
                     </div>
                   )}
+                  {!monthPeriod.start && (
+                    <div style={{ color: '#fbbf24', fontSize: '12px', margin: '-6px 0 16px' }}>
+                      {lang === 'fr' ? 'Periode de validite non encore confirmee : aucun tournoi n\'est rattache automatiquement a ce classement.' : 'Validity period not yet confirmed: no tournament is linked automatically.'}
+                    </div>
+                  )}
                   {!!divisionTournaments.length && (
                     <div style={{ border: '1px solid rgba(245,158,11,0.18)', background: 'rgba(245,158,11,0.04)', borderRadius: '12px', padding: '12px 14px', margin: '0 0 18px' }}>
                       <div style={{ display: 'flex', gap: '6px', alignItems: 'center', color: '#fbbf24', fontSize: '12px', fontWeight: 800, marginBottom: '10px' }}>
                         <Trophy size={13} />
                         {lang === 'fr'
-                          ? `Tetes de serie des ${divisionTournaments.length} tournois ${divConfig.fr} ${/^[aeiou]/.test(monthLabel(snapshot.applicable_month, lang)) ? "d'" : 'de '}${monthLabel(snapshot.applicable_month, lang)} :`
-                          : `Seeds for the ${divisionTournaments.length} ${divConfig.en} tournaments of ${monthLabel(snapshot.applicable_month, lang)}:`}
+                          ? `Tetes de serie des ${divisionTournaments.length} tournois ${divConfig.fr} commencant du ${dateFr(monthPeriod.start!)} au ${dateFr(monthPeriod.end!)} :`
+                          : `Seeds for the ${divisionTournaments.length} ${divConfig.en} tournaments starting ${dateFr(monthPeriod.start!)} to ${dateFr(monthPeriod.end!)}:`}
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                         {divisionTournaments.map(t => (
                           <span key={t.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 9px', borderRadius: '8px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', fontSize: '12px' }}>
                             <span style={{ color: '#777', fontFamily: 'JetBrains Mono, monospace' }}>{dateFr(t.date).slice(0, 5)}</span>
                             <span style={{ color: 'white', fontWeight: 700 }}>{t.name.replace(/\s*\((Hommes|Dames|Mixte)\)\s*$/i, '')}</span>
+                            {t.seeding_status && STATUS_LABEL[t.seeding_status]?.fr && (
+                              <span style={{ color: STATUS_LABEL[t.seeding_status].color, fontSize: '10px', fontWeight: 800, textTransform: 'uppercase' }}>
+                                {lang === 'fr' ? STATUS_LABEL[t.seeding_status].fr : STATUS_LABEL[t.seeding_status].en}{t.seeding_status === 'approved' && t.snapshot_version ? ` v${t.snapshot_version}` : ''}
+                              </span>
+                            )}
                           </span>
                         ))}
                       </div>
                     </div>
                   )}
 
-                  {/* Recherche */}
-                  <div style={{ position: 'relative', maxWidth: '400px', marginBottom: '16px' }}>
+                  {/* Recherche + export */}
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '16px' }}>
+                  <div style={{ position: 'relative', flex: '1 1 240px', maxWidth: '400px' }}>
                     <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#555' }} />
                     <input
                       value={search}
@@ -425,6 +527,13 @@ export default function ClassementSeeding() {
                       placeholder={lang === 'fr' ? 'Rechercher un joueur...' : 'Search a player...'}
                       style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${divConfig.color}40`, borderRadius: '10px', padding: '9px 12px 9px 36px', color: 'white', fontSize: '13px', outline: 'none', width: '100%', boxSizing: 'border-box' }}
                     />
+                  </div>
+                  {!!entries?.length && (['CSV', 'Excel'] as const).map(kind => (
+                    <button key={kind} onClick={() => (kind === 'CSV' ? exportCsv(snapshot, entries) : exportXlsx(snapshot, entries, monthPeriod))}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.8)', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
+                      <Download size={13} />{kind}
+                    </button>
+                  ))}
                   </div>
 
                   {/* Tableau */}

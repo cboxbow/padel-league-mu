@@ -1,7 +1,7 @@
 ﻿import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { Search, TrendingUp, Medal, RefreshCw, X, CalendarDays, ShieldCheck, Database } from 'lucide-react';
+import { Search, TrendingUp, Medal, RefreshCw, X, CalendarDays, ShieldCheck, Database, Download } from 'lucide-react';
 import { Layout, GlassCard } from '@/components/Layout';
 import { DotWaveBackground } from '@/components/DotWaveBackground';
 import { useI18n } from '@/hooks/useI18n';
@@ -186,6 +186,18 @@ const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
   csv:      { label: 'Classement CSV', color: '#3b82f6' },
   local:    { label: 'Classement local', color: '#f59e0b' },
 };
+
+// Export CSV du classement en direct (a titre informatif : ne sert pas au seeding).
+function exportLiveCsv(division: Division, rows: PlayerRanking[]) {
+  const today = new Date().toISOString().slice(0, 10);
+  const lines = [['Rang', 'Joueur', 'Points', 'Tournois'].join(';'),
+    ...rows.map(r => [r.rank, `"${r.player_name.replace(/"/g, '""')}"`, Math.ceil(r.points - 1e-9), r.tournaments_played ?? ''].join(';'))];
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `MPL_classement_en_direct_${division}_${today}.csv`; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 function formatPoints(value: number): string {
   return Math.ceil(parseRankingPoints(value) - 1e-9).toLocaleString('fr-FR');
@@ -1564,6 +1576,21 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
             </span>
           )}
         </span>
+        <span style={{ display: 'flex', gap: '6px' }}>
+        <button
+          onClick={() => exportLiveCsv(division, rows)}
+          title="Exporter le classement en direct (CSV)"
+          style={{
+            display: 'flex', alignItems: 'center', gap: '4px',
+            background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.75)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: '6px', padding: '4px 10px',
+            fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+          }}
+        >
+          <Download size={11} />
+          CSV
+        </button>
         {source === 'supabase' && (
           <button
             onClick={forceRefresh}
@@ -1581,6 +1608,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
             Rafraichir
           </button>
         )}
+        </span>
       </div>
     </div>
   );
@@ -1731,8 +1759,8 @@ export default function Classements() {
               </h1>
               <p style={{ color: '#9ca3af', margin: 0, fontSize: '15px', letterSpacing: '0.1px', lineHeight: 1.55, maxWidth: '680px' }}>
                 {lang === 'fr'
-                  ? 'Meilleurs 8 resultats sur les 12 derniers mois, calcules depuis les resultats reels.'
-                  : 'Best 8 scores over the last 12 months, calculated from real results.'}
+                  ? 'Classement en direct, a titre informatif : meilleurs 8 resultats sur les 12 derniers mois, recalcule apres chaque resultat valide. Il ne sert pas aux tetes de serie.'
+                  : 'Live ranking, for information only: best 8 scores over the last 12 months, recalculated after each validated result. It is not used for seeding.'}
               </p>
               <div style={{
                 display: 'flex',
