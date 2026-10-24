@@ -41,7 +41,7 @@ const confirmMonth = W.applicableMonth.slice(0, 7);
 
 async function main() {
   fs.mkdirSync(OUT, { recursive: true });
-  console.log(`Classement du mois ${MONTH} : finales du ${W.startIso} au ${W.endIso} -> tournois de ${confirmMonth}`);
+  console.log(`Classement du mois ${MONTH} : finales du ${W.startIso} au ${W.endIso} (inscriptions ${confirmMonth})`);
 
   // ── 1. Calcul par le moteur de production (simulation, aucune ecriture) ──
   const tmpOut = path.join(OUT, `.calcul_${monthTag}.json`);
@@ -59,6 +59,15 @@ async function main() {
   // ── 2. Mois precedent publie (lecture publique) et mois cible deja publie ? ──
   const sb = createClient(env.SUPABASE_URL || env.VITE_SUPABASE_URL || 'http://simulation', env.VITE_SUPABASE_ANON_KEY || env.SUPABASE_SERVICE_ROLE_KEY || 'simulation', { auth: { persistSession: false } });
   const prevApplicable = W.referenceMonth; // l'instantane du mois M-1 s'applique au mois M
+  // Periode de validite (lot L4) : tournois dont la DATE DE DEBUT tombe dans la periode.
+  // La publication est refusee en base tant qu'elle n'est pas CONFIRMEE.
+  const perRes = await sb.from('ranking_validity_periods').select('*').eq('reference_month', W.referenceMonth);
+  const validity = (!perRes.error && perRes.data && perRes.data[0]) || null;
+  const periodLabel = validity
+    ? `${validity.validity_start} -> ${validity.validity_end} (${validity.status === 'confirmed' ? 'confirmee' : 'PROVISOIRE'})`
+    : 'NON SAISIE';
+  console.log(`  Periode de validite : tournois commencant ${periodLabel}`);
+  if (!validity || validity.status !== 'confirmed') console.log("  ATTENTION : la publication sera refusee tant que la periode n'est pas confirmee (set_ranking_validity_period).");
   const fetchSnapshot = async (applicable, division) => {
     const { data, error } = await sb.from('ranking_snapshots').select('id,division,version,status,checksum,applicable_month')
       .eq('applicable_month', applicable).eq('division', division).eq('status', 'published');
@@ -139,7 +148,7 @@ async function main() {
       ...moves.filter((m) => m['Rang precedent'] === 'nouveau').slice(0, 30).map((m) => ({ ...m, Sens: 'entree' })),
       ...exits.slice(0, 30).map((p) => ({ Division: LABEL[division], Rang: '', Joueur: p.player_name, Points: '', 'Rang precedent': p.rank, 'Points precedents': Number(p.points), Evolution: '', Sens: 'sortie' })));
     sheets.CONTROLES.push(...checks);
-    sheets.SYNTHESE.push({ Division: LABEL[division], 'Mois de reference': MONTH, 'Applicable aux tournois de': confirmMonth, 'Finales du': W.startIso, au: W.endIso,
+    sheets.SYNTHESE.push({ Division: LABEL[division], 'Mois de reference': MONTH, 'Inscriptions': confirmMonth, 'Valable pour les tournois commencant': periodLabel, 'Finales du': W.startIso, au: W.endIso,
       Joueurs: list.length, 'Sans fiche joueur': noFiche, 'Mois precedent publie': prevSnap ? `v${prevSnap.version} (${prevEntries.length} joueurs)` : 'aucun',
       Entrees: moves.filter((m) => m['Rang precedent'] === 'nouveau').length, Sorties: exits.length, 'Dates de finale a verifier': edge.size,
       Revision: existing ? `v${existing.version + 1} (motif : ${env.REVISION_REASON})` : 'v1' });
@@ -157,13 +166,13 @@ async function main() {
     }
     const notes = [
       `Classement officiel ${LABEL[division]} du mois ${MONTH}, calcule par le moteur (regle du 24/10/2026) : finales du ${W.startIso} au ${W.endIso}, 8 meilleurs resultats, date de reference = jour de la finale.`,
-      `Reference de seeding des tournois de ${confirmMonth}. ${list.length} joueurs, ${noFiche} sans fiche joueur (note d'identite).`,
+      `Reference de seeding des tournois commencant ${periodLabel} (inscriptions ${confirmMonth}). ${list.length} joueurs, ${noFiche} sans fiche joueur (note d'identite).`,
       edge.size ? `Dates de finale a verifier : ${[...edge].join(' ; ')}.` : '',
       existing ? `Revision de la v${existing.version} : ${env.REVISION_REASON}` : '',
     ].filter(Boolean).join('\n');
     const file = `${monthTag}_1${String.fromCharCode(97 + i)}_import_validation_${LABEL[division]}.sql`;
     fs.writeFileSync(path.join(OUT, file), `-- ============================================================================
--- MPL - CLASSEMENT OFFICIEL ${MONTH} (${LABEL[division]}) -> tournois de ${confirmMonth}
+-- MPL - CLASSEMENT OFFICIEL ${MONTH} (${LABEL[division]}) -> tournois commencant ${periodLabel}
 -- ============================================================================
 -- Genere par scripts/generate-monthly-snapshot.cjs (moteur sha256 ${engineVersion.slice(0, 16)}...).
 -- Cree le brouillon, charge ${entryRows.length} lignes et ${resultRows.length} resultats, puis VALIDE.
@@ -234,7 +243,7 @@ commit;
   // ── Publication ──
   const pubFile = `${monthTag}_2_publication.sql`;
   fs.writeFileSync(path.join(OUT, pubFile), `-- ============================================================================
--- MPL - PUBLICATION DU CLASSEMENT OFFICIEL ${MONTH} -> tournois de ${confirmMonth}
+-- MPL - PUBLICATION DU CLASSEMENT OFFICIEL ${MONTH} -> tournois commencant ${periodLabel}
 -- ============================================================================
 -- A executer APRES verification des instantanes valides. Irreversible hors
 -- revision documentee. Journalise au nom de ${ADMIN_ID}.

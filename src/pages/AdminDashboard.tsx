@@ -15,6 +15,7 @@ import ExportsPage        from '@/pages/admin/ExportsPage';
 import ResultsAdminPage   from '@/pages/admin/ResultsAdminPage';
 import RankingsAdminPage  from '@/pages/admin/RankingsAdminPage';
 import OfficialRankingImportPage from '@/pages/admin/OfficialRankingImportPage';
+import SeedingReferencesPage from '@/pages/admin/SeedingReferencesPage';
 import GalerieAdminPage  from '@/pages/admin/GalerieAdminPage';
 import HistoricalAuditPage from '@/pages/admin/HistoricalAuditPage';
 import { GlassCard, MPLLogo, CategoryBadge, RegionBadge } from '@/components/Layout';
@@ -60,7 +61,7 @@ class AdminErrorBoundary extends Component<
   }
 }
 
-type AdminPage = 'dashboard' | 'clubs' | 'players' | 'tournaments' | 'registrations' | 'results' | 'rankings' | 'official_import' | 'historical_audit' | 'draw' | 'brackets' | 'live_scoring' | 'scores' | 'exports' | 'obs' | 'gallery';
+type AdminPage = 'dashboard' | 'clubs' | 'players' | 'tournaments' | 'registrations' | 'results' | 'rankings' | 'official_import' | 'seeding_refs' | 'historical_audit' | 'draw' | 'brackets' | 'live_scoring' | 'scores' | 'exports' | 'obs' | 'gallery';
 // ── Role context — accessible by all sub-pages ─────────────────────────
 import { createContext, useContext } from 'react';
 import type { UIRole } from '@/lib/adminAuth';
@@ -2427,6 +2428,7 @@ export default function AdminDashboard({ onLogout, role, userName }: Props) {
     { key: 'results',     label: lang === 'fr' ? 'Résultats' : 'Results',   icon: Medal       },
     { key: 'rankings',    label: lang === 'fr' ? 'Classements' : 'Rankings', icon: BarChart2   },
     { key: 'official_import', label: 'Classements officiels', icon: FileText },
+    { key: 'seeding_refs', label: 'References de seeding', icon: Trophy },
     { key: 'historical_audit', label: 'Controle donnees', icon: Database },
     { key: 'brackets',    label: 'Brackets',     icon: GitBranch },
     { key: 'scores',      label: 'Scores',       icon: Star      },
@@ -2540,6 +2542,7 @@ export default function AdminDashboard({ onLogout, role, userName }: Props) {
             {activePage === 'results'     && <ResultsAdminPage />}
             {activePage === 'rankings'    && <RankingsAdminPage />}
             {activePage === 'official_import' && <OfficialRankingImportPage />}
+            {activePage === 'seeding_refs' && <SeedingReferencesPage />}
             {activePage === 'historical_audit' && <HistoricalAuditPage />}
             {activePage === 'obs'         && <OBSPage />}
             {activePage === 'exports'     && <ExportsPage />}
