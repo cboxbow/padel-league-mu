@@ -104,9 +104,14 @@ async function loadAllRankingsFromSupabase(): Promise<Record<string, unknown>[] 
   for (;;) {
     const { rows: chunk, error } = await sbQuery<Record<string, unknown>>(
       () => sb.from('rankings')
-        .select('id,player_name,rank,points,division,tournaments_played,trend,season,updated_at')
+        // player_id = identifiant permanent du joueur ; "id" n'est que la ligne
+        // de classement, regeneree a chaque publication.
+        .select('id,player_id,player_name,rank,points,division,tournaments_played,trend,season,updated_at')
         .order('division')
         .order('rank')
+        // Departage stable : des centaines de joueurs partagent un meme rang,
+        // sans lui la pagination par range() peut sauter ou repeter des lignes.
+        .order('id')
         .range(from, from + PAGE - 1),
       `rankings_load[${from}]`
     );

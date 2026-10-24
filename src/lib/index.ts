@@ -7,6 +7,7 @@ export const ROUTE_PATHS = {
   CLUBS: '/clubs',
   CALENDAR: '/calendrier',
   RANKINGS: '/classements',
+  SEEDING: '/classements/seeding',
   PLAYER_SPACE: '/joueurs',
   RESULTS: '/resultats',
   HISTORY: '/historique',

@@ -795,7 +795,39 @@ async function fetchRollingRankingInputs(sb: NonNullable<ReturnType<typeof getSu
     inputs.push(...legacyBatch.flatMap(resultToRankingInputs));
     if (legacyBatch.length < pageSize) break;
   }
-  return dedupeRankingInputs(inputs);
+  return dropDuplicatedEvents(dedupeRankingInputs(inputs));
+}
+
+// Meme regle que scripts/lib/mpl-ranking-engine.cjs : un tableau importe deux
+// fois sous deux dates (saisie site + feuille Excel datee a J+1, ou Club Med
+// Albion M100 au 28/02 ET au 28/03) ne compte qu'une fois. Au-dela de 80 % de
+// lignes identiques (joueur + rang + points) entre deux tableaux de meme
+// division/categorie/club, on garde la date la plus ancienne. Sans ce filet,
+// "Publier les classements" depuis l'admin recomptait ces tableaux en double.
+function dropDuplicatedEvents(rows: RankingInputRow[]): RankingInputRow[] {
+  const scopeOf = (row: RankingInputRow) => [row.division, row.division === 'mixed' ? 'MIXED' : row.category, normKey(row.club_name)].join('|');
+  const events = new Map<string, { scope: string; date: string; signatures: Set<string> }>();
+  for (const row of rows) {
+    const key = `${scopeOf(row)}|${row.event_date}`;
+    if (!events.has(key)) events.set(key, { scope: scopeOf(row), date: row.event_date, signatures: new Set() });
+    events.get(key)!.signatures.add([playerIdentityKey(row), Number(row.rank) || 0, parseRankingPoints(row.points)].join('|'));
+  }
+  const dropped = new Set<string>();
+  const sorted = [...events.entries()].sort(([, a], [, b]) => a.date.localeCompare(b.date));
+  for (let i = 0; i < sorted.length; i += 1) {
+    const [keyA, a] = sorted[i];
+    if (dropped.has(keyA)) continue;
+    for (let j = i + 1; j < sorted.length; j += 1) {
+      const [keyB, b] = sorted[j];
+      if (dropped.has(keyB) || b.scope !== a.scope || b.date === a.date) continue;
+      const smaller = Math.min(a.signatures.size, b.signatures.size);
+      if (smaller < 4) continue;
+      let common = 0;
+      for (const signature of b.signatures) if (a.signatures.has(signature)) common += 1;
+      if (common / smaller >= 0.8) dropped.add(keyB);
+    }
+  }
+  return dropped.size ? rows.filter(row => !dropped.has(`${scopeOf(row)}|${row.event_date}`)) : rows;
 }
 
 async function clearCurrentRankingDetails(sb: NonNullable<ReturnType<typeof getSupabaseClient>>, divisions: RankingDivision[]) {

@@ -21,7 +21,10 @@ function readEnvFile(filePath) {
 
 const env = { ...readEnvFile('.env.local'), ...readEnvFile('.env.admin'), ...process.env };
 const SUPABASE_URL = env.SUPABASE_URL || env.VITE_SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = env.SUPABASE_SERVICE_ROLE_KEY;
+// DRY_RUN=1 : calcule et affiche les changements de points sans rien ecrire
+// (la cle anon publique suffit alors, toutes les tables lues sont publiques).
+const DRY_RUN = env.DRY_RUN === '1';
+const SUPABASE_SERVICE_ROLE_KEY = env.SUPABASE_SERVICE_ROLE_KEY || (DRY_RUN ? env.VITE_SUPABASE_ANON_KEY : '');
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error('Missing SUPABASE_URL/VITE_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.');
@@ -29,6 +32,19 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 }
 
 const DIVS = ['men', 'women', 'mixed', 'junior'];
+// RANKING_DIVISIONS=women (ou men,women...) : ne republie que ces divisions,
+// les autres gardent leur classement publie actuel.
+const ONLY_DIVISIONS = cleanDivisionList(env.RANKING_DIVISIONS);
+
+function cleanDivisionList(value) {
+  const list = String(value ?? '').split(',').map((item) => item.trim().toLowerCase()).filter(Boolean);
+  const unknown = list.filter((item) => !DIVS.includes(item));
+  if (unknown.length) {
+    console.error(`RANKING_DIVISIONS inconnue(s): ${unknown.join(', ')} (attendu: ${DIVS.join(', ')})`);
+    process.exit(1);
+  }
+  return list.length ? new Set(list) : null;
+}
 const DIV_LABELS = {
   men: 'Hommes',
   women: 'Dames',
@@ -301,7 +317,19 @@ function computeRollingPeriod(today = new Date()) {
   };
 }
 
+// RANKING_MONTH=AAAA-MM : regle officielle des classements mensuels (decision
+// du 2026-10-24) - finales du 1er jour du mois M-11 au dernier jour du mois M.
+// Sinon : fenetre glissante de 12 mois au jour pres (classement en direct).
 function computeFixedMauritiusPeriod() {
+  if (process.env.RANKING_MONTH) {
+    const m = String(process.env.RANKING_MONTH).match(/^(\d{4})-(\d{2})$/);
+    if (!m) throw new Error(`RANKING_MONTH invalide (AAAA-MM attendu) : ${process.env.RANKING_MONTH}`);
+    const year = Number(m[1]); const month = Number(m[2]);
+    const start = new Date(year, month - 12, 1, 0, 0, 0, 0);
+    const end = new Date(year, month, 0, 23, 59, 59, 999);
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return { start, end, startIso: iso(start), endIso: iso(end), season: year, monthly: true };
+  }
   const todayIso = process.env.RANKING_TODAY || new Date().toLocaleDateString('en-CA', { timeZone: 'Indian/Mauritius' });
   const [year, month, day] = todayIso.split('-').map(Number);
   const end = new Date(year, month - 1, day, 23, 59, 59, 999);
@@ -334,7 +362,9 @@ function parseRankingPoints(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function historicalToRankingInputs(row) {
+// Date de reference d'un resultat = jour de la finale (event_end_date, ou
+// tournaments.end_date via event_key) ; a defaut, date du tableau.
+function historicalToRankingInputs(row, endDates = new Map()) {
   const rawCategory = normalizeJuniorCategory(row.category || row.junior_category || '');
   const division = normalizeRankingDivision(row.division, rawCategory, row.event_name);
   const category = division === 'mixed' ? 'MIXED' : rawCategory;
@@ -347,8 +377,11 @@ function historicalToRankingInputs(row) {
   const base = {
     id: row.id,
     event_key: row.event_key,
+    tournament_id: /^[tj]\d/.test(cleanText(row.event_key)) ? cleanText(row.event_key) : null,
     event_name: normalizeTournamentDisplayName(row.event_name, clubName),
     event_date: date,
+    reference_date: cleanText(row.event_end_date).slice(0, 10) || endDates.get(cleanText(row.event_key)) || date,
+    rank_label: cleanText(row.rank_label),
     category,
     division,
     club_name: clubName,
@@ -362,7 +395,7 @@ function historicalToRankingInputs(row) {
   ].filter(Boolean);
 }
 
-function resultToRankingInputs(row) {
+function resultToRankingInputs(row, endDates = new Map()) {
   const rawCategory = normalizeJuniorCategory(row.category);
   const division = normalizeRankingDivision(row.division, rawCategory, row.tournament_name);
   const category = division === 'mixed' ? 'MIXED' : rawCategory;
@@ -373,8 +406,10 @@ function resultToRankingInputs(row) {
   const player2 = canonicalPlayerName(row.player2_name);
   const base = {
     id: row.id,
+    tournament_id: cleanText(row.tournament_id) || null,
     event_name: normalizeTournamentDisplayName(row.tournament_name, clubName),
     event_date: date,
+    reference_date: endDates.get(cleanText(row.tournament_id)) || date,
     category,
     division,
     club_name: clubName,
@@ -444,6 +479,51 @@ function dedupeRankingInputs(rows) {
   return Array.from(byKey.values());
 }
 
+// Un meme tableau importe deux fois sous deux dates (ex. Club Med Albion M100
+// Hommes : saisie admin au 2026-02-28 + feuille Excel "M100 CMA - MAR 26"
+// datee 2026-03-28, 15 equipes sur 15 identiques) ne doit compter qu'une fois.
+// On compare les tableaux entiers (meme division/categorie/club) : au-dela de
+// 80 % de lignes identiques (joueur + rang + points), c'est le meme tournoi et
+// on garde la date la plus ancienne. Une equipe qui refait seule le meme
+// resultat lors d'un vrai autre tournoi n'atteint jamais ce seuil.
+const DUPLICATE_EVENT_MIN_OVERLAP = 0.8;
+const DUPLICATE_EVENT_MIN_ROWS = 4;
+
+function dropDuplicatedEvents(rows) {
+  const events = new Map();
+  for (const row of rows) {
+    const scope = [row.division, row.division === 'mixed' ? 'MIXED' : row.category, normKey(row.club_name)].join('|');
+    const key = `${scope}|${row.event_date}`;
+    if (!events.has(key)) events.set(key, { scope, date: row.event_date, name: row.event_name, signatures: new Set() });
+    events.get(key).signatures.add([playerIdentityKey(row), Number(row.rank) || 0, parseRankingPoints(row.points)].join('|'));
+  }
+
+  const dropped = new Set();
+  const sorted = [...events.entries()].sort(([, a], [, b]) => a.date.localeCompare(b.date));
+  for (let i = 0; i < sorted.length; i += 1) {
+    const [keyA, a] = sorted[i];
+    if (dropped.has(keyA)) continue;
+    for (let j = i + 1; j < sorted.length; j += 1) {
+      const [keyB, b] = sorted[j];
+      if (dropped.has(keyB) || b.scope !== a.scope || b.date === a.date) continue;
+      const smaller = Math.min(a.signatures.size, b.signatures.size);
+      if (smaller < DUPLICATE_EVENT_MIN_ROWS) continue;
+      let common = 0;
+      for (const signature of b.signatures) if (a.signatures.has(signature)) common += 1;
+      if (common / smaller >= DUPLICATE_EVENT_MIN_OVERLAP) {
+        dropped.add(keyB);
+        console.log(`   Tableau en double ignore: ${b.date} "${b.name}" = ${a.date} "${a.name}" (${common}/${smaller} lignes identiques)`);
+      }
+    }
+  }
+
+  if (!dropped.size) return rows;
+  return rows.filter((row) => {
+    const scope = [row.division, row.division === 'mixed' ? 'MIXED' : row.category, normKey(row.club_name)].join('|');
+    return !dropped.has(`${scope}|${row.event_date}`);
+  });
+}
+
 function rankTrend(rank, rankBefore) {
   if (!rankBefore || rankBefore === rank) return 'same';
   return rank < rankBefore ? 'up' : 'down';
@@ -452,7 +532,7 @@ function rankTrend(rank, rankBefore) {
 function computeRankingRows(inputs, previousRanks, period) {
   const byDivision = new Map();
   for (const row of inputs) {
-    const date = new Date(`${row.event_date}T12:00:00`);
+    const date = new Date(`${row.reference_date || row.event_date}T12:00:00`);
     if (!row.player_name || !row.event_date || Number.isNaN(date.getTime())) continue;
     if (date < period.start || date > period.end) continue;
     if (!byDivision.has(row.division)) byDivision.set(row.division, new Map());
@@ -474,11 +554,18 @@ function computeRankingRows(inputs, previousRanks, period) {
   // Fabrice Nayna / Oxygen Moka M250, memes player_id des deux cotes,
   // 2026-04-11 vs 2026-04-12) - on se base plutot sur qui a joue
   // (player_id fiable si present, sinon nom) + club + categorie + points +
-  // rang, qui ne peuvent raisonnablement coincider deux fois pour un vrai
-  // match distinct.
+  // rang, en tolerant quelques jours d'ecart sur la date. Sans aucune limite
+  // de date, une vraie deuxieme victoire au meme endroit avec la meme
+  // partenaire etait avalee comme doublon (ex. Magaly Schaffo / Marinne
+  // Giraud, M500 RM Hennessy gagne le 2025-12-12 ET le 2026-06-20 : -500 pts).
+  const MAX_DUPLICATE_DAY_GAP = 3;
+  const dayGap = (a, b) => Math.abs(Date.parse(`${a}T12:00:00Z`) - Date.parse(`${b}T12:00:00Z`)) / 86400000;
   const dedupePlayerRows = (playerRows) => {
     const byKey = new Map();
-    for (const row of playerRows) {
+    const kept = [];
+    // Tri par date croissante : en cas de doublon, la plus ancienne (source
+    // historique) est gardee, pour rester coherent avec le reste du calcul.
+    for (const row of [...playerRows].sort((a, b) => a.event_date.localeCompare(b.event_date))) {
       const partnerKey = cleanText(row.partner_id) || normKey(cleanText(row.partner_name));
       const key = [
         row.category,
@@ -487,13 +574,12 @@ function computeRankingRows(inputs, previousRanks, period) {
         parseRankingPoints(row.points),
         Number(row.rank) || 0,
       ].join('|');
-      const existing = byKey.get(key);
-      // Si deux dates differentes se disputent la meme cle, garde la plus
-      // ancienne (source historique) pour rester coherent avec le reste du
-      // calcul, qui trie par date.
-      if (!existing || row.event_date < existing.event_date) byKey.set(key, row);
+      const sameKeyRows = byKey.get(key) ?? [];
+      if (sameKeyRows.some((existing) => dayGap(existing.event_date, row.event_date) <= MAX_DUPLICATE_DAY_GAP)) continue;
+      byKey.set(key, [...sameKeyRows, row]);
+      kept.push(row);
     }
-    return [...byKey.values()];
+    return kept;
   };
 
   const computed = [];
@@ -508,8 +594,15 @@ function computeRankingRows(inputs, previousRanks, period) {
         );
         const retained = sortedDetails.slice(0, 8);
         const retainedTotal = retained.reduce((sum, row) => sum + parseRankingPoints(row.points), 0);
+        // Nom affiche : l'orthographe la plus frequente chez ce joueur, pas
+        // celle de son meilleur resultat (sinon une faute de saisie unique,
+        // ex. "KEITH LOOONG", devient le nom publie du joueur).
+        const nameCounts = new Map();
+        for (const row of playerRows) nameCounts.set(row.player_name, (nameCounts.get(row.player_name) || 0) + 1);
+        const displayName = [...nameCounts.entries()]
+          .sort((a, b) => b[1] - a[1] || sortedDetails.findIndex((d) => d.player_name === a[0]) - sortedDetails.findIndex((d) => d.player_name === b[0]))[0][0];
         return {
-          player_name: sortedDetails[0].player_name,
+          player_name: displayName,
           points: retainedTotal,
           tournaments_played: sortedDetails.length,
           division,
@@ -642,7 +735,7 @@ async function main() {
     const expected = sheetSaysMixed ? 'mixed' : sheetSaysWomen ? 'women' : sheetSaysMen ? 'men' : null;
     if (expected && div && expected !== div) idsToFix.push({ id: row.id, expected });
   }
-  for (const division of ['men', 'women', 'mixed']) {
+  for (const division of DRY_RUN ? [] : ['men', 'women', 'mixed']) {
     const ids = idsToFix.filter((row) => row.expected === division).map((row) => row.id);
     if (!ids.length) continue;
     const { error } = await supabase
@@ -664,19 +757,31 @@ async function main() {
   };
   const players = await fetchAll(supabase, 'players', 'id,first_name,last_name');
   const resolvePlayerId = createPlayerResolver(players);
+  const hasEndDates = await hasColumn(supabase, 'tournaments', 'end_date');
+  const hasEventEndDates = await hasColumn(supabase, 'historical_tournament_results', 'event_end_date');
+  const endDates = new Map();
+  if (hasEndDates) {
+    for (const t of await fetchAll(supabase, 'tournaments', 'id,end_date', (q) => q.order('id'))) {
+      if (t.end_date) endDates.set(t.id, String(t.end_date).slice(0, 10));
+    }
+  }
+  const fetchStart = new Date(period.start); fetchStart.setDate(fetchStart.getDate() - 7);
+  const fetchStartIso = `${fetchStart.getFullYear()}-${String(fetchStart.getMonth() + 1).padStart(2, '0')}-${String(fetchStart.getDate()).padStart(2, '0')}`;
+  console.log(`   Date de reference = finale (${endDates.size} tournois avec date de fin${hasEventEndDates ? ', dates de fin des tableaux historiques lues' : ''})${period.monthly ? ' - fenetre mensuelle officielle' : ''}`);
   const historicalColumns = [
     'id','source_file','sheet_name','event_key','event_name','event_year','season','category','division',
     'junior_category','club_name','event_date','region','rank_label','rank_min','rank_max','team_name',
     'player1_name','player2_name','points',
     ...(schema.historicalPlayerIds ? ['player1_id','player2_id'] : []),
+    ...(hasEventEndDates ? ['event_end_date'] : []),
   ].join(',');
   const historical = await fetchAll(
     supabase,
     'historical_tournament_results',
     historicalColumns,
-    (query) => query.gte('event_date', period.startIso).lte('event_date', period.endIso).order('event_date', { ascending: false })
+    (query) => query.gte('event_date', fetchStartIso).lte('event_date', period.endIso).order('event_date', { ascending: false })
   );
-  let inputs = historical.flatMap(historicalToRankingInputs);
+  let inputs = historical.flatMap((row) => historicalToRankingInputs(row, endDates));
 
   try {
     const legacyColumns = schema.tournamentPlayerIds ? '*' : [
@@ -687,9 +792,9 @@ async function main() {
       supabase,
       'tournament_results',
       legacyColumns,
-      (query) => query.gte('tournament_date', period.startIso).lte('tournament_date', period.endIso)
+      (query) => query.gte('tournament_date', fetchStartIso).lte('tournament_date', period.endIso)
     );
-    inputs.push(...legacy.flatMap(resultToRankingInputs));
+    inputs.push(...legacy.flatMap((row) => resultToRankingInputs(row, endDates)));
   } catch (error) {
     console.warn(`   tournament_results ignore: ${error.message}`);
   }
@@ -699,6 +804,7 @@ async function main() {
     partner_id: cleanText(row.partner_id) || resolvePlayerId(row.partner_name),
   }));
   inputs = dedupeRankingInputs(inputs);
+  inputs = dropDuplicatedEvents(inputs);
   console.log(`   ${inputs.length} lignes joueurs detectees.`);
 
   console.log('3/5 Calcul Top 8 et rangs...');
@@ -719,9 +825,28 @@ async function main() {
     const rank = Number(row.rank ?? 0);
     if (name && Number.isFinite(rank) && rank > 0) previousRanks.set(`${division}|${name}`, rank);
   }
-  const rows = computeRankingRows(inputs, previousRanks, period);
+  const rows = computeRankingRows(inputs, previousRanks, period)
+    .filter((row) => !ONLY_DIVISIONS || ONLY_DIVISIONS.has(row.division));
   if (!rows.length) throw new Error('Aucun classement calcule.');
   assertRankingDetailsMatch(rows);
+
+  if (DRY_RUN) {
+    const published = await fetchAll(supabase, 'rankings', 'player_id,player_name,division,rank,points,tournaments_played');
+    const publishedByKey = new Map(published.map((row) => [`${row.division}|${cleanText(row.player_id) || normKey(row.player_name)}`, row]));
+    const changes = rows
+      .map((row) => ({ row, before: publishedByKey.get(`${row.division}|${cleanText(row.player_id) || normKey(row.player_name)}`) }))
+      .filter(({ row, before }) => !before || before.points !== row.points || before.tournaments_played !== row.tournaments_played);
+    console.log(`DRY_RUN: ${rows.length} joueurs calcules, ${changes.length} changements de points/tournois (rien n'est ecrit).`);
+    if (env.DRY_RUN_OUT) {
+      fs.writeFileSync(env.DRY_RUN_OUT, JSON.stringify(rows.map(({ details, ...row }) => ({ ...row, details: details.map((d) => ({ event_date: d.event_date, reference_date: d.reference_date || d.event_date, event_name: d.event_name, category: d.category, club_name: d.club_name, rank: d.rank, rank_label: d.rank_label, partner_name: d.partner_name, tournament_id: d.tournament_id || null, points: d.points, is_retained: d.is_retained })) }))));
+      console.log(`DRY_RUN: classement complet ecrit dans ${env.DRY_RUN_OUT}`);
+      fs.writeFileSync(`${env.DRY_RUN_OUT}.period.json`, JSON.stringify({ startIso: period.startIso, endIso: period.endIso, monthly: Boolean(period.monthly) }));
+    }
+    for (const { row, before } of changes.sort((a, b) => a.row.division.localeCompare(b.row.division) || a.row.rank - b.row.rank)) {
+      console.log(`${row.division} | ${row.player_name} | ${before ? `#${before.rank} ${before.points} pts (${before.tournaments_played})` : 'nouveau'} -> #${row.rank} ${row.points} pts (${row.tournaments_played})`);
+    }
+    return;
+  }
   const divisions = Array.from(new Set(rows.map((row) => row.division)));
   const batchId = newId();
   const now = new Date().toISOString();

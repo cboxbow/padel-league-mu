@@ -700,6 +700,13 @@ export default function Calendrier() {
             <p style={{ color: '#606060', fontSize: '14px', margin: '0 0 20px' }}>
               {lang === 'fr' ? 'Saison 2026 · source Supabase en temps réel' : 'Season 2026 · live Supabase data'}
             </p>
+            <button
+              onClick={() => navigate(ROUTE_PATHS.SEEDING)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', margin: '-8px 0 18px', padding: '7px 12px', borderRadius: '999px', border: '1px solid rgba(245,158,11,0.3)', background: 'rgba(245,158,11,0.08)', color: '#fbbf24', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
+            >
+              <Award size={13} />
+              {lang === 'fr' ? 'Têtes de série : classement officiel du mois précédent →' : "Seeds: previous month's official ranking →"}
+            </button>
 
             {/* Stats rapides */}
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>

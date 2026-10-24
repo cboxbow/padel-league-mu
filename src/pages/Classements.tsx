@@ -1,5 +1,6 @@
-﻿import { useState, useMemo, useEffect, useCallback } from 'react';
+﻿import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { Link } from 'react-router-dom';
 import { Search, TrendingUp, Medal, RefreshCw, X, CalendarDays, ShieldCheck, Database } from 'lucide-react';
 import { Layout, GlassCard } from '@/components/Layout';
 import { DotWaveBackground } from '@/components/DotWaveBackground';
@@ -8,6 +9,7 @@ import { useSeo } from '@/hooks/useSeo';
 import { useRankings } from '@/hooks/useData';
 import { getSupabaseClient, isSupabaseConnected } from '@/lib/supabase';
 import { MPL_TOURNAMENTS } from '@/data/mpl2026';
+import { ROUTE_PATHS } from '@/lib/index';
 
 import {
   FULL_RANKINGS_MEN,
@@ -186,7 +188,7 @@ const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 function formatPoints(value: number): string {
-  return parseRankingPoints(value).toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+  return Math.ceil(parseRankingPoints(value) - 1e-9).toLocaleString('fr-FR');
 }
 
 function inferEventSeason(eventName: string, fallback?: number): number | undefined {
@@ -1073,6 +1075,10 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
   const [playerDetails, setPlayerDetails] = useState<PlayerRankingDetail[]>([]);
   const [playerCareerStats, setPlayerCareerStats] = useState<PlayerCareerStats | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
+  // Identifiant du dernier chargement de fiche : un chargement plus ancien
+  // (fiche fermee/rouverte ou autre joueur clique entre-temps) ne doit ni
+  // ecraser les details, ni couper le "Chargement..." de la fiche ouverte.
+  const detailsRequestRef = useRef(0);
   const [isCompact, setIsCompact] = useState(false);
 
   useEffect(() => {
@@ -1186,30 +1192,48 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
     const historicalSeen = new Set<string>();
     const pageSize = 300;
 
-    for (const term of lookupTerms) {
-      for (const column of ['player1_name', 'player2_name'] as const) {
-        for (let from = 0; from < 3000; from += pageSize) {
-          const { data, error } = await sb
-            .from('historical_tournament_results')
-            .select('id,event_name,season,category,division,rank_min,team_name,player1_name,player2_name,points,club_name,event_date')
-            .ilike(column, `%${term}%`)
-            .range(from, from + pageSize - 1);
+    // Chaque couple (terme, colonne) pagine de son cote, mais tous les couples
+    // partent en parallele : en sequence, un nom courant ("MATHIEU") faisait
+    // attendre plusieurs secondes avant l'affichage de la fiche.
+    const fetchTermColumn = async (term: string, column: 'player1_name' | 'player2_name') => {
+      const rows: Record<string, unknown>[] = [];
+      for (let from = 0; from < 3000; from += pageSize) {
+        const { data, error } = await sb
+          .from('historical_tournament_results')
+          .select('id,event_name,season,category,division,rank_min,team_name,player1_name,player2_name,points,club_name,event_date')
+          .ilike(column, `%${term}%`)
+          .range(from, from + pageSize - 1);
 
-          if (error) {
-            console.warn('[Classements] historical_tournament_results error:', error);
-            break;
-          }
-
-          const batch = (data ?? []) as Record<string, unknown>[];
-          for (const row of batch) {
-            if (!rowHasPlayer(row, playerKey, playerLooseKey)) continue;
-            const key = String(row.id ?? `${row.event_name}|${row.team_name}|${row.points}`);
-            if (historicalSeen.has(key)) continue;
-            historicalSeen.add(key);
-            historicalRows.push(row);
-          }
-          if (batch.length < pageSize) break;
+        if (error) {
+          console.warn('[Classements] historical_tournament_results error:', error);
+          break;
         }
+
+        const batch = (data ?? []) as Record<string, unknown>[];
+        rows.push(...batch);
+        if (batch.length < pageSize) break;
+      }
+      return rows;
+    };
+
+    const [termBatches, summaryResult] = await Promise.all([
+      Promise.all(lookupTerms.flatMap(term =>
+        (['player1_name', 'player2_name'] as const).map(column => fetchTermColumn(term, column))
+      )),
+      sb
+        .from('historical_player_career_summary')
+        .select('seasons_played,tournaments_played,total_points,wins,podiums,average_points')
+        .ilike('player_name', name)
+        .maybeSingle(),
+    ]);
+
+    for (const batch of termBatches) {
+      for (const row of batch) {
+        if (!rowHasPlayer(row, playerKey, playerLooseKey)) continue;
+        const key = String(row.id ?? `${row.event_name}|${row.team_name}|${row.points}`);
+        if (historicalSeen.has(key)) continue;
+        historicalSeen.add(key);
+        historicalRows.push(row);
       }
     }
 
@@ -1243,11 +1267,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
     }
 
     let stats: PlayerCareerStats | null = null;
-    const { data: summary } = await sb
-      .from('historical_player_career_summary')
-      .select('seasons_played,tournaments_played,total_points,wins,podiums,average_points')
-      .ilike('player_name', name)
-      .maybeSingle();
+    const summary = summaryResult.data;
 
     if (summary) {
       const row = summary as Record<string, unknown>;
@@ -1276,16 +1296,24 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
   }
 
   async function openPlayer(player: PlayerRanking) {
+    const requestId = ++detailsRequestRef.current;
     setSelectedPlayer(player);
     setPlayerDetails([]);
     setPlayerCareerStats(null);
 
-    if (!isSupabaseConnected()) return;
+    if (!isSupabaseConnected()) {
+      setDetailsLoading(false);
+      return;
+    }
     const sb = getSupabaseClient();
-    if (!sb) return;
+    if (!sb) {
+      setDetailsLoading(false);
+      return;
+    }
 
     setDetailsLoading(true);
-    try {
+
+    const loadOfficialDetails = async (): Promise<PlayerRankingDetail[]> => {
       const playerKey = playerCanonicalKey(player.player_name);
       const playerLooseKey = looseNameKey(playerKey);
       const { data: latestBatchRows } = await sb
@@ -1355,7 +1383,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
         }
       }
 
-      const officialDetails = officialRows.length
+      return officialRows.length
         ? officialRows.map(row => ({
           player_id: String(row.player_id ?? '') || null,
           player_name: String(row.player_name ?? ''),
@@ -1371,15 +1399,27 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
           source: 'official' as const,
         })).filter(detail => detail.event_name && detail.points > 0)
         : [];
+    };
 
-      const historical = await loadHistoricalPlayerData(player);
-      setPlayerCareerStats(historical.stats);
+    // Les trois sources sont independantes : on les charge en parallele, et
+    // l'echec de l'une n'efface pas les deux autres.
+    const [official, historical, current] = await Promise.allSettled([
+      loadOfficialDetails(),
+      loadHistoricalPlayerData(player),
+      loadTournamentResultDetails(player),
+    ]);
+    if (requestId !== detailsRequestRef.current) return;
 
-      const currentDetails = await loadTournamentResultDetails(player);
-      setPlayerDetails([...currentDetails, ...historical.details, ...officialDetails]);
-    } finally {
-      setDetailsLoading(false);
+    for (const result of [official, historical, current]) {
+      if (result.status === 'rejected') console.warn('[Classements] chargement fiche joueur:', result.reason);
     }
+    const officialDetails = official.status === 'fulfilled' ? official.value : [];
+    const historicalData = historical.status === 'fulfilled' ? historical.value : { details: [], stats: null };
+    const currentDetails = current.status === 'fulfilled' ? current.value : [];
+
+    setPlayerCareerStats(historicalData.stats);
+    setPlayerDetails([...currentDetails, ...historicalData.details, ...officialDetails]);
+    setDetailsLoading(false);
   }
 
   if (loading) return (
@@ -1648,6 +1688,16 @@ export default function Classements() {
         <div style={{ position: 'absolute', top: 64, left: 0, right: 0, height: '1px', background: 'linear-gradient(90deg, transparent 0%, rgba(74,213,105,0.2) 50%, transparent 100%)' }} />
         <div style={{ maxWidth: '1100px', margin: '0 auto', minWidth: '320px' }}>
 
+          {/* Bascule direct / seeding */}
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '22px', position: 'relative' }}>
+            <span style={{ padding: '9px 14px', borderRadius: '999px', fontSize: '13px', fontWeight: 800, border: '1px solid rgba(74,213,105,0.56)', background: 'rgba(74,213,105,0.13)', color: 'white' }}>
+              {lang === 'fr' ? 'Classement en direct' : 'Live ranking'}
+            </span>
+            <Link to={ROUTE_PATHS.SEEDING} style={{ padding: '9px 14px', borderRadius: '999px', fontSize: '13px', fontWeight: 800, textDecoration: 'none', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.035)', color: 'rgba(255,255,255,0.6)' }}>
+              {lang === 'fr' ? 'Classement de seeding' : 'Seeding ranking'}
+            </Link>
+          </div>
+
           {/* Header */}
           <div style={{
             display: 'flex',
@@ -1755,7 +1805,10 @@ export default function Classements() {
                 {lang === 'fr' ? 'Donnees live' : 'Live data'}
               </span>
               <span>•</span>
-              <span>{lang === 'fr' ? 'Classement recalcule automatiquement a chaque publication officielle.' : 'Ranking recalculated automatically after each official publication.'}</span>
+              <span>
+                {lang === 'fr' ? 'Ce classement evolue chaque jour. Les tetes de serie utilisent le ' : 'This ranking moves every day. Tournament seeds use the '}
+                <Link to={ROUTE_PATHS.SEEDING} style={{ color: '#f59e0b', fontWeight: 800 }}>{lang === 'fr' ? 'classement officiel mensuel' : 'official monthly ranking'}</Link>.
+              </span>
             </div>
 
           {/* Onglets division */}

@@ -116,7 +116,7 @@ function normalizeName(value: string) {
 }
 
 function formatNumber(value: number | undefined) {
-  return Number(value ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 2 }).replace(/\u202f/g, ' ');
+  return Math.ceil(Number(value ?? 0) - 1e-9).toLocaleString('fr-FR').replace(/\u202f/g, ' ');
 }
 
 function tournamentDateValue(tournament: TournamentData) {

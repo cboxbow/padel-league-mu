@@ -9,6 +9,7 @@ import Regions       from '@/pages/Regions';
 import Clubs         from '@/pages/Clubs';
 import Calendrier    from '@/pages/Calendrier';
 import Classements   from '@/pages/Classements';
+import ClassementSeeding from '@/pages/ClassementSeeding';
 import EspaceJoueur  from '@/pages/EspaceJoueur';
 import Resultats     from '@/pages/Resultats';
 import Historique    from '@/pages/Historique';
@@ -84,6 +85,7 @@ function AppRoutes() {
       <Route path={ROUTE_PATHS.CLUBS}           element={<Clubs />} />
       <Route path={ROUTE_PATHS.CALENDAR}        element={<Calendrier />} />
       <Route path={ROUTE_PATHS.RANKINGS}        element={<Classements />} />
+      <Route path={ROUTE_PATHS.SEEDING}         element={<ClassementSeeding />} />
       <Route path={ROUTE_PATHS.PLAYER_SPACE}    element={<EspaceJoueur />} />
       <Route path={ROUTE_PATHS.RESULTS}         element={<Resultats />} />
       <Route path={ROUTE_PATHS.HISTORY}         element={<Historique />} />
