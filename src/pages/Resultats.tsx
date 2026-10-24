@@ -166,6 +166,12 @@ function cleanText(value: unknown): string {
   return String(value ?? '').trim();
 }
 
+// "NORD" (import du classeur) et "Nord" (saisie admin) doivent etre la meme region.
+function normalizeRegion(value: unknown): string {
+  const region = cleanText(value).toLowerCase();
+  return region ? region.charAt(0).toUpperCase() + region.slice(1) : '';
+}
+
 function normalizeClubName(value: unknown): string {
   const name = cleanText(value);
   if (!name) return '';
@@ -220,7 +226,7 @@ function mapHistoricalResult(row: HistoricalTournamentResult): TournamentResult 
     tournament_date: row.event_date || `${row.event_year || row.season || 2026}-01-01`,
     category,
     division: normalizeDivision(row.division, category),
-    region: cleanText(row.region),
+    region: normalizeRegion(row.region),
     club_name: clubName,
     rank: rankNumberFromHistorical(row),
     team_name: row.team_name || `${player1} / ${player2}`,
