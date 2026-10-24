@@ -80,19 +80,36 @@ function useNarrow(breakpoint = 560): boolean {
   return narrow;
 }
 
+// supabase-js annule parfois une requete pendant la lecture de la session
+// ("AbortError: signal is aborted without reason", plusieurs onglets ouverts,
+// reseau lent) : on reessaie quelques fois avant d'afficher une erreur.
+async function withRetry<T>(run: () => PromiseLike<{ data: T | null; error: { message: string } | null }>, tries = 4): Promise<T> {
+  let last: unknown = null;
+  for (let attempt = 0; attempt < tries; attempt += 1) {
+    try {
+      const { data, error } = await run();
+      if (!error) return data as T;
+      last = error;
+    } catch (err) {
+      last = err;
+    }
+    await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+  }
+  throw last;
+}
+
 async function fetchEntries(snapshotId: string): Promise<Entry[]> {
   const sb = getSupabaseClient();
   if (!sb) return [];
   const out: Entry[] = [];
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await sb
+    const data = await withRetry<Entry[]>(() => sb
       .from('ranking_snapshot_entries')
       .select('entry_id,player_name,rank,previous_rank,points,results_counted')
       .eq('snapshot_id', snapshotId)
       .order('rank', { ascending: true })
       .order('entry_id', { ascending: true })
-      .range(from, from + 999);
-    if (error) throw error;
+      .range(from, from + 999));
     out.push(...(data as Entry[]).map(e => ({ ...e, points: Number(e.points) })));
     if (!data || data.length < 1000) break;
   }
@@ -119,10 +136,11 @@ function PlayerResults({ entryId, color, lang, narrow }: { entryId: number; colo
     let cancelled = false;
     const sb = getSupabaseClient();
     if (!sb) return;
-    sb.from('ranking_snapshot_results')
+    withRetry<Result[]>(() => sb.from('ranking_snapshot_results')
       .select('event_name,event_date,category,position,points,status')
-      .eq('entry_id', entryId)
-      .then(({ data }) => {
+      .eq('entry_id', entryId))
+      .catch(() => [] as Result[])
+      .then(data => {
         if (cancelled) return;
         const list = ((data ?? []) as Result[]).map(r => ({ ...r, points: Number(r.points) }));
         list.sort((a, b) => (a.status === b.status ? b.points - a.points || b.event_date.localeCompare(a.event_date) : a.status === 'counted' ? -1 : 1));
@@ -174,34 +192,47 @@ export default function ClassementSeeding() {
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [search, setSearch] = useState('');
   const [openEntry, setOpenEntry] = useState<number | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const narrow = useNarrow();
+  const loadError = lang === 'fr'
+    ? 'Le classement n\'a pas pu etre charge (connexion lente ou interrompue).'
+    : 'The ranking could not be loaded (slow or interrupted connection).';
+  const retry = () => { setError(''); setSnapshots(null); setReloadKey(k => k + 1); };
   const edge = narrow ? '10px' : '16px';
 
   // Instantanes publies (la RLS ne montre au public que ceux-la).
   useEffect(() => {
     const sb = getSupabaseClient();
     if (!sb) { setError(lang === 'fr' ? 'Donnees indisponibles.' : 'Data unavailable.'); setSnapshots([]); return; }
+    let cancelled = false;
     (async () => {
-      const { data, error: err } = await sb
-        .from('ranking_snapshots')
-        .select('id,division,reference_month,applicable_month,window_start,window_end,version,published_at,entries_count,revision_reason')
-        .eq('status', 'published')
-        .order('applicable_month', { ascending: false });
-      if (err) { setError(err.message); setSnapshots([]); return; }
-      const list = (data ?? []) as Snapshot[];
+      let list: Snapshot[];
+      try {
+        list = (await withRetry<Snapshot[]>(() => sb
+          .from('ranking_snapshots')
+          .select('id,division,reference_month,applicable_month,window_start,window_end,version,published_at,entries_count,revision_reason')
+          .eq('status', 'published')
+          .order('applicable_month', { ascending: false }))) ?? [];
+      } catch {
+        if (!cancelled) { setError(loadError); setSnapshots([]); }
+        return;
+      }
+      if (cancelled) return;
       setSnapshots(list);
-      if (list.length) setMonth(list[0].applicable_month);
-      // Tournois rattaches a ces classements.
-      const { data: refs } = await sb.from('tournament_seeding_references').select('tournament_id,snapshot_id');
+      if (list.length) setMonth(m => (m && list.some(x => x.applicable_month === m) ? m : list[0].applicable_month));
+      // Tournois rattaches a ces classements (information secondaire).
+      const refs = await withRetry<{ tournament_id: string; snapshot_id: string }[]>(() => sb.from('tournament_seeding_references').select('tournament_id,snapshot_id')).catch(() => null);
       const ids = [...new Set((refs ?? []).map(r => String(r.tournament_id)))];
-      if (!ids.length) return;
-      const { data: tours } = await sb.from('tournaments').select('id,name').in('id', ids);
+      if (!ids.length || cancelled) return;
+      const tours = await withRetry<{ id: string; name: string }[]>(() => sb.from('tournaments').select('id,name').in('id', ids)).catch(() => null);
+      if (cancelled) return;
       const names = new Map((tours ?? []).map(t => [String(t.id), String(t.name)]));
       const bySnapshot: Record<string, string[]> = {};
       for (const r of refs ?? []) (bySnapshot[String(r.snapshot_id)] ||= []).push(names.get(String(r.tournament_id)) ?? String(r.tournament_id));
       setTournaments(bySnapshot);
     })();
-  }, [lang]);
+    return () => { cancelled = true; };
+  }, [lang, reloadKey]);
 
   const months = useMemo(() => [...new Set((snapshots ?? []).map(s => s.applicable_month))], [snapshots]);
   const monthSnapshots = useMemo(() => (snapshots ?? []).filter(s => s.applicable_month === month), [snapshots, month]);
@@ -219,9 +250,9 @@ export default function ClassementSeeding() {
     let cancelled = false;
     fetchEntries(snapshot.id)
       .then(rows => { if (!cancelled) setEntries(rows); })
-      .catch(err => { if (!cancelled) { setError(String(err.message ?? err)); setEntries([]); } });
+      .catch(() => { if (!cancelled) { setError(loadError); setEntries([]); } });
     return () => { cancelled = true; };
-  }, [snapshot?.id]);
+  }, [snapshot?.id, reloadKey]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -271,7 +302,12 @@ export default function ClassementSeeding() {
           </div>
 
           {error && (
-            <GlassCard style={{ padding: '16px', marginBottom: '20px', color: '#fca5a5', fontSize: '13px' }} hoverable={false}>{error}</GlassCard>
+            <GlassCard style={{ padding: '16px', marginBottom: '20px', color: '#fca5a5', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }} hoverable={false}>
+              <span>{error}</span>
+              <button onClick={retry} style={{ padding: '8px 14px', borderRadius: '999px', border: '1px solid rgba(74,213,105,0.5)', background: 'rgba(74,213,105,0.12)', color: 'white', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
+                {lang === 'fr' ? 'Reessayer' : 'Retry'}
+              </button>
+            </GlassCard>
           )}
 
           {snapshots === null && <div style={{ color: '#777', fontSize: '14px' }}>{lang === 'fr' ? 'Chargement...' : 'Loading...'}</div>}
