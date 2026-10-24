@@ -61,6 +61,21 @@ async function main() {
   for (const p of players) for (const n of [`${p.first_name} ${p.last_name}`, `${p.last_name} ${p.first_name}`]) {
     const k = nameKey(n); if (!k) continue; if (!byName.has(k)) byName.set(k, new Set()); byName.get(k).add(p.id);
   }
+  // Identites deja validees : lignes du classement officiel publie de reference
+  // (septembre 2026 par defaut) rattachees a une fiche joueur.
+  const refMonth = env.IDENTITY_REFERENCE_MONTH || '2026-09-01';
+  const refSnaps = await fetchAll('ranking_snapshots', 'id,division,reference_month,status', (q) => q.eq('reference_month', refMonth).eq('status', 'published').order('id'));
+  const validated = {};
+  for (const rs of refSnaps) {
+    const m = new Map();
+    for (const e of await fetchAll('ranking_snapshot_entries', 'player_id,player_name', (q) => q.eq('snapshot_id', rs.id).order('entry_id'))) {
+      if (!e.player_id) continue;
+      const k = nameKey(e.player_name);
+      if (!m.has(k)) m.set(k, new Set());
+      m.get(k).add(e.player_id);
+    }
+    validated[rs.division] = m;
+  }
   const hist = await fetchAll('historical_tournament_results', 'sheet_name,event_name,event_date,event_end_date', (q) => q.gte('event_date', W.startIso).lte('event_date', W.endIso).order('id'));
   const sheetDate = new Map();
   for (const h of hist) for (const nm of new Set([h.sheet_name, h.event_name].filter(Boolean))) { const k = colKey(nm); const d = h.event_end_date || h.event_date; const m = sheetDate.get(k) || new Map(); m.set(d, (m.get(d) || 0) + 1); sheetDate.set(k, m); }
@@ -75,6 +90,7 @@ async function main() {
 
   const report = { classeur: path.basename(env.WORKBOOK), sha256: sha, modifie_le: stat.mtime.toISOString(), feuilles: wb.SheetNames.length, masquees: hidden, fenetre: `${W.startIso} -> ${W.endIso}`, divisions: {} };
   const files = [];
+  const preview = { lignes: [] };
   for (const [division, cfg] of Object.entries(DIVS)) {
     const name = wb.SheetNames.find((n) => cfg.re.test(n.trim()));
     if (!name) throw new Error(`${division} : feuille de classement introuvable`);
@@ -107,20 +123,25 @@ async function main() {
       if (a.points > b.points && !(a.rank < b.rank)) errors.push(`rang incoherent : ${a.name} ${a.points} (#${a.rank}) vs ${b.name} ${b.points} (#${b.rank})`);
       if (a.points === b.points && a.rank !== b.rank) errors.push(`ex aequo de rangs differents : ${a.name} #${a.rank} / ${b.name} #${b.rank} (${a.points})`);
     }
-    // Identites : correspondance exacte et unique uniquement.
+    // Identites : 1) meme nom exact qu'une ligne du classement officiel de reference
+    // deja rattachee (identite validee) ; 2) sinon fiche joueur unique a nom identique.
+    // Jamais de rapprochement approximatif ; un conflit entre les deux sources reste sans fiche.
     const used = new Map();
     let noFiche = 0; let dup = 0;
+    const viaSource = { classement_reference: 0, fiche_unique: 0 };
     for (const l of lines.sort((a, b) => a.rank - b.rank || b.points - a.points)) {
-      const ids = byName.get(nameKey(l.name));
-      if (ids && ids.size === 1) {
-        const id = [...ids][0];
-        if (used.has(id)) { l.player_id = null; l.note = `Doublon de la ligne #${used.get(id).rank} ${used.get(id).name} : meme fiche joueur, identite scindee dans le classeur diffuse`; dup += 1; }
-        else { l.player_id = id; used.set(id, l); }
-      } else {
-        l.player_id = null;
-        l.note = ids && ids.size > 1 ? `Nom porte par ${ids.size} fiches joueur : rattachement a valider (tel que diffuse)` : 'Sans fiche joueur a nom identique (nom tel que diffuse)';
-        noFiche += 1;
-      }
+      const k = nameKey(l.name);
+      const v = validated[division]?.get(k);
+      const ids = byName.get(k);
+      let id = null; let note = null;
+      if (v && v.size === 1) {
+        id = [...v][0]; l.match = 'classement_reference';
+        if (ids && ids.size === 1 && !ids.has(id)) { id = null; note = 'Conflit entre l\'identite du classement de reference et la fiche joueur a nom identique : a valider'; }
+      } else if (ids && ids.size === 1) { id = [...ids][0]; l.match = 'fiche_unique'; }
+      else note = ids && ids.size > 1 ? `Nom porte par ${ids.size} fiches joueur : rattachement a valider (tel que diffuse)` : 'Sans fiche joueur a nom identique (nom tel que diffuse)';
+      if (id && used.has(id)) { l.player_id = null; l.note = `Doublon de la ligne #${used.get(id).rank} ${used.get(id).name} : meme fiche joueur, identite scindee dans le classeur diffuse`; l.match = 'doublon'; dup += 1; }
+      else if (id) { l.player_id = id; used.set(id, l); viaSource[l.match] += 1; }
+      else { l.player_id = null; l.note = note; l.match = 'aucun'; noFiche += 1; }
     }
     // Detail : date de chaque colonne (feuille resultat en base) ; a defaut 1er jour du mois, signale.
     let approx = 0;
@@ -132,7 +153,10 @@ async function main() {
     }
     const approxCols = [...new Set(lines.flatMap((l) => l.cols.filter((c) => c.approx).map((c) => c.col)))];
     if (approxCols.length) warnings.push(`${approxCols.length} colonne(s) sans feuille resultat datee en base, date = 1er jour du mois : ${approxCols.join(', ')}`);
-    report.divisions[division] = { feuille: name, lignes: lines.length, colonnes: eventCols.length, sans_fiche: noFiche, doublons: dup, dates_approximatives: approx, erreurs: errors, avertissements: warnings };
+    report.divisions[division] = { feuille: name, lignes: lines.length, total_points: Math.round(lines.reduce((a, l) => a + l.points, 0) * 100) / 100, colonnes: eventCols.length,
+      rattaches_classement_reference: viaSource.classement_reference, rattaches_fiche_unique: viaSource.fiche_unique, sans_fiche: noFiche, doublons: dup,
+      dates_approximatives: approx, erreurs: errors, avertissements: warnings };
+    preview.lignes.push(...lines.map((l) => ({ division, rang: l.rank, rang_precedent: l.previous_rank ?? '', joueur: l.name, points: l.points, resultats: l.cols.length, player_id: l.player_id || '', rapprochement: l.match, note: l.note || '' })));
     console.log(`  ${cfg.label} : ${lines.length} lignes, ${eventCols.length} colonnes, ${noFiche} sans fiche, ${dup} doublons, ${errors.length} erreur(s), ${warnings.length} avertissement(s)`);
     if (errors.length) { for (const e of errors.slice(0, 20)) console.log(`     ERREUR ${e}`); continue; }
 
@@ -160,6 +184,8 @@ async function main() {
 -- Prerequis : ranking_snapshots_l4_validity_periods.sql (periode confirmee).
 -- Cree le brouillon (v1, source classeur), charge ${entryRows.length} lignes et ${resultRows.length}
 -- resultats, puis VALIDE. Ne publie pas : voir L4_4_${monthTag}_publication.sql. Tout ou rien.
+-- IDEMPOTENT : relance sans effet si le classement a deja ete importe depuis ce
+-- classeur (meme sha256) ; refuse s'il existe un autre classement pour ce mois.
 -- Genere le ${new Date().toISOString().slice(0, 10)} par scripts/build-workbook-snapshot-import.cjs
 -- ============================================================================
 begin;
@@ -173,7 +199,27 @@ declare
   v_entries jsonb := ${sqlText(JSON.stringify(entryRows))}::jsonb;
   v_events jsonb := ${sqlText(JSON.stringify(events))}::jsonb;
   v_results jsonb := ${sqlText(JSON.stringify(resultRows))}::jsonb;
+  v_existing record;
 begin
+  -- Idempotence : un classement existe deja pour cette division et ce mois ?
+  select id, status, engine_version into v_existing from public.ranking_snapshots
+   where division = ${sqlText(division)} and applicable_month = date '${W.applicableMonth}' and status <> 'withdrawn'
+   order by version desc limit 1;
+  if found then
+    if v_existing.engine_version = ${sqlText(`classeur sha256 ${sha}`)} then
+      if v_existing.status = 'draft' then
+        -- Remis en brouillon par un retour arriere : contenu identique, on le revalide.
+        v_res := public.validate_ranking_snapshot(v_existing.id);
+        if not (v_res->>'ok')::boolean then raise exception 'Revalidation ${cfg.label} refusee : %', v_res; end if;
+        raise notice '${cfg.label} ${monthFr} : brouillon existant revalide (meme classeur)';
+      else
+        raise notice '${cfg.label} ${monthFr} : deja importe depuis ce classeur (statut %), rien a faire', v_existing.status;
+      end if;
+      return;
+    end if;
+    raise exception '${cfg.label} ${monthFr} : un autre classement existe deja (statut %, source %) : import refuse, revision a decider explicitement', v_existing.status, v_existing.engine_version;
+  end if;
+
   v_id := public.create_ranking_snapshot_draft(
     ${sqlText(division)}, date '${W.referenceMonth}', date '${W.applicableMonth}', date '${W.endIso}', date '${W.startIso}', date '${W.endIso}',
     ${sqlText(JSON.stringify({ max_results: 8, window: `12 mois calendaires (${W.startIso} - ${W.endIso})`, tie_points: 'decimales telles que diffusees', ranking: 'rangs tels que diffuses' }))}::jsonb,
@@ -226,9 +272,17 @@ commit;
 begin;
 select set_config('request.jwt.claim.sub', '${ADMIN_ID}', true);
 select set_config('request.jwt.claims', '${JSON.stringify({ sub: ADMIN_ID, role: 'authenticated' })}', true);
-${Object.entries(DIVS).map(([d, c]) => `select public.publish_ranking_snapshot(
-  (select id from public.ranking_snapshots where division = '${d}' and applicable_month = date '${W.applicableMonth}' and status = 'validated'),
-  'PUBLIER ${c.code} ${W.applicableMonth.slice(0, 7)}');`).join('\n')}
+do $$
+declare v_id uuid;
+begin
+${Object.entries(DIVS).map(([d, c]) => `  if exists (select 1 from public.ranking_snapshots where division = '${d}' and applicable_month = date '${W.applicableMonth}' and status = 'published') then
+    raise notice '${c.code} : deja publie, rien a faire';
+  else
+    select id into v_id from public.ranking_snapshots where division = '${d}' and applicable_month = date '${W.applicableMonth}' and status = 'validated';
+    if v_id is null then raise exception '${c.code} : aucun classement valide a publier (executer d''abord L4_3)'; end if;
+    perform public.publish_ranking_snapshot(v_id, 'PUBLIER ${c.code} ${W.applicableMonth.slice(0, 7)}');
+  end if;`).join('\n')}
+end $$;
 select division, version, status, locked, validity_start, validity_end, entries_count
   from public.ranking_snapshots where applicable_month = date '${W.applicableMonth}' order by division;
 commit;
@@ -237,6 +291,14 @@ commit;
   }
   fs.mkdirSync(env.OUT_DIR, { recursive: true });
   fs.writeFileSync(path.join(env.OUT_DIR, `L4_3_${monthTag}_verification.json`), JSON.stringify(report, null, 1));
+  const xwb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(xwb, XLSX.utils.json_to_sheet(Object.entries(report.divisions).map(([d, v]) => ({ division: d, classeur: report.classeur, sha256: report.sha256, modifie_le: report.modifie_le,
+    feuilles: report.feuilles, feuilles_masquees: report.masquees.length, fenetre: report.fenetre, lignes: v.lignes, total_points: v.total_points, colonnes: v.colonnes,
+    rattaches_classement_reference: v.rattaches_classement_reference, rattaches_fiche_unique: v.rattaches_fiche_unique, sans_fiche: v.sans_fiche, doublons: v.doublons,
+    erreurs: v.erreurs.length, avertissements: v.avertissements.join(' ; ') }))), 'SYNTHESE');
+  XLSX.utils.book_append_sheet(xwb, XLSX.utils.json_to_sheet(preview.lignes), 'LIGNES');
+  XLSX.utils.book_append_sheet(xwb, XLSX.utils.json_to_sheet(preview.lignes.filter((l) => !l.player_id)), 'A_REVOIR_IDENTITES');
+  XLSX.writeFile(xwb, path.join(env.OUT_DIR, `L5_APERCU_IMPORT_${monthTag}.xlsx`));
   console.log(blocking ? 'ECHEC : controles bloquants, aucun SQL de publication genere' : `Fichiers : ${files.join(', ')}`);
   if (blocking) process.exitCode = 2;
 }
