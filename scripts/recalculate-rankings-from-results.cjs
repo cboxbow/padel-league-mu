@@ -166,6 +166,10 @@ const PLAYER_NAME_ALIASES = new Map([
   ['NATHAN DE SPEVILLE', 'NATHAN DOGER DE SPEVILLE'],
   ['ILANE WACHILL', 'WACHILL ILANE'],
   ['GREGORY CHAROUX', 'GREG CHAROUX'],
+
+  // Decision MPL du 24/10/2026 : "Nathan Wong" (Mixte SPARC, sept. 2026)
+  // = Jonathan Wong, fiche MPL0001865 (resultat rattache par L5_E1).
+  ['NATHAN WONG', 'JONATHAN WONG'],
 ]);
 
 function canonicalPlayerName(value) {
