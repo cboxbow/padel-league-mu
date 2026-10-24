@@ -35,6 +35,25 @@ type Row = {
   seeding_status: Status;
 };
 
+type Snapshot = { id: string; division: string; reference_month: string; version: number; status: string; source: string; entries_count: number | null;
+  published_at: string | null; validity_start: string | null; validity_end: string | null; revision_reason: string | null; engine_version: string | null };
+type AuditRow = { id: number; at: string; action: string; details: Record<string, unknown> | null; snapshot_id: string | null };
+
+// Statuts des classements (enum ranking_snapshot_status) et libelles affiches.
+const SNAPSHOT_STATUS: Record<string, { label: string; color: string }> = {
+  draft: { label: 'BROUILLON', color: '#9ca3af' },
+  validated: { label: 'VALIDE (non publie)', color: '#93c5fd' },
+  published: { label: 'PUBLIE', color: '#4ad569' },
+  superseded: { label: 'ARCHIVE (remplace)', color: '#a78bfa' },
+  withdrawn: { label: 'RETIRE', color: '#ef4444' },
+};
+
+// "A revoir" : tout ce qui demande une decision humaine.
+const needsReview = (r: Row, today: string) =>
+  r.seeding_status === 'no_period' || r.seeding_status === 'pending_snapshot' || r.seeding_status === 'rejected'
+  || (r.seeding_status !== 'approved' && r.start_date <= today)
+  || !!r.override_reason;
+
 type Period = { reference_month: string; validity_start: string; validity_end: string; registration_opening_month: string; status: string; source: string };
 
 const STATUS: Record<Status, { label: string; color: string }> = {
@@ -59,15 +78,23 @@ export default function SeedingReferencesPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState('');
+  const [filter, setFilter] = useState<'all' | 'review' | Status>('all');
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+  const [audit, setAudit] = useState<AuditRow[]>([]);
 
   const load = useCallback(async () => {
     if (!sb) return;
     setLoading(true);
-    const [st, per] = await Promise.all([
+    const [st, per, snaps, log] = await Promise.all([
       sb.from('tournament_seeding_status').select('*').gte('start_date', from).lte('start_date', to)
         .neq('tournament_status', 'cancelled').order('start_date').order('tournament_id'),
       sb.from('ranking_validity_periods').select('*').order('reference_month', { ascending: false }),
+      sb.from('ranking_snapshots').select('id,division,reference_month,version,status,source,entries_count,published_at,validity_start,validity_end,revision_reason,engine_version')
+        .order('reference_month', { ascending: false }).order('division').order('version', { ascending: false }),
+      sb.from('ranking_audit_log').select('id,at,action,details,snapshot_id').order('id', { ascending: false }).limit(50),
     ]);
+    setSnapshots((snaps.data ?? []) as Snapshot[]);
+    setAudit((log.data ?? []) as AuditRow[]);
     setLoading(false);
     if (st.error) { setMessage({ ok: false, text: `Lecture impossible (migration L4 appliquee ?) : ${st.error.message}` }); return; }
     setRows((st.data ?? []) as Row[]);
@@ -103,6 +130,9 @@ export default function SeedingReferencesPage() {
       void call(`g-${r.tournament_id}`, 'mark_tournament_seeding_generated', { p_tournament_id: r.tournament_id, p_division: r.division });
     }
   };
+
+  const shown = useMemo(() => rows.filter(r => (filter === 'all' ? true : filter === 'review' ? needsReview(r, today) : r.seeding_status === filter)), [rows, filter, today]);
+  const reviewCount = useMemo(() => rows.filter(r => needsReview(r, today)).length, [rows, today]);
 
   const counts = useMemo(() => {
     const c: Partial<Record<Status, number>> = {};
@@ -156,6 +186,11 @@ export default function SeedingReferencesPage() {
             {Object.entries(counts).map(([k, v]) => `${STATUS[k as Status].label} : ${v}`).join(' · ')}
           </span>
         </div>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
+          {([['all', `Tous (${rows.length})`], ['review', `A REVOIR (${reviewCount})`], ['not_assigned', 'A PROPOSER'], ['proposed', 'PROPOSE'], ['pending_snapshot', 'EN ATTENTE'], ['approved', 'APPROUVE']] as const).map(([k, label]) => (
+            <button key={k} onClick={() => setFilter(k as typeof filter)} style={{ ...btn(k === 'review' ? '#f59e0b' : '#93c5fd'), opacity: filter === k ? 1 : 0.55 }}>{label}</button>
+          ))}
+        </div>
         {message && (
           <div style={{ color: message.ok ? '#4ad569' : '#fca5a5', fontSize: '12px', marginBottom: '10px', wordBreak: 'break-word' }}>{message.text}</div>
         )}
@@ -167,7 +202,7 @@ export default function SeedingReferencesPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map(r => {
+              {shown.map(r => {
                 const st = STATUS[r.seeding_status] ?? STATUS.not_assigned;
                 const late = r.registration_opens_at && r.validity_start && !r.expected_snapshot_id;
                 return (
@@ -196,9 +231,54 @@ export default function SeedingReferencesPage() {
                   </tr>
                 );
               })}
-              {!rows.length && !loading && <tr><td colSpan={8} style={{ padding: '12px', color: '#777' }}>Aucun tournoi sur cette periode.</td></tr>}
+              {!shown.length && !loading && <tr><td colSpan={8} style={{ padding: '12px', color: '#777' }}>Aucun tournoi pour ce filtre.</td></tr>}
             </tbody>
           </table>
+        </div>
+      </GlassCard>
+
+      <GlassCard style={{ padding: '16px' }} hoverable={false}>
+        <div style={{ color: 'white', fontWeight: 800, fontSize: '14px', marginBottom: '8px' }}>Classements officiels (publies, archives, en cours)</div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '760px' }}>
+            <thead>
+              <tr style={{ color: '#777', textAlign: 'left', fontSize: '10px', textTransform: 'uppercase' }}>
+                <th style={{ padding: '6px' }}>Classement</th><th>Div.</th><th>Version</th><th>Statut</th><th>Periode de validite</th><th>Lignes</th><th>Publie le</th><th>Source</th>
+              </tr>
+            </thead>
+            <tbody>
+              {snapshots.map(sn => {
+                const st = SNAPSHOT_STATUS[sn.status] ?? { label: sn.status, color: '#9ca3af' };
+                return (
+                  <tr key={sn.id} style={{ borderTop: '1px solid rgba(255,255,255,0.05)', color: '#e5e7eb' }}>
+                    <td style={{ padding: '6px', fontWeight: 800 }}>{month(sn.reference_month)}</td>
+                    <td>{sn.division}</td>
+                    <td>v{sn.version}{sn.revision_reason ? <span title={sn.revision_reason} style={{ color: '#f59e0b' }}> (revision)</span> : null}</td>
+                    <td style={{ color: st.color, fontWeight: 800 }}>{st.label}</td>
+                    <td style={{ color: '#9ca3af' }}>{sn.validity_start ? `${fmt(sn.validity_start)} -> ${fmt(sn.validity_end)}` : '-'}</td>
+                    <td>{sn.entries_count ?? '-'}</td>
+                    <td>{fmt(sn.published_at)}</td>
+                    <td style={{ color: '#777' }}>{sn.source === 'workbook_import' ? 'classeur' : 'moteur'}</td>
+                  </tr>
+                );
+              })}
+              {!snapshots.length && <tr><td colSpan={8} style={{ padding: '12px', color: '#777' }}>Aucun classement.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </GlassCard>
+
+      <GlassCard style={{ padding: '16px' }} hoverable={false}>
+        <div style={{ color: 'white', fontWeight: 800, fontSize: '14px', marginBottom: '8px' }}>Journal (50 dernieres actions)</div>
+        <div style={{ display: 'grid', gap: '3px', fontSize: '11px', fontFamily: 'JetBrains Mono, monospace' }}>
+          {audit.map(a => (
+            <div key={a.id} style={{ display: 'flex', gap: '10px', color: '#cbd5e1', flexWrap: 'wrap' }}>
+              <span style={{ color: '#777' }}>{a.at.slice(0, 16).replace('T', ' ')}</span>
+              <span style={{ color: '#f59e0b', fontWeight: 800 }}>{a.action}</span>
+              <span style={{ color: '#9ca3af', wordBreak: 'break-word' }}>{JSON.stringify(a.details ?? {}).slice(0, 180)}</span>
+            </div>
+          ))}
+          {!audit.length && <div style={{ color: '#777' }}>Journal vide ou non lisible.</div>}
         </div>
       </GlassCard>
     </div>
