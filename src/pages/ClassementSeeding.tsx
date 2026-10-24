@@ -36,6 +36,14 @@ interface Entry {
   results_counted: number;
 }
 
+interface MonthTournament {
+  id: string;
+  name: string;
+  date: string;
+  division: string;
+  category: string | null;
+}
+
 interface Result {
   event_name: string;
   event_date: string;
@@ -185,7 +193,7 @@ export default function ClassementSeeding() {
   });
 
   const [snapshots, setSnapshots] = useState<Snapshot[] | null>(null);
-  const [tournaments, setTournaments] = useState<Record<string, string[]>>({});
+  const [monthTournaments, setMonthTournaments] = useState<MonthTournament[] | null>(null);
   const [error, setError] = useState('');
   const [month, setMonth] = useState('');
   const [division, setDivision] = useState<DivKey>('men');
@@ -220,16 +228,6 @@ export default function ClassementSeeding() {
       if (cancelled) return;
       setSnapshots(list);
       if (list.length) setMonth(m => (m && list.some(x => x.applicable_month === m) ? m : list[0].applicable_month));
-      // Tournois rattaches a ces classements (information secondaire).
-      const refs = await withRetry<{ tournament_id: string; snapshot_id: string }[]>(() => sb.from('tournament_seeding_references').select('tournament_id,snapshot_id')).catch(() => null);
-      const ids = [...new Set((refs ?? []).map(r => String(r.tournament_id)))];
-      if (!ids.length || cancelled) return;
-      const tours = await withRetry<{ id: string; name: string }[]>(() => sb.from('tournaments').select('id,name').in('id', ids)).catch(() => null);
-      if (cancelled) return;
-      const names = new Map((tours ?? []).map(t => [String(t.id), String(t.name)]));
-      const bySnapshot: Record<string, string[]> = {};
-      for (const r of refs ?? []) (bySnapshot[String(r.snapshot_id)] ||= []).push(names.get(String(r.tournament_id)) ?? String(r.tournament_id));
-      setTournaments(bySnapshot);
     })();
     return () => { cancelled = true; };
   }, [lang, reloadKey]);
@@ -243,6 +241,30 @@ export default function ClassementSeeding() {
   useEffect(() => {
     if (availableDivs.length && !availableDivs.some(d => d.key === division)) setDivision(availableDivs[0].key);
   }, [availableDivs, division]);
+
+  // Tous les tournois du mois d'application : ce classement sert a leurs tetes de serie.
+  useEffect(() => {
+    setMonthTournaments(null);
+    const sb = getSupabaseClient();
+    if (!sb || !month) return;
+    const [y, m] = month.split('-').map(Number);
+    const next = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-01`;
+    let cancelled = false;
+    withRetry<MonthTournament[]>(() => sb.from('tournaments')
+      .select('id,name,date,division,category')
+      .gte('date', month).lt('date', next)
+      .neq('status', 'cancelled')
+      .order('date', { ascending: true })
+      .order('name', { ascending: true }))
+      .then(rows => { if (!cancelled) setMonthTournaments(rows ?? []); })
+      .catch(() => { if (!cancelled) setMonthTournaments([]); });
+    return () => { cancelled = true; };
+  }, [month, reloadKey]);
+
+  const divisionTournaments = useMemo(
+    () => (monthTournaments ?? []).filter(t => String(t.division).toLowerCase() === division),
+    [monthTournaments, division],
+  );
 
   useEffect(() => {
     setEntries(null); setOpenEntry(null);
@@ -375,11 +397,22 @@ export default function ClassementSeeding() {
                       <ShieldCheck size={13} />{lang === 'fr' ? `Revision v${snapshot.version} : ${snapshot.revision_reason}` : `Revision v${snapshot.version}: ${snapshot.revision_reason}`}
                     </div>
                   )}
-                  {!!tournaments[snapshot.id]?.length && (
-                    <div style={{ color: '#aaa', fontSize: '12px', margin: '-6px 0 16px', display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                      <Trophy size={13} color="#f59e0b" />
-                      <span style={{ color: '#777' }}>{lang === 'fr' ? 'Utilise pour :' : 'Used for:'}</span>
-                      {tournaments[snapshot.id].map(n => <span key={n} style={{ color: 'white', fontWeight: 700 }}>{n}</span>)}
+                  {!!divisionTournaments.length && (
+                    <div style={{ border: '1px solid rgba(245,158,11,0.18)', background: 'rgba(245,158,11,0.04)', borderRadius: '12px', padding: '12px 14px', margin: '0 0 18px' }}>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', color: '#fbbf24', fontSize: '12px', fontWeight: 800, marginBottom: '10px' }}>
+                        <Trophy size={13} />
+                        {lang === 'fr'
+                          ? `Tetes de serie des ${divisionTournaments.length} tournois ${divConfig.fr} ${/^[aeiou]/.test(monthLabel(snapshot.applicable_month, lang)) ? "d'" : 'de '}${monthLabel(snapshot.applicable_month, lang)} :`
+                          : `Seeds for the ${divisionTournaments.length} ${divConfig.en} tournaments of ${monthLabel(snapshot.applicable_month, lang)}:`}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        {divisionTournaments.map(t => (
+                          <span key={t.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 9px', borderRadius: '8px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', fontSize: '12px' }}>
+                            <span style={{ color: '#777', fontFamily: 'JetBrains Mono, monospace' }}>{dateFr(t.date).slice(0, 5)}</span>
+                            <span style={{ color: 'white', fontWeight: 700 }}>{t.name.replace(/\s*\((Hommes|Dames|Mixte)\)\s*$/i, '')}</span>
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   )}
 
