@@ -170,6 +170,25 @@ async function main() {
     check('tournoi du 21/11 sur periode provisoire : toujours validation manuelle', await fails(() => asAdmin(`select public.propose_tournament_seeding('x21', 'men')`), /validation manuelle/));
   } else console.log('  (OCT_DIR absent : controle de publication d octobre ignore)');
 
+  console.log('\nRetour arriere (L4_9_rollback.sql) puis re-application');
+  const refsBefore = await q(`select tournament_id, division, snapshot_id::text from public.tournament_seeding_references where approval_status = 'approved' order by 1, 2`);
+  await db.exec(read(path.join(root, 'deploy/l4-seeding-periods/L4_9_rollback.sql')));
+  const refsAfter = await q(`select tournament_id, division, snapshot_id::text from public.tournament_seeding_references order by 1, 2`);
+  check('rollback : references approuvees conservees (dont Moka), autres retirees', JSON.stringify(refsAfter) === JSON.stringify(refsBefore), refsAfter.map((r) => r.tournament_id).join(','));
+  const gone = await q(`select to_regclass('public.ranking_validity_periods') t, to_regclass('public.tournament_seeding_status') v,
+    (select count(*)::int from information_schema.columns where table_name = 'ranking_snapshots' and column_name like 'validity%') c,
+    (select count(*)::int from pg_proc where proname in ('propose_tournament_seeding','approve_tournament_seeding','set_snapshot_validity')) f`);
+  check('rollback : table, vue, colonnes et fonctions L4 supprimees', !gone[0].t && !gone[0].v && gone[0].c === 0 && gone[0].f === 0);
+  const csums = await q(`select count(*)::int bad from public.ranking_snapshots where status in ('published', 'superseded') and public.ranking_snapshot_checksum(id) <> checksum`);
+  check('rollback : tous les classements publies intacts (sommes de controle)', csums[0].bad === 0);
+  // Ancienne regle (mois calendaire) : le 03/10 est accepte sur septembre sans motif.
+  let l1Back = true;
+  try { await asAdmin(`select public.assign_tournament_seeding('x0903', 'men', (select id from public.ranking_snapshots where reference_month = '2026-09-01' and division = 'men' and status = 'published'))`); } catch (e) { l1Back = false; await db.exec('rollback').catch(() => {}); console.log(`       message : ${e.message.slice(0, 200)}`); }
+  check('rollback : regle L1 du mois calendaire de retour (03/10 accepte sur septembre)', l1Back);
+  await db.exec(read(path.join(root, 'ranking_snapshots_l4_validity_periods.sql')));
+  const reapplied = await q(`select count(*)::int n from public.tournament_seeding_references where approval_status = 'approved' and snapshot_version is not null`);
+  check('re-application de L4 apres rollback : references reprises (4 + celle creee entre-temps)', reapplied[0].n === refsBefore.length + 1, `${reapplied[0].n}/${refsBefore.length + 1}`);
+
   console.log(`\nResultat : ${passed} controles OK, ${failures.length} echec(s).`);
   if (failures.length) console.log(failures.map((f) => `  - ${f}`).join('\n'));
   process.exit(failures.length ? 1 : 0);
