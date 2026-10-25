@@ -61,6 +61,9 @@ export function StatusBadge({ status, lang = 'fr' }: { status: string; lang?: st
     open:      { fr: 'Ouvert',   en: 'Open',        color: '#10b981', bg: 'rgba(16,185,129,0.15)' },
     closed:    { fr: 'Fermé',    en: 'Closed',      color: '#ef4444', bg: 'rgba(239,68,68,0.15)'  },
     soon:      { fr: 'Bientôt',  en: 'Coming Soon', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
+    upcoming:  { fr: 'À venir',  en: 'Upcoming',    color: '#60a5fa', bg: 'rgba(96,165,250,0.15)' },
+    draw:      { fr: 'Tirage',   en: 'Draw',        color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
+    cancelled: { fr: 'Annulé',   en: 'Cancelled',   color: '#ef4444', bg: 'rgba(239,68,68,0.15)'  },
     ongoing:   { fr: 'En cours', en: 'Ongoing',     color: '#8b5cf6', bg: 'rgba(139,92,246,0.15)' },
     completed: { fr: 'Terminé',  en: 'Completed',   color: '#a0a0a0', bg: 'rgba(160,160,160,0.15)'},
   };

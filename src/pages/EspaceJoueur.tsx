@@ -182,6 +182,24 @@ function registrationClosedReason(tournament: TournamentData): string | null {
   return null;
 }
 
+function isRegistrationOpen(tournament: TournamentData) {
+  return tournament.status !== 'cancelled' && tournament.status !== 'completed' && !registrationClosedReason(tournament);
+}
+
+function shortDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value || '-';
+  return date.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: 'short' });
+}
+
+// Lundi de la semaine du tournoi (AAAA-MM-JJ), pour regrouper la liste complete.
+function weekStartKey(value: string) {
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return '';
+  date.setDate(date.getDate() - ((date.getDay() + 6) % 7));
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 function eligibilityFor(profile: PlayerProfile | undefined, tournament: TournamentData) {
   if (!profile) return { label: 'Profil requis', tone: '#a0a0a0', detail: 'Selectionne ton profil pour evaluer les conditions d acces.' };
 
@@ -472,6 +490,8 @@ export default function EspaceJoueur() {
   const [showLegacyAuth, setShowLegacyAuth] = useState(false);
   const [showAllUpcoming, setShowAllUpcoming] = useState(false);
   const [upcomingCategoryFilter, setUpcomingCategoryFilter] = useState('all');
+  const [onlyOpenFilter, setOnlyOpenFilter] = useState(true);
+  const [onlyEligibleFilter, setOnlyEligibleFilter] = useState(false);
   const [registrationDraft, setRegistrationDraft] = useState<RegistrationDraft | null>(null);
   const [partnerQuery, setPartnerQuery] = useState('');
   const [selectedPartnerKey, setSelectedPartnerKey] = useState('');
@@ -589,55 +609,83 @@ export default function EspaceJoueur() {
     && !!authenticatedProfileKey
     && selectedProfile?.key === authenticatedProfileKey;
 
-  const upcomingTournaments = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const upcoming = tournaments
-      .filter(t => tournamentDateValue(t) >= today.getTime())
-      .filter(t => t.status !== 'cancelled')
-      .sort((a, b) => tournamentDateValue(a) - tournamentDateValue(b));
-
-    // Le classement chronologique brut ne montre presque jamais de M500/M1000 :
-    // ces paliers sont beaucoup plus rares que M25/M50/M100/M250, qui se jouent
-    // chaque semaine sur plusieurs clubs en parallele. On garantit donc un
-    // prochain tournoi par palier plutot que "les 6 plus proches dans le temps".
-    const TIERS = ['M25', 'M50', 'M100', 'M250', 'M500', 'M1000'];
-    const nextPerTier = TIERS
-      .map(tier => upcoming.find(t => t.category === tier))
-      .filter((t): t is NonNullable<typeof t> => Boolean(t));
-
-    return nextPerTier.sort((a, b) => tournamentDateValue(a) - tournamentDateValue(b));
-  }, [tournaments]);
-
-  // Liste complete des tournois a venir (pas juste "1 par palier") - pour le
-  // joueur qui veut voir toutes ses options, pas seulement la plus proche
-  // dans chaque categorie.
-  const allUpcomingTournaments = useMemo(() => {
+  // Tournois a venir non annules : base commune de toutes les vues.
+  const upcomingPool = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     return tournaments
       .filter(t => tournamentDateValue(t) >= today.getTime())
       .filter(t => t.status !== 'cancelled')
-      .filter(t => upcomingCategoryFilter === 'all' || t.category === upcomingCategoryFilter)
       .sort((a, b) => tournamentDateValue(a) - tournamentDateValue(b));
-  }, [tournaments, upcomingCategoryFilter]);
+  }, [tournaments]);
+
+  // Inscriptions ouvertes et, si un profil est choisi, accessibles a ce profil.
+  const openForYou = useMemo(() => upcomingPool
+    .filter(isRegistrationOpen)
+    .filter(t => !selectedProfile || canPrepareRegistration(eligibilityFor(selectedProfile, t).label)),
+  [upcomingPool, selectedProfile]);
+
+  // Tournois de la semaine dont les inscriptions sont deja closes (tirage, en
+  // cours), regroupes par tournoi : les tableaux Hommes et Dames d'un meme
+  // club, meme jour et meme categorie forment une seule pastille.
+  const closedSoonTournaments = useMemo(() => {
+    const groups: { key: string; tournament: TournamentData; name: string; divisions: string[] }[] = [];
+    for (const t of upcomingPool.filter(item => registrationClosedReason(item) !== null)) {
+      const key = `${t.date}|${t.category}|${t.club_name}`;
+      const division = /\(Dames\)/i.test(t.name) ? 'D' : /\(Hommes\)/i.test(t.name) ? 'H' : '';
+      const existing = groups.find(group => group.key === key);
+      if (existing) {
+        if (division && !existing.divisions.includes(division)) existing.divisions.push(division);
+      } else {
+        groups.push({ key, tournament: t, name: t.name.replace(/\s*\((Hommes|Dames)\)\s*$/i, ''), divisions: division ? [division] : [] });
+      }
+    }
+    return groups;
+  }, [upcomingPool]);
+
+  const upcomingTournaments = useMemo(() => {
+    // Le classement chronologique brut ne montre presque jamais de M500/M1000 :
+    // ces paliers sont beaucoup plus rares que M25/M50/M100/M250, qui se jouent
+    // chaque semaine sur plusieurs clubs en parallele. On prend donc d'abord le
+    // prochain tournoi ouvert de chaque palier, puis on complete jusqu'a 6
+    // suggestions (2 par palier au plus) dans l'ordre chronologique.
+    const TIERS = ['M25', 'M50', 'M100', 'M250', 'M500', 'M1000'];
+    const picked = TIERS
+      .map(tier => openForYou.find(t => t.category === tier))
+      .filter((t): t is NonNullable<typeof t> => Boolean(t));
+    for (const t of openForYou) {
+      if (picked.length >= 6) break;
+      if (picked.includes(t) || picked.filter(p => p.category === t.category).length >= 2) continue;
+      picked.push(t);
+    }
+    return picked.slice(0, 6).sort((a, b) => tournamentDateValue(a) - tournamentDateValue(b));
+  }, [openForYou]);
+
+  // Liste complete, filtrable : categorie, ouverts seulement, eligibles pour le profil.
+  const allUpcomingTournaments = useMemo(() => upcomingPool
+    .filter(t => upcomingCategoryFilter === 'all' || t.category === upcomingCategoryFilter)
+    .filter(t => !onlyOpenFilter || isRegistrationOpen(t))
+    .filter(t => !onlyEligibleFilter || !selectedProfile || canPrepareRegistration(eligibilityFor(selectedProfile, t).label)),
+  [upcomingPool, upcomingCategoryFilter, onlyOpenFilter, onlyEligibleFilter, selectedProfile]);
+
+  const upcomingWeeks = useMemo(() => {
+    const weeks: { key: string; items: TournamentData[] }[] = [];
+    for (const t of allUpcomingTournaments) {
+      const key = weekStartKey(t.date);
+      const last = weeks[weeks.length - 1];
+      if (last && last.key === key) last.items.push(t);
+      else weeks.push({ key, items: [t] });
+    }
+    return weeks;
+  }, [allUpcomingTournaments]);
 
   const upcomingCategories = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const cats = new Set(
-      tournaments
-        .filter(t => tournamentDateValue(t) >= today.getTime() && t.status !== 'cancelled')
-        .map(t => t.category)
-    );
+    const cats = new Set(upcomingPool.map(t => t.category));
     return Array.from(cats).sort((a, b) => {
       const order = ['M25', 'M50', 'M100', 'M250', 'M500', 'M1000'];
       return order.indexOf(a) - order.indexOf(b);
     });
-  }, [tournaments]);
-
-  const displayedTournaments = showAllUpcoming ? allUpcomingTournaments : upcomingTournaments;
+  }, [upcomingPool]);
 
   const selectedBestRankings = selectedProfile?.rankings
     .slice()
@@ -1119,6 +1167,29 @@ export default function EspaceJoueur() {
     setAuthMessage('Demande envoyee a l admin MPL.');
   }
 
+  function renderRegistrationButton(tournament: TournamentData, label: string, compact = false) {
+    return (
+      <button
+        type="button"
+        className={`registration-button${compact ? ' compact' : ''}`}
+        disabled={!accountEmail || !isViewingOwnProfile || !canPrepareRegistration(label) || checkingExistingRequest}
+        onClick={() => prepareRegistration(tournament, label)}
+      >
+        {!accountEmail
+          ? 'Connexion requise'
+          : !isViewingOwnProfile
+            ? 'Ce n est pas ton profil'
+          : checkingExistingRequest
+            ? 'Controle...'
+          : canPrepareRegistration(label)
+            ? 'Preparer inscription'
+            : label === REGISTRATION_CLOSED_LABEL
+              ? REGISTRATION_CLOSED_LABEL
+              : 'Non disponible'}
+      </button>
+    );
+  }
+
   return (
     <Layout>
       <section className="player-space">
@@ -1527,7 +1598,11 @@ export default function EspaceJoueur() {
         <div id="tournois-eligibles" className="player-panel registration-panel">
           <div className="section-title split">
             <span><CalendarCheck size={18} /> Tournois a venir et eligibilite</span>
-            <small>{tournamentsLoading ? 'Chargement...' : `${displayedTournaments.length} ${showAllUpcoming ? 'tournois' : 'suggestions'}`}</small>
+            <small>
+              {tournamentsLoading
+                ? 'Chargement...'
+                : `${openForYou.length} ouverts${selectedProfile ? ' pour toi' : ''} sur ${upcomingPool.length} a venir`}
+            </small>
           </div>
           <div className="registration-intro">
             <span><i /> Les opens restent ouverts aux licencies</span>
@@ -1540,7 +1615,7 @@ export default function EspaceJoueur() {
               className={`upcoming-toggle-btn ${!showAllUpcoming ? 'active' : ''}`}
               onClick={() => setShowAllUpcoming(false)}
             >
-              Apercu (1 par palier)
+              {selectedProfile ? 'Ouverts pour toi' : 'Ouverts aux inscriptions'}
             </button>
             <button
               type="button"
@@ -1550,56 +1625,126 @@ export default function EspaceJoueur() {
               Voir tous les tournois a venir
             </button>
             {showAllUpcoming && (
-              <select
-                className="upcoming-category-select"
-                value={upcomingCategoryFilter}
-                onChange={event => setUpcomingCategoryFilter(event.target.value)}
-              >
-                <option value="all">Toutes categories</option>
-                {upcomingCategories.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
+              <>
+                <select
+                  className="upcoming-category-select"
+                  value={upcomingCategoryFilter}
+                  onChange={event => setUpcomingCategoryFilter(event.target.value)}
+                >
+                  <option value="all">Toutes categories</option>
+                  {upcomingCategories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className={`upcoming-filter-chip ${onlyOpenFilter ? 'active' : ''}`}
+                  aria-pressed={onlyOpenFilter}
+                  onClick={() => setOnlyOpenFilter(value => !value)}
+                >
+                  Ouverts seulement
+                </button>
+                <button
+                  type="button"
+                  className={`upcoming-filter-chip ${onlyEligibleFilter && selectedProfile ? 'active' : ''}`}
+                  aria-pressed={onlyEligibleFilter && !!selectedProfile}
+                  disabled={!selectedProfile}
+                  title={selectedProfile ? undefined : 'Selectionne ton profil pour filtrer selon ton eligibilite'}
+                  onClick={() => setOnlyEligibleFilter(value => !value)}
+                >
+                  Eligibles pour moi
+                </button>
+              </>
             )}
           </div>
-          <div className="tournament-grid">
-            {displayedTournaments.map(tournament => {
-              const eligibility = eligibilityFor(selectedProfile, tournament);
-              return (
-                <article key={tournament.id} className="tournament-card">
-                  <div className="tournament-top">
-                    <CategoryBadge category={tournament.category} />
-                    <StatusBadge status={tournament.status} />
-                  </div>
-                  <h3>{tournament.name}</h3>
-                  <p>{humanDate(tournament.date)} - {tournament.region} - {tournament.club_name}</p>
-                  <div className="eligibility" style={{ borderColor: `${eligibility.tone}55`, color: eligibility.tone }}>
-                    <CheckCircle2 size={15} />
-                    <strong>{eligibility.label}</strong>
-                  </div>
-                  <small>{eligibility.detail}</small>
-                  <button
-                    type="button"
-                    className="registration-button"
-                    disabled={!accountEmail || !isViewingOwnProfile || !canPrepareRegistration(eligibility.label) || checkingExistingRequest}
-                    onClick={() => prepareRegistration(tournament, eligibility.label)}
-                  >
-                    {!accountEmail
-                      ? 'Connexion requise'
-                      : !isViewingOwnProfile
-                        ? 'Ce n est pas ton profil'
-                      : checkingExistingRequest
-                        ? 'Controle...'
-                      : canPrepareRegistration(eligibility.label)
-                        ? 'Preparer inscription'
-                        : eligibility.label === REGISTRATION_CLOSED_LABEL
-                          ? REGISTRATION_CLOSED_LABEL
-                          : 'Non disponible'}
+
+          {!showAllUpcoming && closedSoonTournaments.length > 0 && (
+            <div className="closed-strip">
+              <span className="closed-strip-title"><LockKeyhole size={14} /> Cette semaine : inscriptions closes</span>
+              <div className="closed-chips">
+                {closedSoonTournaments.map(({ key, tournament, name, divisions }) => (
+                  <span key={key} className="closed-chip" title={registrationClosedReason(tournament) ?? undefined}>
+                    <b>{tournament.category}</b>
+                    <span>{name}{divisions.length ? ` (${divisions.sort().reverse().join(' + ')})` : ''}</span>
+                    <em>{shortDate(tournament.date)} · {tournament.status === 'ongoing' ? 'En cours' : 'Tirage'}</em>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!showAllUpcoming ? (
+            upcomingTournaments.length > 0 ? (
+              <div className="tournament-grid">
+                {upcomingTournaments.map(tournament => {
+                  const eligibility = eligibilityFor(selectedProfile, tournament);
+                  return (
+                    <article key={tournament.id} className="tournament-card">
+                      <div className="tournament-top">
+                        <CategoryBadge category={tournament.category} />
+                        <StatusBadge status={tournament.status} />
+                      </div>
+                      <h3>{tournament.name}</h3>
+                      <p>{humanDate(tournament.date)} - {tournament.region} - {tournament.club_name}</p>
+                      <div className="eligibility" style={{ borderColor: `${eligibility.tone}55`, color: eligibility.tone }}>
+                        <CheckCircle2 size={15} />
+                        <strong>{eligibility.label}</strong>
+                      </div>
+                      <small>{eligibility.detail}</small>
+                      {renderRegistrationButton(tournament, eligibility.label)}
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="muted upcoming-empty">
+                {tournamentsLoading
+                  ? 'Chargement des tournois...'
+                  : `Aucun tournoi ouvert${selectedProfile ? ' pour ce profil' : ''} pour le moment.`}{' '}
+                {!tournamentsLoading && (
+                  <button type="button" className="link-button" onClick={() => setShowAllUpcoming(true)}>
+                    Voir tous les tournois a venir
                   </button>
-                </article>
-              );
-            })}
-          </div>
+                )}
+              </p>
+            )
+          ) : (
+            <div className="tournament-list">
+              {upcomingWeeks.map(week => (
+                <section key={week.key} className="tournament-week">
+                  <h4>
+                    Semaine du {humanDate(week.key)}
+                    <small>{week.items.length} tournoi{week.items.length > 1 ? 's' : ''}</small>
+                  </h4>
+                  {week.items.map(tournament => {
+                    const eligibility = eligibilityFor(selectedProfile, tournament);
+                    return (
+                      <div key={tournament.id} className="tournament-row">
+                        <span className="row-date">{shortDate(tournament.date)}</span>
+                        <CategoryBadge category={tournament.category} />
+                        <div className="row-main">
+                          <strong>{tournament.name}</strong>
+                          <span>{tournament.region} - {tournament.club_name}</span>
+                        </div>
+                        <StatusBadge status={tournament.status} />
+                        <span
+                          className="row-eligibility"
+                          style={{ borderColor: `${eligibility.tone}55`, color: eligibility.tone }}
+                          title={eligibility.detail}
+                        >
+                          {eligibility.label}
+                        </span>
+                        {renderRegistrationButton(tournament, eligibility.label, true)}
+                      </div>
+                    );
+                  })}
+                </section>
+              ))}
+              {upcomingWeeks.length === 0 && (
+                <p className="muted upcoming-empty">Aucun tournoi ne correspond a ces filtres.</p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="roadmap-grid">
@@ -2324,6 +2469,157 @@ export default function EspaceJoueur() {
           font-size: 13px;
           font-weight: 600;
         }
+        .upcoming-filter-chip {
+          padding: 7px 12px;
+          border-radius: 20px;
+          border: 1px dashed rgba(255,255,255,0.18);
+          background: transparent;
+          color: rgba(255,255,255,0.65);
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+        }
+        .upcoming-filter-chip.active {
+          border-style: solid;
+          border-color: rgba(74,213,105,0.4);
+          background: rgba(74,213,105,0.1);
+          color: #4ad569;
+        }
+        .upcoming-filter-chip:disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
+        }
+        .closed-strip {
+          margin: 0 0 16px;
+          padding: 12px 14px;
+          border: 1px solid rgba(255,255,255,0.07);
+          border-radius: 12px;
+          background: rgba(255,255,255,0.02);
+        }
+        .closed-strip-title {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          color: #a0a0a0;
+          font-size: 12px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          margin-bottom: 10px;
+        }
+        .closed-chips {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+        .closed-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          max-width: 100%;
+          padding: 6px 10px;
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 999px;
+          background: rgba(255,255,255,0.03);
+          font-size: 12px;
+          color: rgba(255,255,255,0.8);
+        }
+        .closed-chip b {
+          color: #f59e0b;
+          font-size: 11px;
+        }
+        .closed-chip span {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .closed-chip em {
+          font-style: normal;
+          color: #a0a0a0;
+          white-space: nowrap;
+        }
+        .upcoming-empty {
+          padding: 18px 0;
+        }
+        .link-button {
+          border: 0;
+          background: none;
+          padding: 0;
+          color: #4ad569;
+          font-weight: 800;
+          cursor: pointer;
+          text-decoration: underline;
+        }
+        .tournament-list {
+          display: grid;
+          gap: 18px;
+        }
+        .tournament-week h4 {
+          display: flex;
+          align-items: baseline;
+          gap: 10px;
+          margin: 0 0 8px;
+          font-size: 13px;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          color: rgba(255,255,255,0.75);
+        }
+        .tournament-week h4 small {
+          color: #a0a0a0;
+          font-weight: 600;
+          text-transform: none;
+          letter-spacing: 0;
+        }
+        .tournament-row {
+          display: grid;
+          grid-template-columns: 92px auto minmax(0, 1fr) auto auto 190px;
+          align-items: center;
+          gap: 12px;
+          padding: 10px 12px;
+          border: 1px solid rgba(255,255,255,0.07);
+          border-radius: 10px;
+          background: rgba(255,255,255,0.025);
+        }
+        .tournament-row + .tournament-row {
+          margin-top: 6px;
+        }
+        .row-date {
+          color: #a0a0a0;
+          font-size: 12px;
+          font-weight: 700;
+          text-transform: capitalize;
+        }
+        .row-main {
+          display: grid;
+          min-width: 0;
+        }
+        .row-main strong {
+          font-size: 14px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .row-main span {
+          color: #a0a0a0;
+          font-size: 12px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .row-eligibility {
+          border: 1px solid;
+          border-radius: 999px;
+          padding: 4px 9px;
+          font-size: 11px;
+          font-weight: 800;
+          white-space: nowrap;
+        }
+        .registration-button.compact {
+          margin-top: 0;
+          min-height: 34px;
+          font-size: 12px;
+          border-radius: 10px;
+        }
         .registration-panel {
           position: relative;
           overflow: hidden;
@@ -2495,6 +2791,21 @@ export default function EspaceJoueur() {
           }
           .tournament-card {
             min-height: 0;
+          }
+          .tournament-row {
+            grid-template-columns: auto minmax(0, 1fr);
+            gap: 8px 10px;
+          }
+          .tournament-row .row-main,
+          .tournament-row .registration-button {
+            grid-column: 1 / -1;
+          }
+          .tournament-row > span {
+            justify-self: start;
+          }
+          .row-main strong,
+          .row-main span {
+            white-space: normal;
           }
         }
       `}</style>
