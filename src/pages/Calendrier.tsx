@@ -132,7 +132,8 @@ function StatusBadge({ status, lang, whatsappUrl, contactName, isAppOnly, regist
   status: string; lang: string; whatsappUrl?: string | null; contactName?: string; isAppOnly?: boolean; registerHref?: string;
 }) {
   const sc = STATUS_CONFIG[status] ?? STATUS_CONFIG.upcoming;
-  const isOpen = status === 'open' || status === 'draw';
+  // Inscriptions fermees des la phase tirage (7 jours avant) : lien seulement si 'open'.
+  const isOpen = status === 'open';
   const baseStyle: React.CSSProperties = {
     background: sc.bg, color: sc.color, borderRadius: '6px',
     padding: '3px 9px', fontSize: '11px', fontWeight: 700,
@@ -650,7 +651,7 @@ export default function Calendrier() {
 
   const stats = useMemo(() => ({
     upcoming:  filtered.filter(t => t.status === 'upcoming').length,
-    open:      filtered.filter(t => ['open','draw'].includes(t.status)).length,
+    open:      filtered.filter(t => t.status === 'open').length,
     completed: filtered.filter(t => t.status === 'completed').length,
 
   }), [filtered]);

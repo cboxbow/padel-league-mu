@@ -172,6 +172,16 @@ function activeRequestStatus(status?: string | null) {
   return value === 'pending' || value === 'approved';
 }
 
+// Regle MPL : inscriptions fermees des la phase tirage (7 jours avant le
+// tournoi), puis le jour du tournoi. Meme regle que le calendrier.
+const REGISTRATION_CLOSED_LABEL = 'Inscriptions closes';
+
+function registrationClosedReason(tournament: TournamentData): string | null {
+  if (tournament.status === 'draw') return 'Tirage en preparation : les inscriptions ferment 7 jours avant le tournoi.';
+  if (tournament.status === 'ongoing') return 'Tournoi en cours : les inscriptions sont fermees.';
+  return null;
+}
+
 function eligibilityFor(profile: PlayerProfile | undefined, tournament: TournamentData) {
   if (!profile) return { label: 'Profil requis', tone: '#a0a0a0', detail: 'Selectionne ton profil pour evaluer les conditions d acces.' };
 
@@ -190,6 +200,11 @@ function eligibilityFor(profile: PlayerProfile | undefined, tournament: Tourname
 
   if (tournament.status === 'completed') {
     return { label: 'Termine', tone: '#a0a0a0', detail: 'Resultats disponibles si publies.' };
+  }
+
+  const closed = registrationClosedReason(tournament);
+  if (closed) {
+    return { label: REGISTRATION_CLOSED_LABEL, tone: '#a0a0a0', detail: closed };
   }
 
   if (targetDivision === 'mixed') {
@@ -256,7 +271,7 @@ function eligibilityFor(profile: PlayerProfile | undefined, tournament: Tourname
 }
 
 function canPrepareRegistration(label: string) {
-  return !['Non eligible', 'Hors seuil', 'Termine', 'Annule', 'Profil requis'].includes(label);
+  return !['Non eligible', 'Hors seuil', 'Termine', 'Annule', 'Profil requis', REGISTRATION_CLOSED_LABEL].includes(label);
 }
 
 function rankingForDivision(profile: PlayerProfile | undefined, division: DivisionKey | 'all') {
@@ -292,6 +307,10 @@ function pairEligibilityFor(
   }
   if (tournament.status === 'cancelled') {
     return { label: 'Tournoi annule', tone: '#ef4444', detail: 'Ce tournoi est annule selon le calendrier officiel MPL.', allowed: false };
+  }
+  const closed = tournament.status === 'completed' ? 'Tournoi termine : les inscriptions sont fermees.' : registrationClosedReason(tournament);
+  if (closed) {
+    return { label: REGISTRATION_CLOSED_LABEL, tone: '#a0a0a0', detail: closed, allowed: false };
   }
   if (!partner) {
     return { label: 'Partenaire requis', tone: '#f59e0b', detail: 'Choisis ton partenaire pour confirmer l eligibilite de la paire.', allowed: false };
@@ -1573,7 +1592,9 @@ export default function EspaceJoueur() {
                         ? 'Controle...'
                       : canPrepareRegistration(eligibility.label)
                         ? 'Preparer inscription'
-                        : 'Non disponible'}
+                        : eligibility.label === REGISTRATION_CLOSED_LABEL
+                          ? REGISTRATION_CLOSED_LABEL
+                          : 'Non disponible'}
                   </button>
                 </article>
               );
