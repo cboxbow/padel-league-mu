@@ -15,6 +15,7 @@ export interface Tournament {
   region: string; category: string; division: string; type: string;
   status: string; max_teams: number;
   start_date?: string; // 1er jour d'un tournoi sur plusieurs jours (date = dernier jour)
+  registration_deadline?: string; // clôture des inscriptions (ISO, heure de Maurice) si différente de J-7
 }
 
 export const MPL_CLUBS: Club[] = [
@@ -392,8 +393,8 @@ export const MPL_TOURNAMENTS: Tournament[] = [
   {id:'t204f',name:'Mont Choisy Golf M100 (Dames)',club_id:'c14',club_name:'Mont Choisy Golf',date:'2026-11-14',region:'Nord',category:'M100',division:'women',type:'WOMEN',status:'upcoming',max_teams:32},
   {id:'t205h',name:'Oxygen Moka M100 (Hommes)',club_id:'c15',club_name:'Oxygen Moka',date:'2026-11-14',region:'Centre',category:'M100',division:'men',type:'MEN',status:'upcoming',max_teams:32},
   {id:'t205f',name:'Oxygen Moka M100 (Dames)',club_id:'c15',club_name:'Oxygen Moka',date:'2026-11-14',region:'Centre',category:'M100',division:'women',type:'WOMEN',status:'upcoming',max_teams:32},
-  {id:'t202h',name:'Isla Padel Grand Baie M1000 (Hommes)',club_id:'c12',club_name:'Isla Padel Grand Baie',start_date:'2026-11-13',date:'2026-11-14',region:'Nord',category:'M1000',division:'men',type:'MEN',status:'upcoming',max_teams:48},
-  {id:'t202f',name:'Isla Padel Grand Baie M1000 (Dames)',club_id:'c12',club_name:'Isla Padel Grand Baie',start_date:'2026-11-13',date:'2026-11-14',region:'Nord',category:'M1000',division:'women',type:'WOMEN',status:'upcoming',max_teams:48},
+  {id:'t202h',name:'Isla Padel Grand Baie M1000 (Hommes)',club_id:'c12',club_name:'Isla Padel Grand Baie',start_date:'2026-11-13',registration_deadline:'2026-11-08T12:00:00+04:00',date:'2026-11-14',region:'Nord',category:'M1000',division:'men',type:'MEN',status:'upcoming',max_teams:48},
+  {id:'t202f',name:'Isla Padel Grand Baie M1000 (Dames)',club_id:'c12',club_name:'Isla Padel Grand Baie',start_date:'2026-11-13',registration_deadline:'2026-11-08T12:00:00+04:00',date:'2026-11-14',region:'Nord',category:'M1000',division:'women',type:'WOMEN',status:'upcoming',max_teams:48},
   {id:'t207h',name:'I Padel by RM Hennessy M100 (Hommes)',club_id:'c07',club_name:'I Padel by RM Hennessy',date:'2026-11-15',region:'Centre',category:'M100',division:'men',type:'MEN',status:'upcoming',max_teams:32},
   {id:'t207f',name:'I Padel by RM Hennessy M100 (Dames)',club_id:'c07',club_name:'I Padel by RM Hennessy',date:'2026-11-15',region:'Centre',category:'M100',division:'women',type:'WOMEN',status:'upcoming',max_teams:32},
   {id:'t210h',name:'Urban Sport Black River M50 (Hommes)',club_id:'c04',club_name:'Urban Sport Black River',date:'2026-11-21',region:'Ouest',category:'M50',division:'men',type:'MEN',status:'upcoming',max_teams:24},

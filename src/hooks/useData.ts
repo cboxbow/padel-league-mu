@@ -34,6 +34,7 @@ export interface TournamentData {
   date: string; region: string; category: string; division: string;
   type: string; status: string; max_teams: number;
   start_date?: string;          // ← 1er jour si le tournoi dure plusieurs jours (date = dernier jour)
+  registration_deadline?: string; // ← clôture des inscriptions (ISO, heure de Maurice) si différente de J-7
   teams_registered?: number;
   participants_count?: number;  // ← nb équipes réelles depuis tournament_results
   has_results?: boolean;        // ← true si des résultats existent
@@ -144,7 +145,7 @@ export function useClubs(regionFilter?: string) {
  * Si le statut Supabase est explicitement défini (non vide, non 'upcoming', non 'À venir'),
  * il est respecté tel quel (permet à l'admin de forcer un statut).
  */
-export function computeTournamentStatus(date: string, supabaseStatus?: string, startDate?: string): string {
+export function computeTournamentStatus(date: string, supabaseStatus?: string, startDate?: string, registrationDeadline?: string): string {
   const forced = (supabaseStatus ?? '').toString().trim().toLowerCase();
   // Statuts forcés par l'admin → respectés tels quels
   if (forced && !['upcoming', 'à venir', 'a venir', ''].includes(forced)) {
@@ -159,6 +160,11 @@ export function computeTournamentStatus(date: string, supabaseStatus?: string, s
 
   if (lastDay < today) return 'completed';  // date passée
   if (diffDays <= 0)  return 'ongoing';     // jour(s) du tournoi
+  // Clôture fixée par tournoi (ex. dimanche 12:00) : remplace la règle J-7.
+  if (registrationDeadline) {
+    if (new Date() >= new Date(registrationDeadline)) return 'draw';
+    return diffDays < 21 ? 'open' : 'upcoming';
+  }
   if (diffDays < 7)   return 'draw';      // tirage / inscriptions fermées
   if (diffDays < 21)  return 'open';        // inscriptions ouvertes
   return 'upcoming';                         // trop tôt pour s'inscrire
@@ -342,7 +348,7 @@ export function useTournaments(filters?: {
 
           const localOfficial = (MPL_TOURNAMENTS as TournamentData[]).map(t => applyCancelledTournamentStatus({
             ...t,
-            status: computeTournamentStatus(t.date, t.status, t.start_date),
+            status: computeTournamentStatus(t.date, t.status, t.start_date, t.registration_deadline),
           }));
           const dbById = new Map(normalized.map(t => [t.id, t]));
           const dbByKey = new Map<string, TournamentData>();
@@ -456,7 +462,7 @@ export function useTournaments(filters?: {
   const tournaments = useMemo<TournamentData[]>(() => {
     let result: TournamentData[] = dbData ?? (MPL_TOURNAMENTS as TournamentData[]).map(t => applyCancelledTournamentStatus({
       ...t,
-      status: computeTournamentStatus(t.date, t.status, t.start_date),
+      status: computeTournamentStatus(t.date, t.status, t.start_date, t.registration_deadline),
     }));
 
     if (filters?.region   && filters.region   !== 'all') result = result.filter(t => t.region   === filters.region);

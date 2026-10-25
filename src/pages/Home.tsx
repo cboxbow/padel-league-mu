@@ -241,8 +241,8 @@ const FEATURED_TOURNAMENTS: FeaturedTournamentItem[] = [
     title: ['M1000', 'ISLA PADEL'],
     label: { fr: 'le M1000 Isla Padel 2026', en: 'the M1000 Isla Padel 2026' },
     text: {
-      fr: 'Grand Baie · Hommes / Dames Open · licenciés MPL. Inscriptions jusqu’au 6 novembre, puis tableaux, programme et scores en direct sur le site du tournoi.',
-      en: 'Grand Baie · Men / Women Open · MPL licence holders. Registrations until 6 November, then draws, schedule and live scores on the tournament site.',
+      fr: 'Grand Baie · Hommes / Dames Open · licenciés MPL. Inscriptions jusqu’au dimanche 8 novembre à 12:00 (site ou appli MPL), puis tableaux, programme et scores en direct sur le site du tournoi.',
+      en: 'Grand Baie · Men / Women Open · MPL licence holders. Registrations until Sunday 8 November at 12:00 (website or MPL app), then draws, schedule and live scores on the tournament site.',
     },
   },
 ];
