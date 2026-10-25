@@ -959,8 +959,8 @@ export default function Calendrier() {
                     const maxTeams   = t.max_teams ?? 0;
                     const fillPct    = maxTeams > 0 ? Math.round((registered / maxTeams) * 100) : 0;
                     const fillColor  = fillPct >= 90 ? '#ff6b6b' : fillPct >= 60 ? '#fbbf24' : '#4ad569';
-                    const today      = new Date().toISOString().slice(0, 10);
-                    const isToday    = t.date === today;
+                    // Même règle que le filtre « En cours » (jour du tournoi, heure locale).
+                    const isToday    = t.status === 'ongoing';
                     const hasResults = t.has_results ?? false;
 
                     return (

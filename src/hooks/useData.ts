@@ -153,7 +153,8 @@ export function computeTournamentStatus(date: string, supabaseStatus?: string): 
   const diffDays = Math.floor((tournDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
   if (diffDays < 0)   return 'completed';   // date passée
-  if (diffDays < 7)   return 'draw';        // tirage / inscriptions fermées
+  if (diffDays === 0) return 'ongoing';     // jour du tournoi
+  if (diffDays < 7)   return 'draw';      // tirage / inscriptions fermées
   if (diffDays < 21)  return 'open';        // inscriptions ouvertes
   return 'upcoming';                         // trop tôt pour s'inscrire
 }
