@@ -33,6 +33,7 @@ export interface TournamentData {
   id: string; name: string; club_id: string; club_name: string;
   date: string; region: string; category: string; division: string;
   type: string; status: string; max_teams: number;
+  start_date?: string;          // ← 1er jour si le tournoi dure plusieurs jours (date = dernier jour)
   teams_registered?: number;
   participants_count?: number;  // ← nb équipes réelles depuis tournament_results
   has_results?: boolean;        // ← true si des résultats existent
@@ -137,10 +138,13 @@ export function useClubs(regionFilter?: string) {
  *  - Ouvert     : J-21 à J-8 (inscriptions ouvertes)
  *  - À venir    : plus de 21 jours avant la date
  *
+ * Tournoi sur plusieurs jours : `date` reste le dernier jour (clé des inscriptions et
+ * résultats) et `startDate` le premier ; le tirage et « En cours » partent de `startDate`.
+ *
  * Si le statut Supabase est explicitement défini (non vide, non 'upcoming', non 'À venir'),
  * il est respecté tel quel (permet à l'admin de forcer un statut).
  */
-export function computeTournamentStatus(date: string, supabaseStatus?: string): string {
+export function computeTournamentStatus(date: string, supabaseStatus?: string, startDate?: string): string {
   const forced = (supabaseStatus ?? '').toString().trim().toLowerCase();
   // Statuts forcés par l'admin → respectés tels quels
   if (forced && !['upcoming', 'à venir', 'a venir', ''].includes(forced)) {
@@ -149,11 +153,12 @@ export function computeTournamentStatus(date: string, supabaseStatus?: string): 
   if (!date) return 'upcoming';
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const tournDay = new Date(date); tournDay.setHours(0, 0, 0, 0);
+  const lastDay  = new Date(date); lastDay.setHours(0, 0, 0, 0);
+  const tournDay = new Date(startDate || date); tournDay.setHours(0, 0, 0, 0);
   const diffDays = Math.floor((tournDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
-  if (diffDays < 0)   return 'completed';   // date passée
-  if (diffDays === 0) return 'ongoing';     // jour du tournoi
+  if (lastDay < today) return 'completed';  // date passée
+  if (diffDays <= 0)  return 'ongoing';     // jour(s) du tournoi
   if (diffDays < 7)   return 'draw';      // tirage / inscriptions fermées
   if (diffDays < 21)  return 'open';        // inscriptions ouvertes
   return 'upcoming';                         // trop tôt pour s'inscrire
@@ -337,7 +342,7 @@ export function useTournaments(filters?: {
 
           const localOfficial = (MPL_TOURNAMENTS as TournamentData[]).map(t => applyCancelledTournamentStatus({
             ...t,
-            status: computeTournamentStatus(t.date, t.status),
+            status: computeTournamentStatus(t.date, t.status, t.start_date),
           }));
           const dbById = new Map(normalized.map(t => [t.id, t]));
           const dbByKey = new Map<string, TournamentData>();
@@ -451,7 +456,7 @@ export function useTournaments(filters?: {
   const tournaments = useMemo<TournamentData[]>(() => {
     let result: TournamentData[] = dbData ?? (MPL_TOURNAMENTS as TournamentData[]).map(t => applyCancelledTournamentStatus({
       ...t,
-      status: computeTournamentStatus(t.date, t.status),
+      status: computeTournamentStatus(t.date, t.status, t.start_date),
     }));
 
     if (filters?.region   && filters.region   !== 'all') result = result.filter(t => t.region   === filters.region);

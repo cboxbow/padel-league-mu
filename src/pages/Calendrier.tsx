@@ -952,7 +952,9 @@ export default function Calendrier() {
                     const catC    = CAT_COLORS[t.category] ?? '#4ad569';
                     const regC    = REGION_CONFIG[t.region as Region]?.color ?? '#a0a0a0';
                     const dateObj = new Date(t.date + 'T00:00:00');
-                    const dayFmt  = dateObj.toLocaleDateString(lang === 'fr' ? 'fr-MU' : 'en-MU', {
+                    const dayFmt  = (t.start_date && t.start_date !== t.date
+                      ? `${new Date(t.start_date + 'T00:00:00').getDate().toString().padStart(2, '0')}–`
+                      : '') + dateObj.toLocaleDateString(lang === 'fr' ? 'fr-MU' : 'en-MU', {
                       day: '2-digit', month: 'short', year: '2-digit',
                     });
                     // Priorité : participants_count (depuis results) > teams_registered (Supabase)
