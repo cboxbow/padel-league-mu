@@ -1036,7 +1036,7 @@ export default function Calendrier() {
                               <StatusBadge
                                 status={t.status}
                                 lang={lang}
-                                isAppOnly={t.category === 'M500' || t.category === 'M1000'}
+                                isAppOnly={t.category === 'M500' || t.category === 'M1000' || /\bM(500|1000)\b/.test(t.name)}
                                 whatsappUrl={getClubWhatsApp(t.club_id, t.club_name)}
                                 contactName={MPL_CLUBS.find(c => c.id === t.club_id)?.contact}
                                 registerHref={`#${ROUTE_PATHS.PLAYER_SPACE}?tournament=${t.id}`}
