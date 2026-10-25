@@ -198,6 +198,55 @@ function HeroSection() {
   );
 }
 
+// ── Featured Tournament (M1000 Isla Padel) ───────────────────────────────────
+// Lien vers le hub officiel du tournoi ; masqué automatiquement après la finale.
+const FEATURED_TOURNAMENT = {
+  hubUrl: 'https://mpl-m1000-isla-2026.vercel.app',
+  hideAfter: new Date('2026-11-15T00:00:00+04:00'),
+};
+
+function FeaturedTournament() {
+  const { lang } = useI18n();
+  if (new Date() >= FEATURED_TOURNAMENT.hideAfter) return null;
+  const fr = lang === 'fr';
+  return (
+    <section style={{ padding: '24px', background: '#070a0d' }}>
+      <a
+        href={FEATURED_TOURNAMENT.hubUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="mpl-featured-tournament"
+        aria-label={fr ? 'Ouvrir le site officiel du M1000 Isla Padel 2026' : 'Open the official M1000 Isla Padel 2026 site'}
+        style={{
+          display: 'grid', gridTemplateColumns: 'minmax(0,1.1fr) minmax(280px,.9fr)',
+          maxWidth: '1200px', minHeight: '380px', margin: '0 auto', overflow: 'hidden',
+          textDecoration: 'none', color: 'white', border: '1px solid rgba(47,143,232,.35)',
+          borderRadius: '18px', background: '#05090d', boxShadow: '0 30px 80px rgba(0,0,0,.36)',
+        }}
+      >
+        <div style={{ padding: 'clamp(30px,5vw,64px)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <span style={{ color: '#2f8fe8', fontSize: '11px', fontWeight: 900, letterSpacing: '2px' }}>
+            {fr ? 'TOURNOI EN VEDETTE · 13–14 NOVEMBRE 2026' : 'FEATURED TOURNAMENT · 13–14 NOVEMBER 2026'}
+          </span>
+          <h2 style={{ margin: '20px 0 12px', fontSize: 'clamp(42px,7vw,78px)', lineHeight: .88, letterSpacing: '-3px', fontStyle: 'italic', fontWeight: 900 }}>
+            M1000<br /><span style={{ color: '#2f8fe8' }}>ISLA PADEL</span>
+          </h2>
+          <p style={{ color: '#aebbc6', maxWidth: '520px', lineHeight: 1.7, margin: '8px 0 26px' }}>
+            {fr
+              ? 'Grand Baie · Hommes / Dames Open · licenciés MPL. Inscriptions jusqu’au 6 novembre, puis tableaux, programme et scores en direct sur le site du tournoi.'
+              : 'Grand Baie · Men / Women Open · MPL licence holders. Registrations until 6 November, then draws, schedule and live scores on the tournament site.'}
+          </p>
+          <span style={{ alignSelf: 'flex-start', padding: '14px 20px', background: '#2f8fe8', color: '#04101c', fontWeight: 900, fontSize: '12px', letterSpacing: '1px', borderRadius: '6px' }}>
+            {fr ? 'SUIVRE LE TOURNOI →' : 'FOLLOW THE TOURNAMENT →'}
+          </span>
+        </div>
+        <div style={{ minHeight: '300px', backgroundImage: "linear-gradient(90deg,#05090d 0%,transparent 30%), url('/images/m1000-isla-2026.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' }} />
+      </a>
+      <style>{`@media(max-width:760px){.mpl-featured-tournament{grid-template-columns:1fr!important}.mpl-featured-tournament>div:last-child{min-height:220px;grid-row:1}}`}</style>
+    </section>
+  );
+}
+
 // ── League Preview Section ────────────────────────────────────────────────────
 function LeaguePreview() {
   const { t } = useI18n();
@@ -331,6 +380,7 @@ export default function Home() {
   return (
     <Layout>
       <HeroSection />
+      <FeaturedTournament />
       <LeaguePreview />
       <RegionsPreview />
     </Layout>
