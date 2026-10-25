@@ -198,50 +198,95 @@ function HeroSection() {
   );
 }
 
-// ── Featured Tournament (M1000 Isla Padel) ───────────────────────────────────
-// Lien vers le hub officiel du tournoi ; masqué automatiquement après la finale.
-const FEATURED_TOURNAMENT = {
-  hubUrl: 'https://mpl-m1000-isla-2026.vercel.app',
-  hideAfter: new Date('2026-11-15T00:00:00+04:00'),
+// ── Featured Tournaments (M500 Moka Rangers, M1000 Isla Padel) ──────────────
+// Liens vers les hubs officiels des tournois ; chaque bannière est masquée
+// automatiquement le lendemain de sa finale (heure de Maurice).
+type FeaturedTournamentItem = {
+  id: string;
+  hubUrl: string;
+  hideAfter: Date;
+  accent: string;
+  accentInk: string;
+  image: string;
+  dates: { fr: string; en: string };
+  title: [string, string];
+  label: { fr: string; en: string };
+  text: { fr: string; en: string };
 };
+
+const FEATURED_TOURNAMENTS: FeaturedTournamentItem[] = [
+  {
+    id: 'm500-moka-rangers-2026',
+    hubUrl: 'https://moka.mauritiuspadel.click',
+    hideAfter: new Date('2026-11-01T00:00:00+04:00'),
+    accent: '#e6197d',
+    accentInk: '#ffffff',
+    image: '/images/m500-moka-rangers-2026.jpg',
+    dates: { fr: '30–31 OCTOBRE 2026', en: '30–31 OCTOBER 2026' },
+    title: ['M500', 'MOKA RANGERS'],
+    label: { fr: 'le M500 Moka Rangers 2026', en: 'the M500 Moka Rangers 2026' },
+    text: {
+      fr: 'Moka Rangers Sports Club · Hommes / Dames Open · licenciés MPL. Tirage au sort en direct au briefing du vendredi 30 octobre, puis tableaux, programme et scores en direct sur le site du tournoi.',
+      en: 'Moka Rangers Sports Club · Men / Women Open · MPL licence holders. Live draw at the Friday 30 October briefing, then draws, schedule and live scores on the tournament site.',
+    },
+  },
+  {
+    id: 'm1000-isla-2026',
+    hubUrl: 'https://mpl-m1000-isla-2026.vercel.app',
+    hideAfter: new Date('2026-11-15T00:00:00+04:00'),
+    accent: '#2f8fe8',
+    accentInk: '#04101c',
+    image: '/images/m1000-isla-2026.jpg',
+    dates: { fr: '13–14 NOVEMBRE 2026', en: '13–14 NOVEMBER 2026' },
+    title: ['M1000', 'ISLA PADEL'],
+    label: { fr: 'le M1000 Isla Padel 2026', en: 'the M1000 Isla Padel 2026' },
+    text: {
+      fr: 'Grand Baie · Hommes / Dames Open · licenciés MPL. Inscriptions jusqu’au 6 novembre, puis tableaux, programme et scores en direct sur le site du tournoi.',
+      en: 'Grand Baie · Men / Women Open · MPL licence holders. Registrations until 6 November, then draws, schedule and live scores on the tournament site.',
+    },
+  },
+];
 
 function FeaturedTournament() {
   const { lang } = useI18n();
-  if (new Date() >= FEATURED_TOURNAMENT.hideAfter) return null;
+  const now = new Date();
+  const items = FEATURED_TOURNAMENTS.filter((item) => now < item.hideAfter);
+  if (!items.length) return null;
   const fr = lang === 'fr';
   return (
-    <section style={{ padding: '24px', background: '#070a0d' }}>
-      <a
-        href={FEATURED_TOURNAMENT.hubUrl}
-        target="_blank"
-        rel="noreferrer"
-        className="mpl-featured-tournament"
-        aria-label={fr ? 'Ouvrir le site officiel du M1000 Isla Padel 2026' : 'Open the official M1000 Isla Padel 2026 site'}
-        style={{
-          display: 'grid', gridTemplateColumns: 'minmax(0,1.1fr) minmax(280px,.9fr)',
-          maxWidth: '1200px', minHeight: '380px', margin: '0 auto', overflow: 'hidden',
-          textDecoration: 'none', color: 'white', border: '1px solid rgba(47,143,232,.35)',
-          borderRadius: '18px', background: '#05090d', boxShadow: '0 30px 80px rgba(0,0,0,.36)',
-        }}
-      >
-        <div style={{ padding: 'clamp(30px,5vw,64px)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-          <span style={{ color: '#2f8fe8', fontSize: '11px', fontWeight: 900, letterSpacing: '2px' }}>
-            {fr ? 'TOURNOI EN VEDETTE · 13–14 NOVEMBRE 2026' : 'FEATURED TOURNAMENT · 13–14 NOVEMBER 2026'}
-          </span>
-          <h2 style={{ margin: '20px 0 12px', fontSize: 'clamp(42px,7vw,78px)', lineHeight: .88, letterSpacing: '-3px', fontStyle: 'italic', fontWeight: 900 }}>
-            M1000<br /><span style={{ color: '#2f8fe8' }}>ISLA PADEL</span>
-          </h2>
-          <p style={{ color: '#aebbc6', maxWidth: '520px', lineHeight: 1.7, margin: '8px 0 26px' }}>
-            {fr
-              ? 'Grand Baie · Hommes / Dames Open · licenciés MPL. Inscriptions jusqu’au 6 novembre, puis tableaux, programme et scores en direct sur le site du tournoi.'
-              : 'Grand Baie · Men / Women Open · MPL licence holders. Registrations until 6 November, then draws, schedule and live scores on the tournament site.'}
-          </p>
-          <span style={{ alignSelf: 'flex-start', padding: '14px 20px', background: '#2f8fe8', color: '#04101c', fontWeight: 900, fontSize: '12px', letterSpacing: '1px', borderRadius: '6px' }}>
-            {fr ? 'SUIVRE LE TOURNOI →' : 'FOLLOW THE TOURNAMENT →'}
-          </span>
-        </div>
-        <div style={{ minHeight: '300px', backgroundImage: "linear-gradient(90deg,#05090d 0%,transparent 30%), url('/images/m1000-isla-2026.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' }} />
-      </a>
+    <section style={{ padding: '24px', background: '#070a0d', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      {items.map((item) => (
+        <a
+          key={item.id}
+          href={item.hubUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="mpl-featured-tournament"
+          aria-label={fr ? `Ouvrir le site officiel du ${item.label.fr.replace(/^le /, '')}` : `Open the official ${item.label.en.replace(/^the /, '')} site`}
+          style={{
+            display: 'grid', gridTemplateColumns: 'minmax(0,1.1fr) minmax(280px,.9fr)',
+            width: '100%', maxWidth: '1200px', minHeight: '380px', margin: '0 auto', overflow: 'hidden',
+            textDecoration: 'none', color: 'white', border: `1px solid ${item.accent}59`,
+            borderRadius: '18px', background: '#05090d', boxShadow: '0 30px 80px rgba(0,0,0,.36)',
+          }}
+        >
+          <div style={{ padding: 'clamp(30px,5vw,64px)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <span style={{ color: item.accent, fontSize: '11px', fontWeight: 900, letterSpacing: '2px' }}>
+              {fr ? `TOURNOI EN VEDETTE · ${item.dates.fr}` : `FEATURED TOURNAMENT · ${item.dates.en}`}
+            </span>
+            <h2 style={{ margin: '20px 0 12px', fontSize: 'clamp(42px,7vw,78px)', lineHeight: .88, letterSpacing: '-3px', fontStyle: 'italic', fontWeight: 900 }}>
+              {item.title[0]}<br /><span style={{ color: item.accent }}>{item.title[1]}</span>
+            </h2>
+            <p style={{ color: '#aebbc6', maxWidth: '520px', lineHeight: 1.7, margin: '8px 0 26px' }}>
+              {fr ? item.text.fr : item.text.en}
+            </p>
+            <span style={{ alignSelf: 'flex-start', padding: '14px 20px', background: item.accent, color: item.accentInk, fontWeight: 900, fontSize: '12px', letterSpacing: '1px', borderRadius: '6px' }}>
+              {fr ? 'SUIVRE LE TOURNOI →' : 'FOLLOW THE TOURNAMENT →'}
+            </span>
+          </div>
+          <div style={{ minHeight: '300px', backgroundImage: `linear-gradient(90deg,#05090d 0%,transparent 30%), url('${item.image}')`, backgroundSize: 'cover', backgroundPosition: 'center' }} />
+        </a>
+      ))}
       <style>{`@media(max-width:760px){.mpl-featured-tournament{grid-template-columns:1fr!important}.mpl-featured-tournament>div:last-child{min-height:220px;grid-row:1}}`}</style>
     </section>
   );
