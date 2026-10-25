@@ -237,12 +237,12 @@ const FEATURED_TOURNAMENTS: FeaturedTournamentItem[] = [
     accent: '#2f8fe8',
     accentInk: '#04101c',
     image: '/images/m1000-isla-2026.jpg',
-    dates: { fr: '13–14 NOVEMBRE 2026', en: '13–14 NOVEMBER 2026' },
+    dates: { fr: '12–14 NOVEMBRE 2026', en: '12–14 NOVEMBER 2026' },
     title: ['M1000', 'ISLA PADEL'],
     label: { fr: 'le M1000 Isla Padel 2026', en: 'the M1000 Isla Padel 2026' },
     text: {
-      fr: 'Grand Baie · Hommes / Dames Open · licenciés MPL. Inscriptions jusqu’au dimanche 8 novembre à 12:00 (site ou appli MPL), puis tableaux, programme et scores en direct sur le site du tournoi.',
-      en: 'Grand Baie · Men / Women Open · MPL licence holders. Registrations until Sunday 8 November at 12:00 (website or MPL app), then draws, schedule and live scores on the tournament site.',
+      fr: 'Grand Baie · Hommes / Dames Open + Juniors · licenciés MPL. Inscriptions jusqu’au dimanche 8 novembre à 12:00 (site ou appli MPL), puis tableaux, programme et scores en direct sur le site du tournoi.',
+      en: 'Grand Baie · Men / Women Open + Juniors · MPL licence holders. Registrations until Sunday 8 November at 12:00 (website or MPL app), then draws, schedule and live scores on the tournament site.',
     },
   },
 ];
