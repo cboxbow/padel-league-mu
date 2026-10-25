@@ -232,7 +232,7 @@ const FEATURED_TOURNAMENTS: FeaturedTournamentItem[] = [
   },
   {
     id: 'm1000-isla-2026',
-    hubUrl: 'https://mpl-m1000-isla-2026.vercel.app',
+    hubUrl: 'https://isla.mauritiuspadel.click',
     hideAfter: new Date('2026-11-15T00:00:00+04:00'),
     accent: '#2f8fe8',
     accentInk: '#04101c',
