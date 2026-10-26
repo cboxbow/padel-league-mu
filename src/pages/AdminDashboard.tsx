@@ -95,6 +95,94 @@ interface PlayerRow {
   active: boolean;
 }
 
+// Licence de l'application SmartApp (table player_app_licences, admin seulement).
+// Le numero MPL reste players.license_no.
+interface AppLicenceRow {
+  player_id: string;
+  app_license_no: string | null;
+  app_registered_at: string | null;
+  license_type: 'annuelle' | 'ponctuelle' | null;
+  license_start: string | null;
+  license_end: string | null;
+  app_status: 'active' | 'pending' | null;
+  matched_by?: string | null;
+}
+
+const LICENCE_TYPE_LABELS: Record<string, string> = { annuelle: 'Annuelle', ponctuelle: 'Ponctuelle' };
+
+function frDate(value?: string | null): string {
+  if (!value) return '—';
+  const [y, m, d] = value.slice(0, 10).split('-');
+  return y && m && d ? `${d}/${m}/${y}` : value;
+}
+
+// Date du jour a Maurice (YYYY-MM-DD) pour comparer aux fins de validite.
+function mauritiusToday(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Indian/Mauritius' });
+}
+
+// timestamptz -> valeur d'un <input type="datetime-local"> a l'heure de Maurice.
+function toMauritiusLocalInput(value?: string | null): string {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return new Date(d.getTime() + 4 * 3600 * 1000).toISOString().slice(0, 16);
+}
+
+// Champs editables : sert a ne rien ecrire si l'admin n'a pas touche a la licence.
+function licenceFingerprint(row?: AppLicenceRow | null): string {
+  if (!row) return JSON.stringify([null, null, null, null, null, null]);
+  return JSON.stringify([
+    row.app_license_no || null, row.app_registered_at ? new Date(row.app_registered_at).getTime() : null,
+    row.license_type || null, row.license_start || null, row.license_end || null, row.app_status || null,
+  ]);
+}
+
+function useAppLicences() {
+  const [byPlayer, setByPlayer] = useState<Map<string, AppLicenceRow>>(new Map());
+  const [available, setAvailable] = useState(false);
+
+  const load = useCallback(async () => {
+    const sb = getSupabaseClient();
+    if (!isSupabaseConnected() || !sb) { setAvailable(false); return; }
+    const rows: AppLicenceRow[] = [];
+    // PostgREST plafonne chaque reponse a 1000 lignes.
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await sb.from('player_app_licences').select('*').range(from, from + 999);
+      if (error) {
+        // Table pas encore creee ou compte sans droit admin : on masque simplement les colonnes.
+        console.warn(`[useAppLicences] READ failed (${error.message})`);
+        setAvailable(false);
+        return;
+      }
+      rows.push(...((data ?? []) as AppLicenceRow[]));
+      if (!data || data.length < 1000) break;
+    }
+    setByPlayer(new Map(rows.map(r => [r.player_id, r])));
+    setAvailable(true);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const saveLicence = useCallback(async (row: AppLicenceRow): Promise<string | null> => {
+    const sb = getSupabaseClient();
+    if (!isSupabaseConnected() || !sb) return 'Supabase non connecte';
+    const payload = {
+      ...row,
+      app_license_no: row.app_license_no?.trim().toUpperCase() || null,
+      matched_by: row.matched_by || 'manuel',
+      source: 'admin',
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await sb.from('player_app_licences').upsert(payload, { onConflict: 'player_id' });
+    if (error) return error.message;
+    setByPlayer(prev => new Map(prev).set(row.player_id, payload));
+    return null;
+  }, []);
+
+  return { byPlayer, available, load, saveLicence };
+}
+
 // Helper pour obtenir le nom complet quelle que soit la structure Supabase
 function playerFullName(p: PlayerRow): string {
   if (p.first_name && p.last_name) return `${p.first_name} ${p.last_name}`;
@@ -791,6 +879,10 @@ function PlayersAdminPage() {
   const [search,    setSearch]  = useState('');
   const [divFilter, setDiv]     = useState<string>('all');
   const [genderFilter, setGender] = useState<string>('all');
+  const [licenceFilter, setLicenceFilter] = useState<string>('all');
+  const { byPlayer: appLicences, available: appLicencesAvailable, load: loadAppLicences, saveLicence } = useAppLicences();
+  const [licenceDraft, setLicenceDraft] = useState<AppLicenceRow | null>(null);
+  const today = mauritiusToday();
   const [editing,   setEditing] = useState<Partial<PlayerRow> | null>(null);
   const [saving,    setSaving]  = useState(false);
   const [importRows, setImportRows] = useState<PlayerImportDraft[]>([]);
@@ -812,13 +904,20 @@ function PlayersAdminPage() {
   const filtered = enriched.filter(p => {
     const name  = playerFullName(p).toLowerCase();
     const club  = (p.club_name || '').toLowerCase();
+    const lic   = appLicences.get(p.id);
     const matchSearch  = name.includes(search.toLowerCase())
       || club.includes(search.toLowerCase())
       || (p.email      || '').includes(search.toLowerCase())
-      || (p.license_no || '').toString().toLowerCase().includes(search.toLowerCase());
+      || (p.license_no || '').toString().toLowerCase().includes(search.toLowerCase())
+      || (lic?.app_license_no || '').toLowerCase().includes(search.toLowerCase());
     const matchDiv    = divFilter    === 'all' || p.division === divFilter;
     const matchGender = genderFilter === 'all' || p.gender   === genderFilter;
-    return matchSearch && matchDiv && matchGender;
+    const matchLicence = licenceFilter === 'all'
+      || (licenceFilter === 'none' && !lic?.app_license_no)
+      || (licenceFilter === 'expired' && !!lic?.license_end && lic.license_end < today)
+      || (licenceFilter === 'valid' && !!lic?.license_end && lic.license_end >= today)
+      || lic?.license_type === licenceFilter;
+    return matchSearch && matchDiv && matchGender && matchLicence;
   });
 
   const importAuditRows = useMemo<PlayerImportAuditRow[]>(() => {
@@ -898,9 +997,19 @@ function PlayersAdminPage() {
       // presence d'un id, et genere lui-meme un UUID pour l'INSERT.
     };
     const { ok, isDemo } = await save(payload);
+    let licenceError: string | null = null;
+    if (ok && !isNew && licenceDraft && appLicencesAvailable
+      && licenceFingerprint(licenceDraft) !== licenceFingerprint(appLicences.get(licenceDraft.player_id))) {
+      licenceError = await saveLicence(licenceDraft);
+    }
     setSaving(false);
+    if (ok && licenceError) {
+      setError(`❌ Joueur enregistre, mais licence application refusee : ${licenceError}`);
+      return;
+    }
     if (ok) {
       setEditing(null);
+      setLicenceDraft(null);
       // Rafraîchir les counts après ajout/modif
       refreshCounts();
       if (isDemo) {
@@ -1048,6 +1157,23 @@ function PlayersAdminPage() {
   const GENDER_LABELS: Record<string, string> = { M: '♂ M', F: '♀ F' };
   const GENDER_COLORS: Record<string, string> = { M: '#3b82f6', F: '#ec4899' };
 
+  const openEditor = (p: Partial<PlayerRow>) => {
+    setEditing(p);
+    setLicenceDraft(p.id ? (appLicences.get(p.id) ?? {
+      player_id: p.id, app_license_no: null, app_registered_at: null, license_type: null,
+      license_start: null, license_end: null, app_status: null, matched_by: 'manuel',
+    }) : null);
+  };
+
+  const licenceStats = useMemo(() => {
+    const rows = Array.from(appLicences.values());
+    return {
+      annuelle: rows.filter(r => r.license_type === 'annuelle').length,
+      ponctuelle: rows.filter(r => r.license_type === 'ponctuelle').length,
+      expired: rows.filter(r => r.license_end && r.license_end < today).length,
+    };
+  }, [appLicences, today]);
+
   // Statistiques : vrais counts depuis hook (Supabase ou CSV fallback)
   const stats = {
     total:   playerCounts.total,
@@ -1068,7 +1194,7 @@ function PlayersAdminPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
-          <button onClick={load} style={{ background: 'rgba(255,255,255,0.05)', color: '#a0a0a0', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '9px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+          <button onClick={() => { load(); loadAppLicences(); }} style={{ background: 'rgba(255,255,255,0.05)', color: '#a0a0a0', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '9px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
             <RefreshCw size={14} /> Actualiser
           </button>
           {!isViewer && <>
@@ -1087,7 +1213,7 @@ function PlayersAdminPage() {
             </button>
           </>}
           {!isViewer && <button
-            onClick={() => setEditing({ division: 'men', gender: 'M', active: true, region: 'Nord', club_id: 'c03', club_name: 'Urban Sport Grand Baie' })}
+            onClick={() => openEditor({ division: 'men', gender: 'M', active: true, region: 'Nord', club_id: 'c03', club_name: 'Urban Sport Grand Baie' })}
             style={{ background: '#4ad569', color: '#0a0a0a', border: 'none', borderRadius: '8px', padding: '9px 18px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
             <Plus size={14} /> Nouveau Joueur
           </button>}
@@ -1101,6 +1227,11 @@ function PlayersAdminPage() {
           { label: '♂ Hommes',       val: stats.hommes.toLocaleString('fr-FR'), color: '#3b82f6' },
           { label: '♀ Dames',        val: stats.femmes.toLocaleString('fr-FR'), color: '#ec4899' },
           { label: '🎓 Juniors',      val: stats.junior.toLocaleString('fr-FR'), color: '#f59e0b' },
+          ...(appLicencesAvailable ? [
+            { label: 'Licences app annuelles',   val: licenceStats.annuelle.toLocaleString('fr-FR'),   color: '#4ad569' },
+            { label: 'Licences app ponctuelles', val: licenceStats.ponctuelle.toLocaleString('fr-FR'), color: '#a78bfa' },
+            { label: 'Licences app expirées',    val: licenceStats.expired.toLocaleString('fr-FR'),    color: '#ef4444' },
+          ] : []),
         ].map(s => (
           <div key={s.label} style={{ background: `${s.color}12`, border: `1px solid ${s.color}30`, borderRadius: '8px', padding: '6px 14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ color: s.color, fontWeight: 800, fontSize: '16px', fontFamily: 'JetBrains Mono,monospace' }}>{s.val}</span>
@@ -1216,6 +1347,16 @@ function PlayersAdminPage() {
           <option value="all">Toutes divisions</option>
           {DIVISIONS.map(d => <option key={d} value={d}>{DIV_LABELS[d]}</option>)}
         </select>
+        {appLicencesAvailable && (
+          <select value={licenceFilter} onChange={e => setLicenceFilter(e.target.value)} style={{ ...selectCss, width: 'auto', minWidth: '170px' }}>
+            <option value="all">Toutes licences app</option>
+            <option value="annuelle">Annuelle</option>
+            <option value="ponctuelle">Ponctuelle</option>
+            <option value="valid">En cours de validité</option>
+            <option value="expired">Expirée</option>
+            <option value="none">Sans licence app</option>
+          </select>
+        )}
       </div>
 
       {/* ── Table ────────────────────────────────────────────────────────────── */}
@@ -1223,17 +1364,20 @@ function PlayersAdminPage() {
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
           <thead>
             <tr style={{ borderBottom: '1px solid rgba(74,213,105,0.1)' }}>
-              {['Joueur', 'Genre', 'Club', 'Division', 'Région', 'Licence', 'Niveau', 'Email / Tél', 'Statut', 'Actions'].map(h => (
+              {['Joueur', 'Genre', 'Club', 'Division', 'Région', appLicencesAvailable ? 'Licence MPL / App' : 'Licence', ...(appLicencesAvailable ? ['Licence app'] : []), 'Niveau', 'Email / Tél', 'Statut', 'Actions'].map(h => (
                 <th key={h} style={{ padding: '12px 14px', textAlign: 'left', color: '#555', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={10} style={{ padding: '40px', textAlign: 'center', color: '#666' }}>Chargement…</td></tr>
+              <tr><td colSpan={appLicencesAvailable ? 11 : 10} style={{ padding: '40px', textAlign: 'center', color: '#666' }}>Chargement…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={10} style={{ padding: '40px', textAlign: 'center', color: '#666' }}>Aucun joueur trouvé</td></tr>
-            ) : filtered.map((p, i) => (
+              <tr><td colSpan={appLicencesAvailable ? 11 : 10} style={{ padding: '40px', textAlign: 'center', color: '#666' }}>Aucun joueur trouvé</td></tr>
+            ) : filtered.map((p, i) => {
+              const lic = appLicences.get(p.id);
+              const expired = !!lic?.license_end && lic.license_end < today;
+              return (
               <tr key={p.id}
                 style={{ borderBottom: '1px solid rgba(255,255,255,0.03)', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)', transition: 'background 0.15s' }}
                 onMouseEnter={e => (e.currentTarget.style.background = 'rgba(74,213,105,0.04)')}
@@ -1277,7 +1421,31 @@ function PlayersAdminPage() {
                 {/* Région */}
                 <td style={{ padding: '10px 14px' }}>{p.region ? <RegionBadge region={p.region} /> : <span style={{ color: '#555' }}>—</span>}</td>
                 {/* Licence */}
-                <td style={{ padding: '10px 14px', color: '#a0a0a0', fontSize: '12px', fontFamily: 'JetBrains Mono,monospace', whiteSpace: 'nowrap' }}>{p.license_no || '—'}</td>
+                <td style={{ padding: '10px 14px', color: '#a0a0a0', fontSize: '12px', fontFamily: 'JetBrains Mono,monospace', whiteSpace: 'nowrap' }}>
+                  {p.license_no || '—'}
+                  {appLicencesAvailable && <div style={{ color: '#666', fontSize: '11px' }}>{lic?.app_license_no || '—'}</div>}
+                </td>
+                {/* Licence app */}
+                {appLicencesAvailable && (
+                  <td style={{ padding: '10px 14px', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                    {lic ? (
+                      <>
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                          {lic.license_type ? (
+                            <span style={{ background: lic.license_type === 'annuelle' ? 'rgba(74,213,105,0.1)' : 'rgba(139,92,246,0.15)', color: lic.license_type === 'annuelle' ? '#4ad569' : '#a78bfa', borderRadius: '6px', padding: '2px 8px', fontWeight: 700 }}>
+                              {LICENCE_TYPE_LABELS[lic.license_type]}
+                            </span>
+                          ) : <span style={{ color: '#555' }}>Type —</span>}
+                          {lic.app_status === 'pending' && <span style={{ color: '#f59e0b', fontWeight: 700 }}>En attente</span>}
+                        </div>
+                        <div style={{ color: expired ? '#ef4444' : '#888', fontSize: '11px', marginTop: '3px' }}>
+                          {lic.license_end ? `${expired ? 'Expirée le' : "Valide jusqu'au"} ${frDate(lic.license_end)}` : 'Fin non renseignée'}
+                        </div>
+                        <div style={{ color: '#555', fontSize: '11px' }}>Inscrit le {frDate(toMauritiusLocalInput(lic.app_registered_at))}</div>
+                      </>
+                    ) : <span style={{ color: '#444' }}>—</span>}
+                  </td>
+                )}
                 {/* Niveau */}
                 <td style={{ padding: '10px 14px' }}>
                   {p.level ? (
@@ -1298,7 +1466,7 @@ function PlayersAdminPage() {
                 {/* Actions */}
                 <td style={{ padding: '10px 14px' }}>
                   <div style={{ display: 'flex', gap: '6px' }}>
-                    {!isViewer && <button onClick={() => setEditing({ ...p })}
+                    {!isViewer && <button onClick={() => openEditor({ ...p })}
                       style={{ background: 'rgba(74,213,105,0.1)', color: '#4ad569', border: 'none', borderRadius: '6px', padding: '5px 10px', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <Pencil size={11} /> Éditer
                     </button>}
@@ -1309,14 +1477,15 @@ function PlayersAdminPage() {
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
 
       {/* ── Modal édition ────────────────────────────────────────────────────── */}
       {editing !== null && (
-        <Modal title={editing.id ? `Modifier — ${playerFullName(editing as PlayerRow)}` : 'Nouveau Joueur'} onClose={() => setEditing(null)}>
+        <Modal title={editing.id ? `Modifier — ${playerFullName(editing as PlayerRow)}` : 'Nouveau Joueur'} onClose={() => { setEditing(null); setLicenceDraft(null); }}>
 
           {/* Identité */}
           <div style={{ background: 'rgba(74,213,105,0.04)', borderRadius: '8px', padding: '12px 14px', marginBottom: '16px', fontSize: '11px', color: '#4ad569', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 700 }}>
@@ -1398,8 +1567,56 @@ function PlayersAdminPage() {
             </Field>
           </div>
 
+          {/* Licence application (SmartApp) */}
+          {appLicencesAvailable && (
+            <>
+              <div style={{ background: 'rgba(139,92,246,0.06)', borderRadius: '8px', padding: '12px 14px', margin: '16px 0 12px', fontSize: '11px', color: '#a78bfa', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 700 }}>
+                Licence application
+              </div>
+              {licenceDraft ? (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <Field label="N° Licence app">
+                      <input style={inputCss} value={licenceDraft.app_license_no || ''} onChange={e => setLicenceDraft(l => ({ ...l!, app_license_no: e.target.value || null }))} placeholder="PDL260909101840" />
+                    </Field>
+                    <Field label="Date d'inscription app">
+                      <input style={inputCss} type="datetime-local" value={toMauritiusLocalInput(licenceDraft.app_registered_at)}
+                        onChange={e => setLicenceDraft(l => ({ ...l!, app_registered_at: e.target.value ? `${e.target.value}:00+04:00` : null }))} />
+                    </Field>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <Field label="Type de licence">
+                      <select style={selectCss} value={licenceDraft.license_type || ''} onChange={e => setLicenceDraft(l => ({ ...l!, license_type: (e.target.value || null) as AppLicenceRow['license_type'] }))}>
+                        <option value="">—</option>
+                        <option value="annuelle">Annuelle</option>
+                        <option value="ponctuelle">Ponctuelle</option>
+                      </select>
+                    </Field>
+                    <Field label="Statut app">
+                      <select style={selectCss} value={licenceDraft.app_status || ''} onChange={e => setLicenceDraft(l => ({ ...l!, app_status: (e.target.value || null) as AppLicenceRow['app_status'] }))}>
+                        <option value="">—</option>
+                        <option value="active">Actif</option>
+                        <option value="pending">En attente</option>
+                      </select>
+                    </Field>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <Field label="Début de validité">
+                      <input style={inputCss} type="date" value={licenceDraft.license_start || ''} onChange={e => setLicenceDraft(l => ({ ...l!, license_start: e.target.value || null }))} />
+                    </Field>
+                    <Field label="Fin de validité">
+                      <input style={inputCss} type="date" value={licenceDraft.license_end || ''} onChange={e => setLicenceDraft(l => ({ ...l!, license_end: e.target.value || null }))} />
+                    </Field>
+                  </div>
+                </>
+              ) : (
+                <div style={{ color: '#777', fontSize: '12px', marginBottom: '12px' }}>Disponible après la création du joueur.</div>
+              )}
+            </>
+          )}
+
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
-            <button onClick={() => setEditing(null)} style={{ background: 'rgba(255,255,255,0.05)', color: '#a0a0a0', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '10px 20px', cursor: 'pointer' }}>
+            <button onClick={() => { setEditing(null); setLicenceDraft(null); }} style={{ background: 'rgba(255,255,255,0.05)', color: '#a0a0a0', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '10px 20px', cursor: 'pointer' }}>
               Annuler
             </button>
             <button onClick={handleSave} disabled={saving}
