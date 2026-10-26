@@ -5,6 +5,7 @@ import { useI18n } from '@/hooks/useI18n';
 import { ROUTE_PATHS, REGION_CONFIG, CATEGORY_CONFIG, MPL_STATS } from '@/lib/index';
 import type { Region, TournamentCategory, Language } from '@/lib/index';
 import { DotWaveBackground, DotDivider } from '@/components/DotWaveBackground';
+import { getSupabaseClient } from '@/lib/supabase';
 
 // Mode public : lien Admin masqué dans la navigation (VITE_PUBLIC_MODE=true au build)
 const IS_PUBLIC_MODE = __IS_PUBLIC_BUILD__ || import.meta.env.VITE_PUBLIC_MODE === 'true';
@@ -142,8 +143,36 @@ export function GlassCard({
 }
 
 // ── Navbar ────────────────────────────────────────────────────────────────────
+// Session joueur Supabase (lien magique) : le bouton du header passe de
+// "Se connecter" a "Mon espace" quand un joueur est connecte, et revient a
+// "Se connecter" a la deconnexion (signOut depuis l'Espace Joueur).
+function usePlayerSignedIn(): boolean {
+  const [signedIn, setSignedIn] = useState(false);
+  useEffect(() => {
+    const client = getSupabaseClient();
+    if (!client) return;
+    let cancelled = false;
+    client.auth.getSession().then(({ data }) => {
+      if (!cancelled) setSignedIn(!!data.session);
+    });
+    const { data: sub } = client.auth.onAuthStateChange((_event, session) => {
+      if (!cancelled) setSignedIn(!!session);
+    });
+    return () => {
+      cancelled = true;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+  return signedIn;
+}
+
 export function Navbar() {
   const { lang, setLang, t } = useI18n();
+  const signedIn = usePlayerSignedIn();
+  const accountLabel = signedIn ? t.nav.mySpace : t.nav.login;
+  const signedInDot = (
+    <span aria-hidden style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#0a0a0a', boxShadow: '0 0 0 2px rgba(10,10,10,0.25)' }} />
+  );
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -308,7 +337,7 @@ export function Navbar() {
               background: '#4ad569', whiteSpace: 'nowrap',
             }}
           >
-            <UserRound size={15} /> {t.nav.login}
+            <UserRound size={15} /> {accountLabel} {signedIn && signedInDot}
           </Link>
           <div style={{
             display: 'flex', background: 'rgba(255,255,255,0.05)',
@@ -369,7 +398,7 @@ export function Navbar() {
               fontSize: '14px', fontWeight: 700, color: '#0a0a0a', background: '#4ad569',
             }}
           >
-            <UserRound size={16} /> {t.nav.login}
+            <UserRound size={16} /> {accountLabel} {signedIn && signedInDot}
           </Link>
           {[...links, ...(!IS_PUBLIC_MODE ? [{ to: ROUTE_PATHS.ADMIN, label: t.nav.admin }] : [])].map(link => (
             <NavLink
