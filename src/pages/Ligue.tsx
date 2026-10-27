@@ -166,9 +166,11 @@ export default function Ligue() {
   const icons = ['🏆', '🤝', '🌱', '⚡'];
 
   const [selectedSize, setSelectedSize] = useState<string>('13-16');
-  const [selectedCat, setSelectedCat] = useState<TournamentCategory>('M100');
+  const [selectedCat, setSelectedCat] = useState<TournamentCategory | 'MIXED' | 'JUNIOR'>('M100');
 
-  const pointsForDisplay = FULL_POINTS[selectedCat][selectedSize] ?? [];
+  // Mixte et Junior ont un bareme specifique (pas dans FULL_POINTS) : message au lieu du tableau.
+  const hasScale = selectedCat in FULL_POINTS;
+  const pointsForDisplay = hasScale ? FULL_POINTS[selectedCat as TournamentCategory][selectedSize] ?? [] : [];
   const maxPos = pointsForDisplay.filter(p => p !== null).length;
 
   return (
@@ -437,7 +439,7 @@ export default function Ligue() {
                   const cfg = CATEGORY_CONFIG[cat as TournamentCategory] ?? { color: cat === 'MIXED' ? '#a78bfa' : '#fb923c' };
                   const catLabel = cat === 'MIXED' ? 'Mixte' : cat === 'JUNIOR' ? 'Junior' : cat;
                   return (
-                    <button key={cat} onClick={() => setSelectedCat(cat as TournamentCategory)} style={{
+                    <button key={cat} onClick={() => setSelectedCat(cat)} style={{
                       background: selectedCat === cat ? cfg.color : 'transparent',
                       color: selectedCat === cat ? '#0a0a0a' : cfg.color,
                       border: `1px solid ${cfg.color}`,
@@ -473,11 +475,13 @@ export default function Ligue() {
 
           {/* Badge info */}
           <div style={{ background: 'rgba(74,213,105,0.05)', border: '1px solid rgba(74,213,105,0.15)', borderRadius: '10px', padding: '12px 20px', marginBottom: '24px', display: 'inline-flex', gap: '12px', alignItems: 'center' }}>
-            <CategoryBadge category={selectedCat} size="sm" />
+            <CategoryBadge category={selectedCat === 'MIXED' ? 'Mixte' : selectedCat === 'JUNIOR' ? 'Junior' : selectedCat} size="sm" />
             <span style={{ color: '#a0a0a0', fontSize: '13px' }}>
-              {lang === 'fr'
-                ? `Tournoi avec ${selectedSize} équipes — ${maxPos} positions rémunérées`
-                : `Tournament with ${selectedSize} teams — ${maxPos} paid positions`}
+              {!hasScale
+                ? (lang === 'fr' ? 'Barème spécifique, voir le règlement.' : 'Specific points scale, see the rules.')
+                : lang === 'fr'
+                  ? `Tournoi avec ${selectedSize} équipes — ${maxPos} positions rémunérées`
+                  : `Tournament with ${selectedSize} teams — ${maxPos} paid positions`}
             </span>
             {(selectedCat === 'M500' || selectedCat === 'M1000') && (
               <span style={{ color: '#f59e0b', fontSize: '12px', fontWeight: 600 }}>
@@ -487,7 +491,7 @@ export default function Ligue() {
           </div>
 
           {/* Tableau de points */}
-          <div style={{ overflowX: 'auto' }}>
+          {hasScale && <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '400px' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(74,213,105,0.2)' }}>
@@ -508,7 +512,7 @@ export default function Ligue() {
                   const pos = i + 1;
                   const isTop3 = pos <= 3;
                   const medals = ['🥇', '🥈', '🥉'];
-                  const cfg = CATEGORY_CONFIG[selectedCat];
+                  const cfg = CATEGORY_CONFIG[selectedCat as TournamentCategory];
                   let phaseFr = '';
                   let phaseEn = '';
                   if (pos === 1)      { phaseFr = 'Vainqueur'; phaseEn = 'Winner'; }
@@ -536,7 +540,7 @@ export default function Ligue() {
                 })}
               </tbody>
             </table>
-          </div>
+          </div>}
         </div>
       </section>
 
