@@ -1546,7 +1546,15 @@ export default function EspaceJoueur() {
                     </span>
                   ))}
                 </div>
-                <a className="summary-action" href="#tournois-eligibles">
+                {/* HashRouter : un href="#ancre" changerait de route ; on fait defiler la page a la place. */}
+                <a
+                  className="summary-action"
+                  href="#tournois-eligibles"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    document.getElementById('tournois-eligibles')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }}
+                >
                   Voir mes tournois compatibles <ArrowRight size={15} />
                 </a>
                 <p className="summary-help">
@@ -2354,6 +2362,10 @@ export default function EspaceJoueur() {
           font-size: 12px;
           font-weight: 900;
         }
+        #tournois-eligibles {
+          scroll-margin-top: 90px;
+        }
+
         .summary-action {
           display: inline-flex;
           align-items: center;
