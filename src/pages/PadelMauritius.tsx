@@ -44,7 +44,7 @@ export default function PadelMauritius() {
       id: 'ranking',
       title: 'Padel Ranking Mauritius — Classement Officiel 2026',
       color: '#8b5cf6',
-      content: `Le classement padel mauritius est calculé sur la base des 10 meilleurs résultats des 12 derniers mois. Il est mis à jour mensuellement et distingue quatre catégories : Hommes, Dames, Mixte et Junior. Pour accéder aux tournois M250 (Hommes), le classement cumulé de la paire doit être d'au moins 50 points. Le classement est disponible en temps réel sur ce site.`,
+      content: `Le classement padel mauritius est calculé sur la base des 8 meilleurs résultats des 12 derniers mois. Il est mis à jour mensuellement et distingue quatre catégories : Hommes, Dames, Mixte et Junior. Pour accéder aux tournois M250 (Hommes), le classement cumulé de la paire doit être d'au moins 50 points. Le classement est disponible en temps réel sur ce site.`,
     },
     {
       id: 'clubs',
@@ -154,7 +154,7 @@ export default function PadelMauritius() {
             },
             {
               q: 'Comment est calculé le classement padel mauritius ?',
-              a: 'Le classement MPL retient les 10 meilleurs résultats des 12 derniers mois. Il est calculé pour chaque joueur individuellement et mis à jour chaque mois. Il est disponible en temps réel sur le site officiel padelleague.mu.',
+              a: 'Le classement MPL retient les 8 meilleurs résultats des 12 derniers mois. Il est calculé pour chaque joueur individuellement et mis à jour chaque mois. Il est disponible en temps réel sur le site officiel padelleague.mu.',
             },
             {
               q: 'Combien y a-t-il de clubs de padel à Maurice ?',
@@ -201,7 +201,7 @@ export default function PadelMauritius() {
                   name: 'Comment est calculé le classement padel mauritius ?',
                   acceptedAnswer: {
                     '@type': 'Answer',
-                    text: 'Les 10 meilleurs résultats des 12 derniers mois, mis à jour mensuellement.',
+                    text: 'Les 8 meilleurs résultats des 12 derniers mois, mis à jour mensuellement.',
                   },
                 },
               ],

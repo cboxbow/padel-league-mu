@@ -1619,7 +1619,7 @@ export default function Classements() {
   const { lang } = useI18n();
   useSeo({
     title: "Classement Padel Maurice 2026 - Ranking Officiel MPL",
-    description: "Classement officiel padel Mauritius 2026 : Hommes, Dames, Mixte, Junior. Top 10 scores des 12 derniers mois. Mauritius Padel League.",
+    description: "Classement officiel padel Mauritius 2026 : Hommes, Dames, Mixte, Junior. 8 meilleurs résultats des 12 derniers mois. Mauritius Padel League.",
     keywords: "padel ranking mauritius, classement padel mauritius 2026, padel ranking MPL, classement padel hommes dames",
     canonical: "https://padelleague.mu/#/classements",
   });

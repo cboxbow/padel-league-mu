@@ -556,12 +556,12 @@ export default function Ligue() {
                 icon: '🏆', color: '#f59e0b',
                 title_fr: 'Hommes / Femmes', title_en: 'Men / Women',
                 items_fr: [
-                  '10 meilleurs scores sur les 12 derniers mois',
+                  '8 meilleurs scores sur les 12 derniers mois',
                   'Classement mis à jour chaque mois',
                   'Tournois M25, M50, M100, M250, M500, M1000',
                 ],
                 items_en: [
-                  'Top 10 scores over the last 12 months',
+                  'Best 8 scores over the last 12 months',
                   'Ranking updated every month',
                   'Tournaments M25, M50, M100, M250, M500, M1000',
                 ],
@@ -570,12 +570,12 @@ export default function Ligue() {
                 icon: '🔀', color: '#06b6d4',
                 title_fr: 'Mixed Challenge', title_en: 'Mixed Challenge',
                 items_fr: [
-                  '10 meilleurs scores mixtes sur 12 mois',
+                  '8 meilleurs scores mixtes sur 12 mois',
                   'Mis à jour mensuellement',
                   'Uniquement tournois catégorie Mixte',
                 ],
                 items_en: [
-                  'Top 10 mixed scores over 12 months',
+                  'Best 8 mixed scores over 12 months',
                   'Updated monthly',
                   'Only Mixed category tournaments',
                 ],
@@ -585,12 +585,12 @@ export default function Ligue() {
                 title_fr: 'Junior', title_en: 'Junior',
                 items_fr: [
                   'Moins de 18 ans (U11 / U13 / U15)',
-                  '10 meilleurs scores sur 12 mois',
+                  '8 meilleurs scores sur 12 mois',
                   'Classement séparé du circuit senior',
                 ],
                 items_en: [
                   'Under 18 years old (U11 / U13 / U15)',
-                  'Top 10 scores over 12 months',
+                  'Best 8 scores over 12 months',
                   'Separate ranking from senior circuit',
                 ],
               },
