@@ -221,10 +221,10 @@ function roundPoints(value: unknown): number {
   return Math.ceil(Number(value) || 0);
 }
 
-async function fetchRestPage<T>(table: string, params: URLSearchParams): Promise<T[]> {
+async function fetchRestPage<T>(table: string, params: URLSearchParams, withCount = false): Promise<{ rows: T[]; total: number | null }> {
   const restUrl = getSupabaseRestUrl();
   const anonKey = getSupabaseAnonKey();
-  if (!restUrl || !anonKey) return [];
+  if (!restUrl || !anonKey) return { rows: [], total: 0 };
 
   const res = await fetch(`${restUrl}/${table}?${params.toString()}`, {
     cache: 'no-store',
@@ -232,11 +232,50 @@ async function fetchRestPage<T>(table: string, params: URLSearchParams): Promise
       apikey: anonKey,
       Authorization: `Bearer ${anonKey}`,
       Accept: 'application/json',
+      ...(withCount ? { Prefer: 'count=exact' } : {}),
     },
   });
 
   if (!res.ok) throw new Error(`${table}: HTTP ${res.status}`);
-  return await res.json() as T[];
+  // Content-Range: "0-999/7941" -> total = 7941
+  const total = Number((res.headers.get('content-range') ?? '').split('/')[1]);
+  return { rows: await res.json() as T[], total: Number.isFinite(total) ? total : null };
+}
+
+// Lit toute une table : la premiere page donne le total, les suivantes partent
+// en parallele (4 a la fois). L'ordre doit etre stable (cle unique en dernier)
+// pour que les pages ne se chevauchent pas.
+async function fetchAllPages<T>(table: string, base: Record<string, string>, onProgress?: (loaded: number, total: number) => void): Promise<T[]> {
+  const requested = 1000;
+  const page = (offset: number, withCount = false) => fetchRestPage<T>(
+    table,
+    new URLSearchParams({ ...base, limit: String(requested), offset: String(offset) }),
+    withCount,
+  );
+
+  const first = await page(0, true);
+  // Taille reelle d'une page : le serveur peut plafonner sous 1000 lignes.
+  const pageSize = first.rows.length;
+  if (first.total == null || pageSize === 0 || first.rows.length >= first.total) return first.rows;
+
+  const offsets: number[] = [];
+  for (let offset = pageSize; offset < first.total; offset += pageSize) offsets.push(offset);
+
+  const pages: T[][] = new Array(offsets.length);
+  let loaded = pageSize;
+  onProgress?.(loaded, first.total);
+  let next = 0;
+  const worker = async () => {
+    while (next < offsets.length) {
+      const index = next++;
+      const { rows } = await page(offsets[index]);
+      pages[index] = rows;
+      loaded += rows.length;
+      onProgress?.(Math.min(loaded, first.total ?? loaded), first.total ?? loaded);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, offsets.length) }, worker));
+  return first.rows.concat(...pages);
 }
 
 function formatPoints(value: unknown): string {
@@ -517,47 +556,25 @@ function seasonsLabel(seasons: Set<number>): string {
   return `${list[0]}-${list[list.length - 1]}`;
 }
 
-async function fetchHistoricalResultsPaged(): Promise<HistoricalResult[]> {
-  const pageSize = 250;
-  const allRows: HistoricalResult[] = [];
-
-  for (let from = 0; from < 12000; from += pageSize) {
-    const params = new URLSearchParams({
-      select: RESULT_COLUMNS,
-      order: 'event_date.desc.nullslast,event_year.desc,rank_min.asc',
-      limit: String(pageSize),
-      offset: String(from),
-    });
-    const batch = await fetchRestPage<HistoricalResult>('historical_tournament_results', params);
-    allRows.push(...batch);
-    if (batch.length < pageSize) break;
-  }
-
-  return allRows;
+async function fetchHistoricalResultsPaged(onProgress?: (loaded: number, total: number) => void): Promise<HistoricalResult[]> {
+  return fetchAllPages<HistoricalResult>('historical_tournament_results', {
+    select: RESULT_COLUMNS,
+    order: 'event_date.desc.nullslast,event_year.desc,rank_min.asc,id.asc',
+  }, onProgress);
 }
 
 async function fetchCurrentRankingsPaged(): Promise<CurrentRankingInfo[]> {
-  const pageSize = 500;
-  const allRows: CurrentRankingInfo[] = [];
-
-  for (let from = 0; from < 6000; from += pageSize) {
-    const params = new URLSearchParams({
-      select: 'player_name,division,rank,points,tournaments_played',
-      limit: String(pageSize),
-      offset: String(from),
-    });
-    const batch = await fetchRestPage<Record<string, unknown>>('rankings', params);
-    allRows.push(...batch.map(row => ({
-      player_name: normalizeName(row.player_name),
-      division: cleanText(row.division).toLowerCase() as DivisionKey,
-      rank: Number(row.rank ?? 0),
-      points: roundPoints(row.points),
-      tournaments_played: Number(row.tournaments_played ?? 0),
-    })).filter(row => row.player_name && row.division));
-    if (batch.length < pageSize) break;
-  }
-
-  return allRows;
+  const rows = await fetchAllPages<Record<string, unknown>>('rankings', {
+    select: 'player_name,division,rank,points,tournaments_played',
+    order: 'id.asc',
+  });
+  return rows.map(row => ({
+    player_name: normalizeName(row.player_name),
+    division: cleanText(row.division).toLowerCase() as DivisionKey,
+    rank: Number(row.rank ?? 0),
+    points: roundPoints(row.points),
+    tournaments_played: Number(row.tournaments_played ?? 0),
+  })).filter(row => row.player_name && row.division);
 }
 
 function StatTile({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color: string }) {
@@ -1423,6 +1440,7 @@ export default function Historique() {
   const [rows, setRows] = useState<HistoricalResult[]>([]);
   const [currentRankings, setCurrentRankings] = useState<CurrentRankingMap>(new Map());
   const [loading, setLoading] = useState(true);
+  const [progress, setProgress] = useState<{ loaded: number; total: number } | null>(null);
   const [error, setError] = useState('');
   const [fromSupabase, setFromSupabase] = useState(false);
   const [view, setView] = useState<ViewKey>('tournois');
@@ -1437,6 +1455,7 @@ export default function Historique() {
 
   const load = async () => {
     setLoading(true);
+    setProgress(null);
     setError('');
 
     if (!isSupabaseConnected()) {
@@ -1454,8 +1473,10 @@ export default function Historique() {
     });
     const request = (async (): Promise<{ data: { historical: HistoricalResult[]; rankings: CurrentRankingInfo[] } | null; error: unknown; timedOut: false }> => {
       try {
-        const historical = await fetchHistoricalResultsPaged();
-        const rankings = await fetchCurrentRankingsPaged();
+        const [historical, rankings] = await Promise.all([
+          fetchHistoricalResultsPaged((loaded, total) => setProgress({ loaded, total })),
+          fetchCurrentRankingsPaged(),
+        ]);
         return { data: { historical, rankings }, error: null, timedOut: false };
       } catch (requestError) {
         return { data: null, error: requestError, timedOut: false };
@@ -1591,7 +1612,7 @@ export default function Historique() {
 
   const groups = useMemo(() => buildTournamentGroups(filtered), [filtered]);
   const allPlayers = useMemo(() => buildPlayerSummaries(rows), [rows]);
-  const quality = qualityLabel(rows);
+  const quality = loading ? { text: 'Chargement…', color: '#9ca3af' } : qualityLabel(rows);
 
   const stats = useMemo(() => {
     const allGroups = buildTournamentGroups(rows);
@@ -1768,7 +1789,10 @@ export default function Historique() {
           {loading ? (
             <GlassCard style={{ padding: '70px 20px', textAlign: 'center' }}>
               <RefreshCw size={30} color="#4ad569" style={{ animation: 'spin 1s linear infinite', marginBottom: '12px' }} />
-              <p style={{ color: '#888', margin: 0 }}>Chargement des archives...</p>
+              <p style={{ color: '#888', margin: 0 }}>
+                Chargement des archives…
+                {progress && progress.total > 0 && ` ${progress.loaded.toLocaleString('fr-FR')} / ${progress.total.toLocaleString('fr-FR')} résultats`}
+              </p>
             </GlassCard>
           ) : unavailable ? (
             <GlassCard style={{ padding: '70px 20px', textAlign: 'center' }}>
