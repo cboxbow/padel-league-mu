@@ -56,14 +56,26 @@ function popupHtml(club: ClubMapEntry) {
   </div>`;
 }
 
-export default function ClubsMap() {
+export type ClubsMapFilter = Filter;
+
+// Utilisable seul (page Clubs) ou pilote par la page (Regions) : `region`
+// impose le filtre, `onRegionChange` remonte chaque changement de filtre.
+export default function ClubsMap({ region, onRegionChange }: {
+  region?: ClubsMapFilter;
+  onRegionChange?: (region: ClubsMapFilter) => void;
+} = {}) {
   const mapEl = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const clusterRef = useRef<L.MarkerClusterGroup | null>(null);
   const markersRef = useRef(new Map<number, L.Marker>());
   const viewTouchedRef = useRef(false);
   const fitCurrentRef = useRef<() => void>(() => {});
-  const [filter, setFilter] = useState<Filter>('ALL');
+  const [innerFilter, setInnerFilter] = useState<Filter>('ALL');
+  const filter = region ?? innerFilter;
+  const setFilter = (next: Filter) => {
+    if (region === undefined) setInnerFilter(next);
+    onRegionChange?.(next);
+  };
   const [activeId, setActiveId] = useState<number | null>(null);
   const [interactive, setInteractive] = useState(false);
   const [tilesFailed, setTilesFailed] = useState(false);

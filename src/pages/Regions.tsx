@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Compass, ExternalLink, LocateFixed, MapPin, Sunrise, Waves } from 'lucide-react';
+import { Compass, LocateFixed, Sunrise, Waves } from 'lucide-react';
 import { DotWaveBackground } from '@/components/DotWaveBackground';
-import { Layout, GlassCard, RegionBadge } from '@/components/Layout';
+import { Layout } from '@/components/Layout';
+import type { ClubsMapFilter } from '@/components/ClubsMap';
+import { CLUBS_MAP, type ClubMapRegion } from '@/data/clubsMap';
 import { useI18n } from '@/hooks/useI18n';
 import { MPL_CLUBS } from '@/data/mpl2026';
 import { REGION_CONFIG, MPL_STATS } from '@/lib/index';
@@ -143,37 +145,16 @@ function RegionCardLabel({ region, color, bg }: { region: LocalRegion; color: st
   );
 }
 
-const ZONE_COLORS: Record<LocalRegion | 'Sud', string> = {
-  Nord: '#4EA8FF',
-  Ouest: '#3ED0A0',
-  Centre: '#9B7EFF',
-  Est: '#FFA940',
-  Sud: '#FF6B6B',
-};
+// Carte Leaflet partagee avec la page Clubs (chargee a part).
+const ClubsMap = lazy(() => import('@/components/ClubsMap'));
 
-type ClubLocation = {
-  name: string;
-  zone: LocalRegion | 'Sud';
-  place: string;
-  locationKey: string;
-  lat: number;
-  lng: number;
-  courts: number;
-  events: number;
-};
-
-type ClubCluster = {
-  id: string;
-  place: string;
-  zone: LocalRegion | 'Sud';
-  lat: number;
-  lng: number;
-  courts: number;
-  events: number;
-  clubs: ClubLocation[];
-  x: number;
-  y: number;
-};
+// Clubs et terrains : meme source que la carte (src/data/clubsMap.ts).
+const MAP_REGION: Record<LocalRegion, ClubMapRegion> = { Nord: 'NORD', Ouest: 'OUEST', Centre: 'CENTRE', Est: 'EST' };
+const LOCAL_REGION: Record<ClubMapRegion, LocalRegion> = { NORD: 'Nord', OUEST: 'Ouest', CENTRE: 'Centre', EST: 'Est' };
+const regionClubs = (region: LocalRegion) =>
+  CLUBS_MAP.filter((club) => club.region === MAP_REGION[region]).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+const TOTAL_CLUBS = CLUBS_MAP.length;
+const TOTAL_COURTS = CLUBS_MAP.reduce((sum, club) => sum + club.courts, 0);
 
 const normalizeClubName = (value: string) =>
   value
@@ -186,333 +167,17 @@ const normalizeClubName = (value: string) =>
 
 const officialClubByName = new Map(MPL_CLUBS.map((club) => [normalizeClubName(club.name), club]));
 
-const CLUB_LOCATION_SEEDS: ClubLocation[] = [
-  { name: 'Caña Beau Plan', zone: 'Nord', place: 'Beau Plan', locationKey: 'beau-plan', lat: -20.086, lng: 57.562, courts: 4, events: 18 },
-  { name: 'Urban Sport Grand Baie', zone: 'Nord', place: 'Grand Baie', locationKey: 'grand-baie', lat: -20.014, lng: 57.584, courts: 6, events: 20 },
-  { name: 'RM Club Grand Baie', zone: 'Nord', place: 'Grand Baie', locationKey: 'grand-baie', lat: -20.014, lng: 57.584, courts: 4, events: 18 },
-  { name: 'Isla Padel Grand Baie', zone: 'Nord', place: 'Grand Baie', locationKey: 'grand-baie', lat: -20.014, lng: 57.584, courts: 4, events: 10 },
-  { name: 'Labourdonnais Mapou', zone: 'Nord', place: 'Mapou', locationKey: 'mapou', lat: -20.079, lng: 57.604, courts: 4, events: 17 },
-  { name: 'Mont Choisy Golf', zone: 'Nord', place: 'Mont Choisy', locationKey: 'mont-choisy', lat: -20.012, lng: 57.552, courts: 3, events: 8 },
-  { name: 'Energia Pointe aux Canonniers', zone: 'Nord', place: 'Pointe aux Canonniers', locationKey: 'pointe-aux-canonniers', lat: -20.006, lng: 57.558, courts: 3, events: 8 },
-  { name: 'Club Med Albion', zone: 'Ouest', place: 'Albion', locationKey: 'albion', lat: -20.207, lng: 57.407, courts: 3, events: 12 },
-  { name: 'Urban Sport Black River', zone: 'Ouest', place: 'Black River', locationKey: 'black-river', lat: -20.360, lng: 57.365, courts: 4, events: 18 },
-  { name: 'Club House Black River', zone: 'Ouest', place: 'Black River', locationKey: 'black-river', lat: -20.360, lng: 57.365, courts: 2, events: 10 },
-  { name: 'SPARC Cascavelle', zone: 'Ouest', place: 'Cascavelle', locationKey: 'cascavelle', lat: -20.286, lng: 57.407, courts: 4, events: 17 },
-  { name: 'RM Club Tamarin', zone: 'Ouest', place: 'Tamarin', locationKey: 'tamarin', lat: -20.328, lng: 57.374, courts: 4, events: 15 },
-  { name: 'Terres Brunes Sports & Leisure', zone: 'Ouest', place: 'Tamarin', locationKey: 'terres-brunes', lat: -20.344, lng: 57.390, courts: 4, events: 13 },
-  { name: 'I Padel by RM Hennessy', zone: 'Centre', place: 'Ebène / Hennessy', locationKey: 'hennessy', lat: -20.242, lng: 57.491, courts: 4, events: 18 },
-  { name: 'I Padel by RM Port Chambly', zone: 'Centre', place: 'Port Chambly', locationKey: 'port-chambly', lat: -20.108, lng: 57.520, courts: 4, events: 17 },
-  { name: 'Oxygen Moka', zone: 'Centre', place: 'Moka', locationKey: 'moka', lat: -20.219, lng: 57.502, courts: 3, events: 10 },
-  { name: 'Moka Rangers', zone: 'Centre', place: 'Moka', locationKey: 'moka', lat: -20.219, lng: 57.502, courts: 2, events: 8 },
-  { name: 'Studio by RM Azuri', zone: 'Est', place: 'Azuri', locationKey: 'azuri', lat: -20.084, lng: 57.708, courts: 3, events: 15 },
-];
-
-const CLUB_LOCATIONS: ClubLocation[] = CLUB_LOCATION_SEEDS.map((club) => {
-  const officialClub = officialClubByName.get(normalizeClubName(club.name));
-
-  return {
-    ...club,
-    courts: officialClub?.courts ?? club.courts,
-    events: officialClub?.total_events ?? club.events,
-  };
-});
-
-function getOfficialRegionStats(region: LocalRegion) {
-  const clubs = REGIONS_DATA[region].clubs_list
+// Clubs et terrains depuis la carte ; tournois inchanges (calendrier officiel MPL).
+function getRegionStats(region: LocalRegion) {
+  const clubs = regionClubs(region);
+  const official = REGIONS_DATA[region].clubs_list
     .map((name) => officialClubByName.get(normalizeClubName(name)))
     .filter((club): club is (typeof MPL_CLUBS)[number] => Boolean(club));
-
-  if (!clubs.length) {
-    return {
-      clubs: REGIONS_DATA[region].clubs,
-      courts: REGIONS_DATA[region].courts,
-      tournaments: REGIONS_DATA[region].tournaments,
-    };
-  }
-
   return {
     clubs: clubs.length,
     courts: clubs.reduce((sum, club) => sum + club.courts, 0),
-    tournaments: clubs.reduce((sum, club) => sum + club.total_events, 0),
+    tournaments: official.length ? official.reduce((sum, club) => sum + club.total_events, 0) : REGIONS_DATA[region].tournaments,
   };
-}
-
-const MAP_BOUNDS = {
-  minLat: -20.56,
-  maxLat: -19.98,
-  minLng: 57.31,
-  maxLng: 57.74,
-};
-
-function projectClub(lat: number, lng: number) {
-  const x = 78 + ((lng - MAP_BOUNDS.minLng) / (MAP_BOUNDS.maxLng - MAP_BOUNDS.minLng)) * 382;
-  const y = 150 + ((MAP_BOUNDS.maxLat - lat) / (MAP_BOUNDS.maxLat - MAP_BOUNDS.minLat)) * 430;
-  return { x, y };
-}
-
-function buildClubClusters(): ClubCluster[] {
-  const grouped = new Map<string, ClubLocation[]>();
-  CLUB_LOCATIONS.forEach((club) => {
-    grouped.set(club.locationKey, [...(grouped.get(club.locationKey) ?? []), club]);
-  });
-
-  return Array.from(grouped.entries()).map(([id, clubs]) => {
-    const lat = clubs.reduce((sum, club) => sum + club.lat, 0) / clubs.length;
-    const lng = clubs.reduce((sum, club) => sum + club.lng, 0) / clubs.length;
-    const { x, y } = projectClub(lat, lng);
-    return {
-      id,
-      place: clubs[0].place,
-      zone: clubs[0].zone,
-      lat,
-      lng,
-      courts: clubs.reduce((sum, club) => sum + club.courts, 0),
-      events: clubs.reduce((sum, club) => sum + club.events, 0),
-      clubs,
-      x,
-      y,
-    };
-  });
-}
-
-function ClubsMap({ lang }: { lang: string }) {
-  const clusters = buildClubClusters();
-  const [selectedId, setSelectedId] = useState(clusters.find((cluster) => cluster.clubs.length > 1)?.id ?? clusters[0]?.id);
-  const selected = clusters.find((cluster) => cluster.id === selectedId) ?? clusters[0];
-  const totalClubs = CLUB_LOCATIONS.length;
-  const totalCourts = CLUB_LOCATIONS.reduce((sum, club) => sum + club.courts, 0);
-  const totalEvents = CLUB_LOCATIONS.reduce((sum, club) => sum + club.events, 0);
-
-  return (
-    <>
-    <style>{`
-      .clubs-map-shell {
-        display: grid;
-        grid-template-columns: minmax(420px, 1fr) minmax(300px, 0.78fr);
-        gap: 24px;
-        align-items: start;
-      }
-      .clubs-map-stage {
-        min-width: 0;
-      }
-      .clubs-map-viewport {
-        width: min(100%, 620px);
-        aspect-ratio: 520 / 650;
-        min-height: 640px;
-        margin: 0 auto;
-        position: relative;
-      }
-      .clubs-map-viewport svg {
-        width: 100%;
-        height: 100%;
-        display: block;
-        overflow: visible;
-      }
-      .clubs-map-panel {
-        padding: 22px;
-      }
-      .clubs-map-stats {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 10px;
-        margin-bottom: 18px;
-      }
-      .clubs-map-club-link {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        gap: 10px;
-      }
-      @media (max-width: 980px) {
-        .clubs-map-shell {
-          grid-template-columns: 1fr;
-        }
-        .clubs-map-viewport {
-          width: min(100%, 560px);
-          min-height: 0;
-        }
-      }
-      @media (max-width: 760px) {
-        .clubs-map-shell {
-          grid-template-columns: 1fr;
-          gap: 18px;
-        }
-        .clubs-map-viewport {
-          width: 100%;
-          aspect-ratio: 520 / 650;
-        }
-        .clubs-map-panel {
-          padding: 16px !important;
-          border-radius: 16px !important;
-        }
-        .clubs-map-stats {
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 8px !important;
-        }
-        .clubs-map-club-link {
-          grid-template-columns: 1fr auto;
-          padding: 12px !important;
-        }
-      }
-      @media (max-width: 420px) {
-        .clubs-map-panel {
-          padding: 14px !important;
-        }
-        .clubs-map-stats {
-          grid-template-columns: 1fr 1fr 1fr;
-        }
-      }
-    `}</style>
-    <div className="clubs-map-shell">
-      <div className="clubs-map-stage">
-        <div style={{ textAlign: 'center', marginBottom: '22px' }}>
-          <h2 style={{ color: 'white', fontWeight: 950, fontSize: 'clamp(26px,5vw,46px)', margin: '0 0 8px', lineHeight: 1.02 }}>
-            {lang === 'fr' ? 'Carte des clubs MPL' : 'MPL clubs map'}
-          </h2>
-          <p style={{ color: '#9ca3af', margin: 0, fontSize: 'clamp(14px,2vw,18px)' }}>
-            {lang === 'fr' ? 'Distribution géographique réelle — saison en cours' : 'Real geographic distribution — current season'}
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 'clamp(22px,7vw,58px)', marginTop: '22px', flexWrap: 'wrap' }}>
-            {[
-              { value: totalClubs, label: lang === 'fr' ? 'Clubs' : 'Clubs' },
-              { value: totalCourts, label: lang === 'fr' ? 'Terrains' : 'Courts' },
-              { value: totalEvents, label: lang === 'fr' ? 'Événements' : 'Events' },
-            ].map((stat) => (
-              <div key={stat.label}>
-                <div style={{ color: '#34d6ff', fontSize: 'clamp(28px,6vw,38px)', fontFamily: 'JetBrains Mono, monospace', fontWeight: 950, lineHeight: 1 }}>{stat.value}</div>
-                <div style={{ color: '#7b8492', fontSize: '11px', letterSpacing: '2px', textTransform: 'uppercase', marginTop: '7px' }}>{stat.label}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="clubs-map-viewport">
-          <svg viewBox="0 0 520 650" preserveAspectRatio="xMidYMid meet" aria-label={lang === 'fr' ? 'Carte géographique des clubs MPL' : 'Geographic map of MPL clubs'}>
-            <defs>
-              <linearGradient id="real-map-fill" x1="160" y1="40" x2="398" y2="590" gradientUnits="userSpaceOnUse">
-                <stop stopColor="rgba(34,211,238,0.16)" />
-                <stop offset="0.54" stopColor="rgba(6,95,70,0.20)" />
-                <stop offset="1" stopColor="rgba(2,6,23,0.30)" />
-              </linearGradient>
-              <filter id="real-map-glow" x="-35%" y="-35%" width="170%" height="170%">
-                <feGaussianBlur stdDeviation="4" result="blur" />
-                <feMerge>
-                  <feMergeNode in="blur" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
-            </defs>
-
-            <path
-              d="M302 156L337 160L374 174L389 191L395 224L410 254L432 261L443 277L438 305L453 328L464 366L458 405L447 455L457 494L444 530L421 556L381 570L333 580L287 586L241 583L205 573L181 559L151 568L116 545L76 507L104 499L130 504L156 496L167 453L160 431L164 393L164 359L177 323L201 288L234 263L268 251L286 230L291 190L302 156Z"
-              fill="url(#real-map-fill)"
-              stroke="#34d6ff"
-              strokeWidth="3"
-              strokeLinejoin="round"
-              filter="url(#real-map-glow)"
-            />
-
-            {clusters.map((cluster) => {
-              const color = ZONE_COLORS[cluster.zone];
-              const radius = Math.max(13, Math.min(29, 11 + cluster.courts * 1.3));
-              const active = cluster.id === selected?.id;
-              return (
-                <g
-                  key={cluster.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setSelectedId(cluster.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') setSelectedId(cluster.id);
-                  }}
-                  style={{ cursor: 'pointer', outline: 'none' }}
-                >
-                  <circle cx={cluster.x} cy={cluster.y} r={radius + 8} fill={color} opacity={active ? 0.18 : 0.08} />
-                  <circle cx={cluster.x} cy={cluster.y} r={radius} fill={color} fillOpacity={active ? 0.9 : 0.72} stroke={active ? '#ffffff' : color} strokeWidth={active ? 2.2 : 1.5} />
-                  {cluster.clubs.length > 1 && (
-                    <text x={cluster.x} y={cluster.y + 5} textAnchor="middle" fill="white" fontSize="17" fontWeight="950">
-                      {cluster.clubs.length}
-                    </text>
-                  )}
-                </g>
-              );
-            })}
-          </svg>
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', flexWrap: 'wrap', marginTop: '8px' }}>
-          {(['Nord', 'Ouest', 'Centre', 'Est'] as LocalRegion[]).map((region) => (
-            <span key={region} style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', color: '#a9b1bd', fontSize: '14px', fontWeight: 700 }}>
-              <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: ZONE_COLORS[region], boxShadow: `0 0 18px ${ZONE_COLORS[region]}55` }} />
-              {region}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {selected && (
-        <aside className="clubs-map-panel" style={{
-          border: `1px solid ${ZONE_COLORS[selected.zone]}45`,
-          borderRadius: '18px',
-          background: `linear-gradient(180deg, ${ZONE_COLORS[selected.zone]}14, rgba(255,255,255,0.025))`,
-          minWidth: 0,
-          boxShadow: `0 24px 60px ${ZONE_COLORS[selected.zone]}10`,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', marginBottom: '18px' }}>
-            <div>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', color: ZONE_COLORS[selected.zone], fontSize: '12px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '1px' }}>
-                <MapPin size={14} /> {selected.zone}
-              </div>
-              <h3 style={{ color: 'white', margin: '7px 0 0', fontSize: '24px', lineHeight: 1.05 }}>{selected.place}</h3>
-            </div>
-          </div>
-
-          <div className="clubs-map-stats">
-            {[
-              { value: selected.clubs.length, label: 'Clubs' },
-              { value: selected.courts, label: lang === 'fr' ? 'Terrains' : 'Courts' },
-              { value: selected.events, label: lang === 'fr' ? 'Événements' : 'Events' },
-            ].map((stat) => (
-              <div key={stat.label} style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '12px', background: 'rgba(255,255,255,0.025)' }}>
-                <div style={{ color: ZONE_COLORS[selected.zone], fontSize: '22px', fontWeight: 950, fontFamily: 'JetBrains Mono, monospace' }}>{stat.value}</div>
-                <div style={{ color: '#858b96', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.8px' }}>{stat.label}</div>
-              </div>
-            ))}
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {selected.clubs.map((club) => (
-              <a
-                key={club.name}
-                href={`#/clubs?club=${encodeURIComponent(club.name)}`}
-                className="clubs-map-club-link"
-                style={{
-                  color: 'inherit',
-                  textDecoration: 'none',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: '12px',
-                  padding: '14px',
-                  background: 'rgba(0,0,0,0.20)',
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <strong style={{ color: 'white', display: 'block', fontSize: '14px', lineHeight: 1.2 }}>{club.name}</strong>
-                  <span style={{ color: '#8d96a3', fontSize: '12px' }}>
-                    {club.courts} {lang === 'fr' ? 'terrains' : 'courts'} · {club.events} {lang === 'fr' ? 'événements' : 'events'}
-                  </span>
-                </div>
-                <ExternalLink size={16} color={ZONE_COLORS[selected.zone]} />
-              </a>
-            ))}
-          </div>
-
-          <p style={{ margin: '16px 0 0', color: '#7e8794', fontSize: '12px', lineHeight: 1.5 }}>
-            {lang === 'fr' ? 'Touchez un point sur la carte pour changer de lieu.' : 'Tap a map point to switch location.'}
-          </p>
-        </aside>
-      )}
-    </div>
-    </>
-  );
 }
 
 export default function Regions() {
@@ -549,8 +214,8 @@ export default function Regions() {
             style={{ display: 'flex', gap: '40px', flexWrap: 'wrap', marginTop: '48px' }}
           >
             {[
-              { value: '18', label: lang === 'fr' ? 'Clubs au total' : 'Total clubs',        color: '#4ad569' },
-              { value: '65', label: lang === 'fr' ? 'Terrains au total' : 'Total courts',    color: '#3b82f6' },
+              { value: String(TOTAL_CLUBS), label: lang === 'fr' ? 'Clubs au total' : 'Total clubs',        color: '#4ad569' },
+              { value: String(TOTAL_COURTS), label: lang === 'fr' ? 'Terrains au total' : 'Total courts',    color: '#3b82f6' },
               { value: String(MPL_STATS.tournaments), label: lang === 'fr' ? 'Tournois / saison' : 'Tournaments',    color: '#8b5cf6' },
               { value: '4',  label: lang === 'fr' ? 'Régions' : 'Regions',                   color: '#f59e0b' },
             ].map(s => (
@@ -569,7 +234,7 @@ export default function Regions() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
             {REGION_ORDER.map((region, i) => {
               const data = REGIONS_DATA[region];
-              const stats = getOfficialRegionStats(region);
+              const stats = getRegionStats(region);
               const cfg  = REGION_CONFIG[region as Region] ?? { color: '#4ad569', bg: 'rgba(74,213,105,0.12)' };
               const isOpen = active === region;
               return (
@@ -581,6 +246,13 @@ export default function Regions() {
                   transition={{ delay: i * 0.1 }}
                 >
                   <div
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={isOpen}
+                    aria-label={`${region} : ${stats.clubs} club${stats.clubs > 1 ? 's' : ''}, ${stats.courts} terrains${isOpen ? '' : ' — afficher sur la carte'}`}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setActive(isOpen ? null : region); }
+                    }}
                     style={{
                       padding: '28px', cursor: 'pointer',
                       border: isOpen ? `1px solid ${cfg.color}` : '1px solid rgba(255,255,255,0.06)',
@@ -640,13 +312,19 @@ export default function Regions() {
                           {lang === 'fr' ? 'Clubs de la région' : 'Region clubs'}
                         </p>
                         <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          {data.clubs_list.map((club, ci) => (
-                            <li key={ci} style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '13px', color: '#ccc' }}>
+                          {regionClubs(region).map((club) => (
+                            <li key={club.id} style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '13px', color: '#ccc' }}>
                               <span style={{ color: cfg.color, fontSize: '8px' }}>●</span>
-                              {club}
+                              <span style={{ flex: 1 }}>{club.name}</span>
+                              <span style={{ color: cfg.color, fontFamily: 'JetBrains Mono,monospace', fontWeight: 700 }}>
+                                {club.courts} {lang === 'fr' ? (club.courts > 1 ? 'terrains' : 'terrain') : 'courts'}
+                              </span>
                             </li>
                           ))}
                         </ul>
+                        <button type="button" onKeyDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); document.getElementById('regions-carte')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} style={{ display: 'inline-block', marginTop: '12px', padding: 0, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', color: cfg.color, fontSize: '13px', fontWeight: 700 }}>
+                          {lang === 'fr' ? 'Voir sur la carte ↓' : 'See on the map ↓'}
+                        </button>
                       </motion.div>
                     )}
                   </div>
@@ -657,12 +335,15 @@ export default function Regions() {
         </div>
       </section>
 
-      {/* ── CARTE INTERACTIVE ── */}
-      <section style={{ padding: '0 24px 72px' }}>
+      {/* ── CARTE INTERACTIVE (meme composant et memes donnees que la page Clubs) ── */}
+      <section id="regions-carte" style={{ padding: '0 24px 72px', scrollMarginTop: '80px' }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto', minWidth: '320px' }}>
-          <GlassCard style={{ padding: 'clamp(20px,4vw,40px)', overflow: 'visible' }}>
-            <ClubsMap lang={lang} />
-          </GlassCard>
+          <Suspense fallback={<div style={{ height: 'clamp(380px, 64vh, 640px)', borderRadius: '16px', border: '1px solid rgba(74,213,105,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666', fontSize: '13px' }}>Chargement de la carte…</div>}>
+            <ClubsMap
+              region={active ? MAP_REGION[active] : 'ALL'}
+              onRegionChange={(next: ClubsMapFilter) => setActive(next === 'ALL' ? null : LOCAL_REGION[next])}
+            />
+          </Suspense>
         </div>
       </section>
     </Layout>
