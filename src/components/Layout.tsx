@@ -303,12 +303,12 @@ export function Navbar() {
       { to: ROUTE_PATHS.RESULTS,  label: t.nav.results  },
     ] },
     { to: ROUTE_PATHS.RANKINGS,     label: t.nav.rankings },
+    { to: ROUTE_PATHS.HISTORY,      label: t.nav.history  },
     { to: ROUTE_PATHS.PLAYER_SPACE, label: t.nav.players  },
     { to: ROUTE_PATHS.CLUBS,        label: t.nav.clubs    },
     { label: t.nav.league, items: [
       { to: ROUTE_PATHS.LEAGUE,  label: t.nav.presentation },
       { to: ROUTE_PATHS.REGIONS, label: t.nav.regions },
-      { to: ROUTE_PATHS.HISTORY, label: t.nav.history },
       { to: ROUTE_PATHS.GALLERY, label: t.nav.gallery },
     ] },
   ];
