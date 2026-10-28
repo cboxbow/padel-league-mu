@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { MapPin, Phone, Users, Calendar, ChevronRight, Grid3x3, ExternalLink } from 'lucide-react';
 import { DotWaveBackground } from '@/components/DotWaveBackground';
 import { Layout, GlassCard, RegionBadge } from '@/components/Layout';
@@ -7,6 +7,9 @@ import { useSeo } from '@/hooks/useSeo';
 import { useClubs } from '@/hooks/useData';
 import { REGION_CONFIG, MPL_STATS } from '@/lib/index';
 import type { Region } from '@/lib/index';
+
+// Carte Leaflet chargee a part : la bibliotheque n'alourdit pas les autres pages.
+const ClubsMap = lazy(() => import('@/components/ClubsMap'));
 
 const REGION_SHORT: Record<string, string> = {
   Nord: 'N',
@@ -299,6 +302,11 @@ export default function Clubs() {
               ))}
             </div>
           </div>
+
+          {/* ── Carte interactive des 18 clubs ── */}
+          <Suspense fallback={<div style={{ height: 'clamp(380px, 64vh, 640px)', marginBottom: '40px', borderRadius: '16px', border: '1px solid rgba(74,213,105,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666', fontSize: '13px' }}>Chargement de la carte…</div>}>
+            <ClubsMap />
+          </Suspense>
 
           {/* ── Filtres région ── */}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '36px' }}>
