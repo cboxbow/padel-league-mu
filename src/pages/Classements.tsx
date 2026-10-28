@@ -576,8 +576,12 @@ function addMonthsToDate(date: Date, months: number): Date {
   return next;
 }
 
-function rankingWindowRange() {
-  const end = new Date();
+function rankingWindowRange(calculatedAt?: string) {
+  // Date du dernier calcul (heure de Maurice) ; a defaut, aujourd'hui.
+  const calcDay = calculatedAt
+    ? new Date(calculatedAt).toLocaleDateString('en-CA', { timeZone: 'Indian/Mauritius' })
+    : '';
+  const end = /^\d{4}-\d{2}-\d{2}$/.test(calcDay) ? new Date(`${calcDay}T00:00:00`) : new Date();
   end.setHours(0, 0, 0, 0);
   const start = addMonthsToDate(end, -12);
   return {
@@ -616,13 +620,13 @@ function detailHasReliableIdentity(detail: PlayerRankingDetail, playerName: stri
   return hasPartner && Number.isFinite(rank) && rank > 0 && rank < 999;
 }
 
-function detailStatusLabel(counted: boolean, detail: PlayerRankingDetail, playerName: string): string {
-  if (!counted) return 'HORS TOP 8';
-  return detailHasReliableIdentity(detail, playerName) ? 'RETENU' : 'RETENU - A CONTROLER';
+function detailStatusLabel(counted: boolean, detail: PlayerRankingDetail, playerName: string, inWindow = true): string {
+  if (!counted) return inWindow ? 'HORS TOP 8' : 'HORS PÉRIODE';
+  return detailHasReliableIdentity(detail, playerName) ? 'RETENU' : 'RETENU – À CONTRÔLER';
 }
 
-function detailStatusColor(counted: boolean, detail: PlayerRankingDetail, playerName: string): string {
-  if (!counted) return '#888';
+function detailStatusColor(counted: boolean, detail: PlayerRankingDetail, playerName: string, inWindow = true): string {
+  if (!counted) return inWindow ? '#a3a3a3' : '#666';
   return detailHasReliableIdentity(detail, playerName) ? '#4ad569' : '#f59e0b';
 }
 
@@ -820,12 +824,15 @@ function PlayerDetailModal({
     ? dedupePlayerDetails([...officialDisplayDetails, ...realDisplayDetails])
     : realDisplayDetails;
   const playerDivisionKey = divisionKey;
-  const windowRange = rankingWindowRange();
+  const windowRange = rankingWindowRange(player.updated_at);
   const calculationDetails = displayDetails;
-  const windowDetails = calculationDetails.filter(detail => {
+  const isInWindow = (detail: PlayerRankingDetail) => {
     const date = detailIsoDate(detail);
-    if (playerDivisionKey && detail.division_key && detail.division_key !== playerDivisionKey) return false;
     return /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= windowRange.start && date <= windowRange.end;
+  };
+  const windowDetails = calculationDetails.filter(detail => {
+    if (playerDivisionKey && detail.division_key && detail.division_key !== playerDivisionKey) return false;
+    return isInWindow(detail);
   });
   const retainedDetails = [...windowDetails]
     .sort((a, b) =>
@@ -883,7 +890,7 @@ function PlayerDetailModal({
   // mais peut diverger si le detail est incomplet/pas encore synchronise -
   // et affichait alors silencieusement un total errone a la place du bon.
   const rankingTotal = player.points;
-  const rankingGap = Math.max(0, real12MonthTotal - rankingTotal);
+  const outOfTop8Points = Math.max(0, real12MonthTotal - calculatedTop8Total);
   const bestPartner = topCountLabel(combinedDetails.map(detail => detailPartnerLabel(detail, player.player_name)));
   const bestClub = topCountLabel(combinedDetails.map(detail => detail.club_name || ''));
   const wins = combinedDetails.filter(detail => Number(detail.rank) === 1).length;
@@ -898,9 +905,9 @@ function PlayerDetailModal({
   };
   const historyTabs = [
     { key: 'all' as const, label: 'Historique', count: combinedDetails.length },
-    { key: 'men' as const, label: 'Men', count: combinedDetails.filter(detail => detail.division_key === 'men').length },
-    { key: 'women' as const, label: 'Women', count: combinedDetails.filter(detail => detail.division_key === 'women').length },
-    { key: 'mixed' as const, label: 'Mixed', count: combinedDetails.filter(detail => detail.division_key === 'mixed').length },
+    { key: 'men' as const, label: 'Hommes', count: combinedDetails.filter(detail => detail.division_key === 'men').length },
+    { key: 'women' as const, label: 'Dames', count: combinedDetails.filter(detail => detail.division_key === 'women').length },
+    { key: 'mixed' as const, label: 'Mixte', count: combinedDetails.filter(detail => detail.division_key === 'mixed').length },
     { key: 'junior' as const, label: 'Junior', count: combinedDetails.filter(detail => detail.division_key === 'junior').length },
   ].filter(tab => tab.key === 'all' || tab.count > 0);
   const filteredDetails = combinedDetails
@@ -922,7 +929,7 @@ function PlayerDetailModal({
       return Number(b.season ?? 0) - Number(a.season ?? 0) || b.points - a.points;
     });
   const top8Label = playedCount > 8 ? `8/${playedCount}` : String(playedCount);
-  const ruleText = `Ranking period: ${formatIsoDateFr(windowRange.start)} to ${formatIsoDateFr(windowRange.end)} - Best 8 scores. Les autres tournois restent visibles mais ne comptent pas dans le Ranking Top 8.`;
+  const ruleText = `Période du classement : du ${formatIsoDateFr(windowRange.start)} au ${formatIsoDateFr(windowRange.end)} (12 mois jusqu'au dernier calcul). Les 8 meilleurs résultats comptent ; les autres restent visibles sans compter.`;
 
   useEffect(() => {
     const media = window.matchMedia('(max-width: 720px)');
@@ -940,11 +947,11 @@ function PlayerDetailModal({
             <span style={{ color: '#f59e0b', fontSize: isMobile ? '18px' : '20px', lineHeight: 1.2, flex: '0 0 auto' }}>#{player.rank}</span>
             <div style={{ minWidth: 0 }}>
               <div style={{ color: 'white', fontSize: isMobile ? '17px' : '16px', fontWeight: 900, textTransform: 'uppercase', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isMobile ? 'normal' : 'nowrap', lineHeight: 1.08 }}>{player.player_name}</div>
-              <div style={{ color: '#777', fontSize: '12px', marginTop: '4px', lineHeight: 1.35 }}>{formatPoints(rankingTotal)} pts Ranking Top 8 - Joues 12 mois: {top8Label} - {displayDetails.length} historique</div>
+              <div style={{ color: '#777', fontSize: '12px', marginTop: '4px', lineHeight: 1.35 }}>{formatPoints(rankingTotal)} pts (Top 8) · {playedCount} tournoi{playedCount > 1 ? 's' : ''} sur 12 mois · {displayDetails.length} résultat{displayDetails.length > 1 ? 's' : ''} en historique</div>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: isMobile ? '8px' : '14px', flex: '0 0 auto' }}>
-            {!isMobile && <div style={{ color: '#777', fontSize: '12px' }}>{careerStats ? `${careerStats.tournaments_played} tournois carriere` : `${displayDetails.length} lignes`}</div>}
+            {!isMobile && <div style={{ color: '#777', fontSize: '12px' }}>{careerStats ? `${careerStats.tournaments_played} tournois en carrière` : `${displayDetails.length} résultats`}</div>}
             <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: '#777', cursor: 'pointer', padding: isMobile ? '8px' : '4px' }}><X size={isMobile ? 20 : 22} /></button>
           </div>
         </div>
@@ -955,11 +962,11 @@ function PlayerDetailModal({
 
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,minmax(0,1fr))' : 'repeat(auto-fit,minmax(130px,1fr))', gap: '8px', padding: isMobile ? '12px 16px' : '12px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           {[
-            { label: 'Ranking Top 8', value: formatPoints(rankingTotal), c: color },
-            { label: 'Joues 12 mois', value: top8Label, c: '#4ad569' },
-            { label: 'Points joues 12m', value: loading ? '...' : formatPoints(real12MonthTotal), c: '#f59e0b' },
-            { label: 'Hors Top 8', value: `${outOfTop8Count} / ${formatPoints(rankingGap)}`, c: '#ef4444' },
-            { label: 'Carriere pts', value: careerStats ? formatPoints(careerStats.total_points) : '-', c: '#8b5cf6' },
+            { label: 'Total Top 8', value: formatPoints(rankingTotal), c: color },
+            { label: 'Tournois sur 12 mois', value: top8Label, c: '#4ad569' },
+            { label: 'Points sur 12 mois', value: loading ? '…' : formatPoints(real12MonthTotal), c: '#f59e0b' },
+            { label: 'Hors Top 8 (12 mois)', value: outOfTop8Count === 0 ? '0' : `${outOfTop8Count} · ${formatPoints(outOfTop8Points)} pts`, c: outOfTop8Count === 0 ? '#888' : '#ef4444' },
+            { label: 'Points en carrière', value: careerStats ? formatPoints(careerStats.total_points) : '—', c: '#8b5cf6' },
           ].map(item => (
             <div key={item.label} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: isMobile ? '10px 12px' : '9px 11px', minWidth: 0 }}>
               <div style={{ color: item.c, fontWeight: 900, fontSize: isMobile ? '19px' : '18px', fontFamily: 'JetBrains Mono, monospace', overflowWrap: 'anywhere' }}>{item.value}</div>
@@ -992,9 +999,9 @@ function PlayerDetailModal({
 
         <div style={{ maxHeight: isMobile ? 'none' : '48vh', overflow: isMobile ? 'visible' : 'auto', padding: isMobile ? '10px 16px 16px' : 0 }}>
           {loading ? (
-            <div style={{ padding: '42px', textAlign: 'center', color: '#666' }}>Chargement des details...</div>
+            <div style={{ padding: '42px', textAlign: 'center', color: '#666' }}>Chargement des détails…</div>
           ) : visibleDetails.length === 0 ? (
-            <div style={{ padding: '42px', textAlign: 'center', color: '#666' }}>Aucun detail disponible pour ce filtre.</div>
+            <div style={{ padding: '42px', textAlign: 'center', color: '#666' }}>Aucun détail disponible pour ce filtre.</div>
           ) : isMobile ? (
             <div style={{ display: 'grid', gap: '8px' }}>
               {visibleDetails.map((detail, index) => {
@@ -1012,9 +1019,9 @@ function PlayerDetailModal({
                       <div style={{ minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                           <span style={{ color: detail.category?.startsWith('M') ? '#4ad569' : '#f59e0b', fontSize: '11px', fontWeight: 950 }}>{detail.category || '-'}</span>
-                          <span style={{ color: '#7b8495', fontSize: '11px', fontFamily: 'JetBrains Mono, monospace' }}>{detail.event_date || detail.season || '-'}</span>
-                          <span style={{ color: detailStatusColor(counted, detail, player.player_name), background: counted ? 'rgba(74,213,105,0.12)' : 'rgba(255,255,255,0.05)', border: `1px solid ${counted ? 'rgba(74,213,105,0.24)' : 'rgba(255,255,255,0.06)'}`, borderRadius: '999px', padding: '2px 7px', fontSize: '9px', fontWeight: 950 }}>
-                            {detailStatusLabel(counted, detail, player.player_name)}
+                          <span style={{ color: '#7b8495', fontSize: '11px', fontFamily: 'JetBrains Mono, monospace' }}>{detail.event_date ? formatIsoDateFr(detail.event_date) : detail.season || '—'}</span>
+                          <span style={{ color: detailStatusColor(counted, detail, player.player_name, isInWindow(detail)), background: counted ? 'rgba(74,213,105,0.12)' : 'rgba(255,255,255,0.05)', border: `1px solid ${counted ? 'rgba(74,213,105,0.24)' : 'rgba(255,255,255,0.06)'}`, borderRadius: '999px', padding: '2px 7px', fontSize: '9px', fontWeight: 950 }}>
+                            {detailStatusLabel(counted, detail, player.player_name, isInWindow(detail))}
                           </span>
                         </div>
                         <div style={{ color: '#9aa4b5', fontSize: '11px', fontWeight: 750, textTransform: 'uppercase', marginTop: '7px', lineHeight: 1.3, overflowWrap: 'anywhere' }}>
@@ -1028,7 +1035,7 @@ function PlayerDetailModal({
                     </div>
                     <div style={{ marginTop: '9px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center' }}>
                       <div style={{ color: '#666', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.6px', flex: '0 0 auto' }}>Partenaire</div>
-                      <div style={{ color: detailHasReliableIdentity(detail, player.player_name) ? 'white' : '#f59e0b', fontSize: '12px', fontWeight: 950, textTransform: 'uppercase', textAlign: 'right', overflowWrap: 'anywhere' }}>{detailPartnerLabel(detail, player.player_name) === '-' ? 'A COMPLETER' : detailPartnerLabel(detail, player.player_name)}</div>
+                      <div style={{ color: detailHasReliableIdentity(detail, player.player_name) ? 'white' : '#f59e0b', fontSize: '12px', fontWeight: 950, textTransform: 'uppercase', textAlign: 'right', overflowWrap: 'anywhere' }}>{detailPartnerLabel(detail, player.player_name) === '-' ? 'À COMPLÉTER' : detailPartnerLabel(detail, player.player_name)}</div>
                     </div>
                   </div>
                 );
@@ -1038,7 +1045,7 @@ function PlayerDetailModal({
             <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
               <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
                 <tr style={{ background: '#101010' }}>
-                  {[['Statut','86px','left'], ['Date','96px','left'], ['Cat','70px','left'], ['Club','1fr','left'], ['Partenaire','180px','left'], ['Rk','54px','right'], ['Pts','88px','right']].map(([label, width, align]) => (
+                  {[['Statut','96px','left'], ['Date','112px','left'], ['Cat.','70px','left'], ['Club','1fr','left'], ['Partenaire','180px','left'], ['Rang','54px','right'], ['Pts','88px','right']].map(([label, width, align]) => (
                     <th key={label} style={{ width: width === '1fr' ? undefined : width, textAlign: align as 'left' | 'right', padding: '9px 8px', color: '#555', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.6px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>{label}</th>
                   ))}
                 </tr>
@@ -1053,7 +1060,7 @@ function PlayerDetailModal({
                           display: 'inline-flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          color: detailStatusColor(counted, detail, player.player_name),
+                          color: detailStatusColor(counted, detail, player.player_name, isInWindow(detail)),
                           background: counted ? 'rgba(74,213,105,0.12)' : 'rgba(255,255,255,0.04)',
                           border: `1px solid ${counted ? 'rgba(74,213,105,0.28)' : 'rgba(255,255,255,0.07)'}`,
                           borderRadius: '999px',
@@ -1063,13 +1070,13 @@ function PlayerDetailModal({
                           letterSpacing: '0.4px',
                           whiteSpace: 'nowrap',
                         }}>
-                          {detailStatusLabel(counted, detail, player.player_name)}
+                          {detailStatusLabel(counted, detail, player.player_name, isInWindow(detail))}
                         </span>
                       </td>
-                      <td style={{ padding: '8px', color: '#666', fontSize: '11px', fontFamily: 'JetBrains Mono, monospace', borderBottom: '1px solid rgba(255,255,255,0.035)' }}>{detail.event_date || detail.season || '-'}</td>
+                      <td style={{ padding: '8px', color: '#666', fontSize: '11px', fontFamily: 'JetBrains Mono, monospace', whiteSpace: 'nowrap', borderBottom: '1px solid rgba(255,255,255,0.035)' }}>{detail.event_date ? formatIsoDateFr(detail.event_date) : detail.season || '—'}</td>
                       <td style={{ padding: '8px', borderBottom: '1px solid rgba(255,255,255,0.035)' }}><span style={{ color: detail.category?.startsWith('M') ? '#4ad569' : '#f59e0b', fontSize: '10px', fontWeight: 900 }}>{detail.category || '-'}</span></td>
                       <td style={{ padding: '8px', color: '#8a94a6', fontSize: '11px', textTransform: 'uppercase', lineHeight: 1.25, overflowWrap: 'anywhere', borderBottom: '1px solid rgba(255,255,255,0.035)' }}>{detail.club_name || detail.event_name}</td>
-                      <td style={{ padding: '8px', color: detailHasReliableIdentity(detail, player.player_name) ? 'white' : '#f59e0b', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', lineHeight: 1.25, overflowWrap: 'anywhere', borderBottom: '1px solid rgba(255,255,255,0.035)' }}>{detailPartnerLabel(detail, player.player_name) === '-' ? 'A COMPLETER' : detailPartnerLabel(detail, player.player_name)}</td>
+                      <td style={{ padding: '8px', color: detailHasReliableIdentity(detail, player.player_name) ? 'white' : '#f59e0b', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', lineHeight: 1.25, overflowWrap: 'anywhere', borderBottom: '1px solid rgba(255,255,255,0.035)' }}>{detailPartnerLabel(detail, player.player_name) === '-' ? 'À COMPLÉTER' : detailPartnerLabel(detail, player.player_name)}</td>
                       <td style={{ padding: '8px', color: Number(detail.rank) === 1 ? '#4ad569' : Number(detail.rank) <= 3 ? '#f59e0b' : '#888', fontSize: '12px', fontWeight: 900, textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', borderBottom: '1px solid rgba(255,255,255,0.035)' }}>{detailRankLabel(detail)}</td>
                       <td style={{ padding: '8px', color: counted ? '#4ad569' : 'white', fontSize: '12px', fontWeight: 900, textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', borderBottom: '1px solid rgba(255,255,255,0.035)' }}>{formatPoints(detail.points)}</td>
                     </tr>
