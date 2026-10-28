@@ -195,7 +195,9 @@ function NavGroup({ label, items }: { label: string; items: NavItem[] }) {
         aria-haspopup="true"
         aria-expanded={open}
         aria-controls={menuId}
-        onClick={() => setOpen(v => !v)}
+        // Le survol ouvre deja le menu : un clic souris (detail >= 1) le garde
+        // ouvert au lieu de le refermer ; au clavier (detail 0), Entree bascule.
+        onClick={e => { const fromKeyboard = e.detail === 0; setOpen(v => (fromKeyboard ? !v : true)); }}
         onMouseEnter={() => setOpen(true)}
         className={`mpl-nav-link${active ? ' active' : ''}`}
         style={{ ...navLinkStyle(active), border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
