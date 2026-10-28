@@ -330,7 +330,9 @@ export function Navbar() {
         ? '0 4px 32px rgba(0,0,0,0.5), 0 1px 0 rgba(74,213,105,0.08)'
         : 'none',
       transition: 'all 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
-      overflowX: 'hidden' as const,
+      // Sur ordinateur, les sous-menus Tournois / La Ligue debordent sous la
+      // barre : overflow-x: hidden forcait overflow-y: auto et les masquait.
+      overflowX: isMobile ? 'hidden' as const : 'visible' as const,
     }}>
       <div style={{
         maxWidth: '1600px',
