@@ -9,6 +9,7 @@ import { ROUTE_PATHS, MPL_STATS, CATEGORY_CONFIG, REGION_CONFIG } from '@/lib/in
 import { useSeo } from '@/hooks/useSeo';
 import { useClubs, useTournamentStats } from '@/hooks/useData';
 import type { TournamentCategory, Region } from '@/lib/index';
+import HomeActivity from '@/pages/home/HomeActivity';
 
 // ── Logo animé ────────────────────────────────────────────────────────────────
 function HeroLogo() {
@@ -17,7 +18,7 @@ function HeroLogo() {
       initial={{ scale: 0.7, opacity: 0, y: 20 }}
       animate={{ scale: 1, opacity: 1, y: 0 }}
       transition={{ type: 'spring', stiffness: 90, damping: 18, delay: 0.2 }}
-      style={{ marginBottom: '36px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '18px' }}
+      style={{ marginBottom: '22px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px' }}
     >
       {/* Logo MSRA (fédération de tutelle) + logo principal MPL — lockup officiel
           unique (même fichier source que MPL MSRA.png) pour garantir l'alignement
@@ -25,7 +26,7 @@ function HeroLogo() {
       <img
         src="/images/mpl-msra-combo.png"
         alt="Mauritius Squash Rackets Association — Mauritius Padel League"
-        style={{ width: 'min(440px, 90vw)', height: 'auto', filter: 'drop-shadow(0 0 22px rgba(74,213,105,0.25))' }}
+        style={{ width: 'min(360px, 80vw)', height: 'auto', filter: 'drop-shadow(0 0 22px rgba(74,213,105,0.25))' }}
       />
       {/* ── Bandeau titre sponsor ── */}
       <div style={{
@@ -64,9 +65,10 @@ function HeroSection() {
 
   return (
     <section className="hero-section" style={{
-      minHeight: '100vh', display: 'flex', flexDirection: 'column',
+      // Visuel raccourci (etait 100vh) : l activite sportive apparait plus vite.
+      minHeight: 'min(78vh, 720px)', display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center',
-      padding: '80px 24px 40px',
+      padding: '56px 24px 28px',
       position: 'relative',
       overflow: 'hidden',
     }}>
@@ -112,6 +114,9 @@ function HeroSection() {
         @media (max-width: 1100px) {
           .hero-side-text, .hero-bg-image { display: none; }
         }
+        @media (max-width: 560px) {
+          .hero-stats { grid-template-columns: repeat(2,1fr) !important; }
+        }
         @media (min-width: 1101px) {
           .hero-section { align-items: flex-start; padding-left: 10%; }
         }
@@ -153,7 +158,7 @@ function HeroSection() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.9 }}
-        style={{ display: 'flex', gap: '16px', marginTop: '32px', flexWrap: 'wrap', justifyContent: 'center' }}
+        style={{ display: 'flex', gap: '16px', marginTop: '24px', flexWrap: 'wrap', justifyContent: 'center' }}
       >
         <button
           onClick={() => nav(ROUTE_PATHS.CALENDAR)}
@@ -176,7 +181,8 @@ function HeroSection() {
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 1.1 }}
-        style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '16px', marginTop: '64px', width: '100%', maxWidth: '720px' }}
+        className="hero-stats"
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '12px', marginTop: '32px', width: '100%', maxWidth: '720px' }}
       >
         {[
           { val: MPL_STATS.clubs,       label: t.hero.stats.clubs,       Icon: Users },
@@ -425,6 +431,7 @@ export default function Home() {
   return (
     <Layout>
       <HeroSection />
+      <HomeActivity />
       <FeaturedTournament />
       <LeaguePreview />
       <RegionsPreview />

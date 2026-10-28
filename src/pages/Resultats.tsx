@@ -645,7 +645,7 @@ export default function Resultats() {
         setFromSupabase(false);
       }
     } else {
-      setError('Connexion live indisponible. Les résultats seront affichés dès que Supabase sera joignable.');
+      setError('Résultats momentanément indisponibles. Réessayez dans quelques instants.');
       setAllResults([]);
       setFromSupabase(false);
     }
@@ -741,7 +741,7 @@ export default function Resultats() {
                   border: `1px solid ${fromSupabase ? 'rgba(74,213,105,0.3)' : 'rgba(239,68,68,0.25)'}`,
                   borderRadius: '20px', padding: '3px 12px', fontSize: '12px', fontWeight: 600,
                 }}>
-                  {fromSupabase ? '● Supabase' : '● Live indisponible'}
+                  {fromSupabase ? '● À jour' : '● Indisponible'}
                 </span>
               </div>
               <p style={{ color: '#888', fontSize: '15px', margin: 0 }}>

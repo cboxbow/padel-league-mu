@@ -182,7 +182,7 @@ function toPlayerRanking(r: {
 }
 
 const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
-  supabase: { label: 'Live Supabase', color: '#4ad569' },
+  supabase: { label: 'Données à jour', color: '#4ad569' },
   csv:      { label: 'Classement CSV', color: '#3b82f6' },
   local:    { label: 'Classement local', color: '#f59e0b' },
 };
@@ -745,17 +745,22 @@ function resolveDetailDivisionConflicts(details: PlayerRankingDetail[]): PlayerR
       : detail;
   });
 }
+// Evolution par rapport au rang de la mise a jour precedente du classement
+// (rank_before). Sans rang precedent, aucune comparaison fiable : "Non disponible".
 function rankMovement(player: PlayerRanking) {
   const current = Number(player.rank);
   const previous = Number(player.rank_before ?? 0);
-  if (Number.isFinite(current) && Number.isFinite(previous) && current > 0 && previous > 0 && current !== previous) {
+  if (!Number.isFinite(current) || !Number.isFinite(previous) || current <= 0 || previous <= 0) {
+    return { trend: 'unknown' as const, delta: 0, title: 'Non disponible : pas de rang lors de la mise à jour précédente' };
+  }
+  if (current !== previous) {
     return {
       trend: current < previous ? 'up' as const : 'down' as const,
       delta: Math.abs(previous - current),
-      title: `Avant: #${previous}`,
+      title: `Rang lors de la mise à jour précédente : #${previous}`,
     };
   }
-  return { trend: 'same' as const, delta: 0, title: 'Stable' };
+  return { trend: 'same' as const, delta: 0, title: `Inchangé depuis la mise à jour précédente (#${previous})` };
 }
 
 function TrendCell({ player }: { player: PlayerRanking }) {
@@ -764,12 +769,13 @@ function TrendCell({ player }: { player: PlayerRanking }) {
   const label = movement.trend === 'up'
     ? '+' + movement.delta
     : movement.trend === 'down'
-      ? '-' + movement.delta
-      : '=';
+      ? '−' + movement.delta
+      : movement.trend === 'same' ? '=' : '—';
 
   return (
     <div
       title={movement.title}
+      aria-label={movement.title}
       style={{ textAlign: 'center', color, fontSize: '12px', fontWeight: 800 }}
     >
       {label}
@@ -1445,7 +1451,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
     return (
       <div style={{ textAlign: 'center', padding: '60px 0', color: '#555' }}>
         <Search size={32} style={{ marginBottom: '12px', opacity: 0.3 }} />
-        <p>Aucun joueur trouve pour "{search}"</p>
+        <p>Aucun joueur trouvé pour « {search} »</p>
       </div>
     );
   }
@@ -1464,8 +1470,8 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
         <span style={{ textAlign: 'center' }}>#</span>
         <span>Joueur</span>
         <span style={{ textAlign: 'right' }}>Points</span>
-        <span style={{ textAlign: 'center' }}>{isCompact ? 'Top 8' : 'Top 8 / joues'}</span>
-        {!isCompact && <span style={{ textAlign: 'center' }}>Trend</span>}
+        <span style={{ textAlign: 'center' }} title="Résultats retenus dans le Top 8 / tournois joués sur 12 mois">{isCompact ? 'Retenus' : 'Retenus / joués'}</span>
+        {!isCompact && <span style={{ textAlign: 'center' }} title="Évolution depuis la mise à jour précédente du classement">Évolution</span>}
         {!isCompact && <span style={{ textAlign: 'center' }}>Saison</span>}
       </div>
 
@@ -1530,14 +1536,16 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
 
             <div style={{ textAlign: 'center' }}>
               <span style={{
-                color: r.tournaments_played ? '#4ad569' : '#444',
+                color: r.tournaments_played ? '#4ad569' : '#666',
                 background: r.tournaments_played ? 'rgba(74,213,105,0.08)' : 'transparent',
                 borderRadius: '12px',
                 padding: '2px 8px',
                 fontSize: '12px',
                 fontWeight: 700,
               }}>
-                {r.tournaments_played && r.tournaments_played > 8 ? `8/${r.tournaments_played}` : (r.tournaments_played ?? 0)}
+                {r.tournaments_played == null
+                  ? <span title="Donnée non disponible">—</span>
+                  : `${Math.min(8, r.tournaments_played)}/${r.tournaments_played}`}
               </span>
             </div>
 
@@ -1595,7 +1603,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
           <button
             onClick={forceRefresh}
             disabled={loading}
-            title="Rafraichir depuis Supabase"
+            title="Rafraîchir le classement"
             style={{
               display: 'flex', alignItems: 'center', gap: '4px',
               background: 'rgba(74,213,105,0.08)', color: '#4ad569',
@@ -1605,7 +1613,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
             }}
           >
             <RefreshCw size={11} className={loading ? 'spin' : ''} />
-            Rafraichir
+            Rafraîchir
           </button>
         )}
         </span>
@@ -1618,7 +1626,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
 export default function Classements() {
   const { lang } = useI18n();
   useSeo({
-    title: "Classement Padel Maurice 2026 - Ranking Officiel MPL",
+    title: "Classement en direct Padel Maurice 2026 — MPL",
     description: "Classement officiel padel Mauritius 2026 : Hommes, Dames, Mixte, Junior. 8 meilleurs résultats des 12 derniers mois. Mauritius Padel League.",
     keywords: "padel ranking mauritius, classement padel mauritius 2026, padel ranking MPL, classement padel hommes dames",
     canonical: "https://padelleague.mu/#/classements",
@@ -1697,15 +1705,25 @@ export default function Classements() {
   }, [search]);
 
   const stats = [
-    { label: lang === 'fr' ? 'Hommes classes' : 'Men ranked',    val: divCounts['MEN']    != null ? `${divCounts['MEN']}`    : '-', icon: 'H', color: '#3b82f6' },
-    { label: lang === 'fr' ? 'Dames classees'  : 'Women ranked', val: divCounts['WOMEN']  != null ? `${divCounts['WOMEN']}`  : '-', icon: 'D', color: '#ec4899' },
-    { label: lang === 'fr' ? 'Juniors classes' : 'Juniors',      val: divCounts['JUNIOR'] != null ? `${divCounts['JUNIOR']}` : '-', icon: 'J', color: '#f59e0b' },
-    { label: lang === 'fr' ? 'Mixte classes'   : 'Mixed',        val: divCounts['MIXTE']  != null ? `${divCounts['MIXTE']}`  : '-', icon: 'M', color: '#8b5cf6' },
+    { label: lang === 'fr' ? 'Hommes classés' : 'Men ranked',    val: divCounts['MEN']    != null ? `${divCounts['MEN']}`    : '…', icon: 'H', color: '#3b82f6' },
+    { label: lang === 'fr' ? 'Dames classées'  : 'Women ranked', val: divCounts['WOMEN']  != null ? `${divCounts['WOMEN']}`  : '…', icon: 'D', color: '#ec4899' },
+    { label: lang === 'fr' ? 'Juniors classés' : 'Juniors',      val: divCounts['JUNIOR'] != null ? `${divCounts['JUNIOR']}` : '…', icon: 'J', color: '#f59e0b' },
+    { label: lang === 'fr' ? 'Mixte classés'   : 'Mixed',        val: divCounts['MIXTE']  != null ? `${divCounts['MIXTE']}`  : '…', icon: 'M', color: '#8b5cf6' },
   ];
-  const activeCount = divCounts[activeTab] != null ? `${divCounts[activeTab]}` : '-';
-  const rankingPeriod = rankingWindowRange();
-  const rankingPeriodText = `${formatIsoDateFr(rankingPeriod.start)} -> ${formatIsoDateFr(rankingPeriod.end)}`;
-  const rankingTodayText = formatIsoDateFr(rankingPeriod.end);
+  const activeCount = divCounts[activeTab] != null ? `${divCounts[activeTab]}` : '…';
+  // Date reelle de la derniere publication du classement en direct (et non la
+  // date du jour du navigateur, qui ne correspond pas forcement a la periode
+  // de calcul utilisee par le script de recalcul).
+  const [publishedAt, setPublishedAt] = useState<string | null>(null);
+  useEffect(() => {
+    const sb = getSupabaseClient();
+    if (!isSupabaseConnected() || !sb) return;
+    sb.from('rankings').select('updated_at').order('updated_at', { ascending: false }).limit(1)
+      .then(({ data }) => { const v = (data as { updated_at?: string }[] | null)?.[0]?.updated_at; if (v) setPublishedAt(v); });
+  }, []);
+  const publishedText = publishedAt
+    ? new Date(publishedAt).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Indian/Mauritius' })
+    : null;
 
   return (
     <Layout>
@@ -1722,7 +1740,7 @@ export default function Classements() {
               {lang === 'fr' ? 'Classement en direct' : 'Live ranking'}
             </span>
             <Link to={ROUTE_PATHS.SEEDING} style={{ padding: '9px 14px', borderRadius: '999px', fontSize: '13px', fontWeight: 800, textDecoration: 'none', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.035)', color: 'rgba(255,255,255,0.6)' }}>
-              {lang === 'fr' ? 'Classement de seeding' : 'Seeding ranking'}
+              {lang === 'fr' ? 'Classement mensuel (têtes de série)' : 'Monthly ranking (seeding)'}
             </Link>
           </div>
 
@@ -1752,14 +1770,14 @@ export default function Classements() {
                 marginBottom: '14px',
               }}>
                 <ShieldCheck size={14} />
-                {lang === 'fr' ? 'Ranking officiel MPL' : 'Official MPL Ranking'}
+                {lang === 'fr' ? 'Classement en direct · à titre informatif' : 'Live ranking · for information'}
               </div>
               <h1 style={{ fontSize: 'clamp(34px,5vw,64px)', fontWeight: 950, color: 'white', margin: '0 0 8px', letterSpacing: '-1px', lineHeight: 0.95 }}>
-                {lang === 'fr' ? 'Classements' : 'Rankings'}
+                {lang === 'fr' ? 'Classement en direct' : 'Live ranking'}
               </h1>
               <p style={{ color: '#9ca3af', margin: 0, fontSize: '15px', letterSpacing: '0.1px', lineHeight: 1.55, maxWidth: '680px' }}>
                 {lang === 'fr'
-                  ? 'Classement en direct, a titre informatif : meilleurs 8 resultats sur les 12 derniers mois, recalcule apres chaque resultat valide. Il ne sert pas aux tetes de serie.'
+                  ? 'Les 8 meilleurs résultats de chaque joueur sur les 12 derniers mois, recalculés après chaque résultat validé. Ce classement est informatif : les têtes de série utilisent le classement mensuel.'
                   : 'Live ranking, for information only: best 8 scores over the last 12 months, recalculated after each validated result. It is not used for seeding.'}
               </p>
               <div style={{
@@ -1784,10 +1802,12 @@ export default function Classements() {
                   fontWeight: 800,
                 }}>
                   <CalendarDays size={13} />
-                  {lang === 'fr' ? `Calcul au ${rankingTodayText}` : `Calculated on ${rankingTodayText}`}
+                  {publishedText
+                    ? (lang === 'fr' ? `Dernière mise à jour : ${publishedText}` : `Last update: ${publishedText}`)
+                    : (lang === 'fr' ? 'Dernière mise à jour : chargement…' : 'Last update: loading…')}
                 </span>
                 <span style={{ color: '#777' }}>
-                  {lang === 'fr' ? `Periode ranking: ${rankingPeriodText}` : `Ranking period: ${rankingPeriodText}`}
+                  {lang === 'fr' ? 'Période : 12 mois glissants jusqu\x27à la date de calcul' : 'Period: rolling 12 months up to the calculation date'}
                 </span>
               </div>
             </div>
@@ -1805,7 +1825,7 @@ export default function Classements() {
                 padding: '12px 14px',
               }}>
                 <div style={{ color: activeConfig.color, fontFamily: 'JetBrains Mono, monospace', fontWeight: 900, fontSize: '22px', lineHeight: 1 }}>{activeCount}</div>
-                <div style={{ color: '#777', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.8px', marginTop: '5px' }}>{lang === 'fr' ? 'Joueurs actifs' : 'Active players'}</div>
+                <div style={{ color: '#777', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.8px', marginTop: '5px' }}>{lang === 'fr' ? 'Joueurs classés' : 'Ranked players'}</div>
               </div>
               <div style={{
                 border: '1px solid rgba(245,158,11,0.22)',
@@ -1814,7 +1834,7 @@ export default function Classements() {
                 padding: '12px 14px',
               }}>
                 <div style={{ color: '#f59e0b', fontFamily: 'JetBrains Mono, monospace', fontWeight: 900, fontSize: '22px', lineHeight: 1 }}>Top 8</div>
-                <div style={{ color: '#777', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.8px', marginTop: '5px' }}>{lang === 'fr' ? 'Regle 12 mois' : '12-month rule'}</div>
+                <div style={{ color: '#777', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.8px', marginTop: '5px' }}>{lang === 'fr' ? 'Sur 12 mois' : 'Over 12 months'}</div>
               </div>
             </div>
           </div>
@@ -1830,12 +1850,12 @@ export default function Classements() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#777', fontSize: '12px', margin: '0 4px 12px', flexWrap: 'wrap' }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#4ad569', fontWeight: 800 }}>
                 <Database size={13} />
-                {lang === 'fr' ? 'Donnees live' : 'Live data'}
+                {lang === 'fr' ? 'Mis à jour après chaque résultat' : 'Updated after each result'}
               </span>
               <span>•</span>
               <span>
-                {lang === 'fr' ? 'Ce classement evolue chaque jour. Les tetes de serie utilisent le ' : 'This ranking moves every day. Tournament seeds use the '}
-                <Link to={ROUTE_PATHS.SEEDING} style={{ color: '#f59e0b', fontWeight: 800 }}>{lang === 'fr' ? 'classement officiel mensuel' : 'official monthly ranking'}</Link>.
+                {lang === 'fr' ? 'Les têtes de série utilisent le ' : 'Tournament seeds use the '}
+                <Link to={ROUTE_PATHS.SEEDING} style={{ color: '#f59e0b', fontWeight: 800 }}>{lang === 'fr' ? 'classement mensuel pour les têtes de série' : 'monthly seeding ranking'}</Link>.
               </span>
             </div>
 
@@ -1882,7 +1902,7 @@ export default function Classements() {
                   fontFamily: 'JetBrains Mono, monospace',
                   fontSize: '12px',
                   fontWeight: 900,
-                }}>{divCounts[tab.key] ?? '-'}</span>
+                }}>{divCounts[tab.key] ?? '…'}</span>
               </button>
             ))}
           </div>
@@ -1913,7 +1933,7 @@ export default function Classements() {
                 {lang === 'fr' ? `Division ${activeConfig.label_fr}` : `${activeConfig.label_en} Division`}
               &nbsp;-&nbsp;
               <span style={{ color: '#666', fontWeight: 400, fontSize: '13px' }}>
-                {divCounts[activeTab] != null ? `${divCounts[activeTab]} joueurs` : '-'}
+                {divCounts[activeTab] != null ? `${divCounts[activeTab]} joueurs` : 'chargement…'}
               </span>
             </div>
           </div>
@@ -1929,7 +1949,7 @@ export default function Classements() {
               fontSize: '12px',
             }}>
               <span style={{ color: '#888', fontWeight: 700 }}>
-                Trouve aussi dans :
+                Trouvé aussi dans :
               </span>
               {globalMatches.map(match => {
                 const tab = TABS.find(item => item.key === match.division);
@@ -1967,7 +1987,7 @@ export default function Classements() {
           {/* Tableau */}
           <GlassCard style={{ padding: '16px 0' }}>
             <div style={{ padding: '0 16px 12px', color: '#777', fontSize: '12px' }}>
-              Ranking officiel: meilleurs 8 resultats sur les 12 derniers mois. Calcul au {rankingTodayText} - periode {rankingPeriodText}.
+              Classement en direct : 8 meilleurs résultats sur 12 mois glissants{publishedText ? ` · dernière mise à jour le ${publishedText}` : ''}.
             </div>
             <RankingTable key={activeTab} division={activeTab} color={activeConfig.color} search={search} onCountChange={n => updateCount(activeTab, n)} />
           </GlassCard>

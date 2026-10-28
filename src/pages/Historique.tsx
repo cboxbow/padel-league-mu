@@ -1443,7 +1443,7 @@ export default function Historique() {
       setRows([]);
       setCurrentRankings(new Map());
       setFromSupabase(false);
-      setError('Connexion live indisponible. Les archives seront affichees des que Supabase sera joignable.');
+      setError('Archives momentanément indisponibles. Réessayez dans quelques instants.');
       setLoading(false);
       return;
     }
@@ -1497,7 +1497,7 @@ export default function Historique() {
       setRows(normalized);
       setCurrentRankings(rankingMap);
       setFromSupabase(normalized.length > 0);
-      if (!normalized.length) setError('Aucune archive historique trouvee dans Supabase.');
+      if (!normalized.length) setError('Aucune archive historique disponible pour le moment.');
     }
 
     setLoading(false);
@@ -1707,7 +1707,7 @@ export default function Historique() {
 
           {fromSupabase && (
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', color: '#4ad569', fontSize: '12px', fontWeight: 800, marginBottom: '18px' }}>
-              <ShieldCheck size={15} /> Donnees live Supabase connectees
+              <ShieldCheck size={15} /> Archives à jour
             </div>
           )}
 
@@ -1774,7 +1774,7 @@ export default function Historique() {
             <GlassCard style={{ padding: '70px 20px', textAlign: 'center' }}>
               <Database size={42} color="#333" style={{ marginBottom: '14px' }} />
               <h2 style={{ color: 'white', margin: '0 0 8px', fontSize: '22px' }}>Archives temporairement indisponibles</h2>
-              <p style={{ color: '#777', margin: '0 0 20px', fontSize: '14px' }}>Aucune donnee fictive n'est affichee. Reessayez quand Supabase est disponible.</p>
+              <p style={{ color: '#777', margin: '0 0 20px', fontSize: '14px' }}>Aucune donnée fictive n'est affichée. Réessayez dans quelques instants.</p>
               <button onClick={load} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)', color: '#d0d0d0', borderRadius: '8px', padding: '11px 15px', cursor: 'pointer', fontWeight: 700 }}>
                 <RefreshCw size={15} /> Reessayer
               </button>

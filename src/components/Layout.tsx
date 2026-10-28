@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
-import { Link, NavLink } from 'react-router-dom';
-import { Menu, X, ChevronRight, UserRound } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Link, NavLink, useLocation } from 'react-router-dom';
+import { Menu, X, ChevronRight, ChevronDown, UserRound } from 'lucide-react';
 import { useI18n } from '@/hooks/useI18n';
 import { ROUTE_PATHS, REGION_CONFIG, CATEGORY_CONFIG, MPL_STATS } from '@/lib/index';
 import type { Region, TournamentCategory, Language } from '@/lib/index';
 import { DotWaveBackground, DotDivider } from '@/components/DotWaveBackground';
-import { getSupabaseClient } from '@/lib/supabase';
+import { getSupabaseClient, IS_TRIAL_MODE } from '@/lib/supabase';
 
 // Mode public : lien Admin masqué dans la navigation (VITE_PUBLIC_MODE=true au build)
 const IS_PUBLIC_MODE = __IS_PUBLIC_BUILD__ || import.meta.env.VITE_PUBLIC_MODE === 'true';
@@ -143,6 +143,85 @@ export function GlassCard({
 }
 
 // ── Navbar ────────────────────────────────────────────────────────────────────
+type NavItem = { to: string; label: string };
+type NavEntry = NavItem | { label: string; items: NavItem[] };
+
+function navLinkStyle(isActive: boolean): React.CSSProperties {
+  return {
+    padding: '7px 14px', borderRadius: '8px', textDecoration: 'none',
+    fontSize: '14px', fontWeight: isActive ? 600 : 500,
+    color: isActive ? '#4ad569' : 'rgba(255,255,255,0.78)',
+    background: isActive ? 'rgba(74,213,105,0.08)' : 'transparent',
+    transition: 'color 0.2s ease, background 0.2s ease',
+    letterSpacing: '0.1px',
+    display: 'inline-flex', alignItems: 'center', gap: '4px',
+  };
+}
+
+function mobileLinkStyle(isActive: boolean, nested: boolean): React.CSSProperties {
+  return {
+    display: 'block', padding: nested ? '11px 10px 11px 22px' : '13px 10px', textDecoration: 'none',
+    color: isActive ? '#4ad569' : 'rgba(255,255,255,0.85)',
+    borderBottom: nested ? 'none' : '1px solid rgba(255,255,255,0.05)',
+    borderRadius: '8px',
+    background: isActive ? 'rgba(74,213,105,0.08)' : 'transparent',
+    fontWeight: isActive ? 600 : 400,
+  };
+}
+
+// Menu deroulant (desktop) : ouvert au clic ou au clavier, ferme sur Echap,
+// clic exterieur ou changement de page. Actif si une de ses pages est ouverte.
+function NavGroup({ label, items }: { label: string; items: NavItem[] }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  const location = useLocation();
+  const active = items.some(item => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`));
+  const menuId = `nav-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+
+  useEffect(() => { setOpen(false); }, [location.pathname]);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey); };
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }} onMouseLeave={() => setOpen(false)}>
+      <button
+        type="button"
+        aria-haspopup="true"
+        aria-expanded={open}
+        aria-controls={menuId}
+        onClick={() => setOpen(v => !v)}
+        onMouseEnter={() => setOpen(true)}
+        className={`mpl-nav-link${active ? ' active' : ''}`}
+        style={{ ...navLinkStyle(active), border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+      >
+        {label} <ChevronDown size={14} style={{ transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'none' }} />
+      </button>
+      {open && (
+        <div id={menuId} style={{
+          position: 'absolute', top: '100%', left: 0, paddingTop: '6px', minWidth: '190px', zIndex: 120,
+        }}>
+          <div style={{
+            background: 'rgba(12,12,12,0.98)', border: '1px solid rgba(74,213,105,0.18)', borderRadius: '12px',
+            padding: '6px', boxShadow: '0 16px 40px rgba(0,0,0,0.55)',
+          }}>
+            {items.map(item => (
+              <NavLink key={item.to} to={item.to} style={({ isActive }) => ({ ...navLinkStyle(isActive), display: 'flex', width: '100%', boxSizing: 'border-box' })}>
+                {item.label}
+              </NavLink>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Session joueur Supabase (lien magique) : le bouton du header passe de
 // "Se connecter" a "Mon espace" quand un joueur est connecte, et revient a
 // "Se connecter" a la deconnexion (signOut depuis l'Espace Joueur).
@@ -198,7 +277,7 @@ export function Navbar() {
     // en mesurant chaque lien jusqu'a ce que rien ne depasse. Seuil au menu
     // mobile releve en consequence (au lieu de 820px) pour que ce soit fiable
     // sur les deux versions (admin, plus chargee d'un lien, y compris).
-    const mediaQuery = window.matchMedia('(max-width: 1320px)');
+    const mediaQuery = window.matchMedia('(max-width: 1100px)');
     const syncMobile = () => {
       setIsMobile(mediaQuery.matches);
       if (!mediaQuery.matches) setOpen(false);
@@ -209,24 +288,29 @@ export function Navbar() {
   }, []);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia('(max-width: 1600px)');
+    const mediaQuery = window.matchMedia('(max-width: 1360px)');
     const syncCompact = () => setIsCompact(mediaQuery.matches);
     syncCompact();
     mediaQuery.addEventListener('change', syncCompact);
     return () => mediaQuery.removeEventListener('change', syncCompact);
   }, []);
 
-  const links = [
-    { to: ROUTE_PATHS.HOME,      label: t.nav.home      },
-    { to: ROUTE_PATHS.LEAGUE,    label: t.nav.league    },
-    { to: ROUTE_PATHS.REGIONS,   label: t.nav.regions   },
-    { to: ROUTE_PATHS.CLUBS,     label: t.nav.clubs     },
-    { to: ROUTE_PATHS.CALENDAR,  label: t.nav.calendar  },
-    { to: ROUTE_PATHS.RANKINGS,  label: t.nav.rankings  },
-    { to: ROUTE_PATHS.PLAYER_SPACE, label: t.nav.players },
-    { to: ROUTE_PATHS.RESULTS,   label: t.nav.results   },
-    { to: ROUTE_PATHS.HISTORY,   label: t.nav.history   },
-    { to: ROUTE_PATHS.GALLERY,   label: t.nav.gallery   },
+  // Navigation regroupee : 5 entrees au lieu de 10. Toutes les routes
+  // existantes restent accessibles (et leurs liens directs inchanges).
+  const navEntries: NavEntry[] = [
+    { label: t.nav.tournaments, items: [
+      { to: ROUTE_PATHS.CALENDAR, label: t.nav.calendar },
+      { to: ROUTE_PATHS.RESULTS,  label: t.nav.results  },
+    ] },
+    { to: ROUTE_PATHS.RANKINGS,     label: t.nav.rankings },
+    { to: ROUTE_PATHS.PLAYER_SPACE, label: t.nav.players  },
+    { to: ROUTE_PATHS.CLUBS,        label: t.nav.clubs    },
+    { label: t.nav.league, items: [
+      { to: ROUTE_PATHS.LEAGUE,  label: t.nav.presentation },
+      { to: ROUTE_PATHS.REGIONS, label: t.nav.regions },
+      { to: ROUTE_PATHS.HISTORY, label: t.nav.history },
+      { to: ROUTE_PATHS.GALLERY, label: t.nav.gallery },
+    ] },
   ];
 
   return (
@@ -289,26 +373,18 @@ export function Navbar() {
 
         {/* Desktop links */}
         <div style={{ display: isMobile ? 'none' : 'flex', gap: '2px', alignItems: 'center' }}>
-          {links.map(link => (
+          {navEntries.map(entry => ('items' in entry
+            ? <NavGroup key={entry.label} label={entry.label} items={entry.items} />
+            : (
             <NavLink
-              key={link.to}
-              to={link.to}
-              end={link.to === '/'}
+              key={entry.to}
+              to={entry.to}
               className={({ isActive }) => `mpl-nav-link${isActive ? ' active' : ''}`}
-              style={({ isActive }) => ({
-                padding: '7px 14px', borderRadius: '8px', textDecoration: 'none',
-                fontSize: '14px', fontWeight: isActive ? 600 : 500,
-                color: isActive ? '#4ad569' : 'rgba(255,255,255,0.72)',
-                background: isActive ? 'rgba(74,213,105,0.08)' : 'transparent',
-                transition: 'color 0.2s ease, background 0.2s ease',
-                letterSpacing: '0.1px',
-              })}
-              onMouseEnter={e => { if (!(e.currentTarget as HTMLElement).classList.contains('active')) { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.95)'; (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)'; } }}
-              onMouseLeave={e => { if (!(e.currentTarget as HTMLElement).classList.contains('active')) { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.72)'; (e.currentTarget as HTMLElement).style.background = 'transparent'; } }}
+              style={({ isActive }) => navLinkStyle(isActive)}
             >
-              {link.label}
+              {entry.label}
             </NavLink>
-          ))}
+          )))}
           {!IS_PUBLIC_MODE && (
             <NavLink
               to={ROUTE_PATHS.ADMIN}
@@ -400,23 +476,26 @@ export function Navbar() {
           >
             <UserRound size={16} /> {accountLabel} {signedIn && signedInDot}
           </Link>
-          {[...links, ...(!IS_PUBLIC_MODE ? [{ to: ROUTE_PATHS.ADMIN, label: t.nav.admin }] : [])].map(link => (
-            <NavLink
-              key={link.to}
-              to={link.to}
-              onClick={() => setOpen(false)}
-              style={({ isActive }) => ({
-                display: 'block', padding: '13px 10px', textDecoration: 'none',
-                color: isActive ? '#4ad569' : 'rgba(255,255,255,0.8)',
-                borderBottom: '1px solid rgba(255,255,255,0.05)',
-                borderRadius: '8px',
-                background: isActive ? 'rgba(74,213,105,0.08)' : 'transparent',
-                fontWeight: isActive ? 600 : 400,
-              })}
-            >
-              {link.label}
-            </NavLink>
-          ))}
+          {[
+            { to: ROUTE_PATHS.HOME, label: t.nav.home } as NavEntry,
+            ...navEntries,
+            ...(!IS_PUBLIC_MODE ? [{ to: ROUTE_PATHS.ADMIN, label: t.nav.admin } as NavEntry] : []),
+          ].map(entry => ('items' in entry
+            ? (
+              <div key={entry.label} role="group" aria-label={entry.label} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '6px 0' }}>
+                <div style={{ padding: '8px 10px 4px', color: '#6b7280', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px' }}>{entry.label}</div>
+                {entry.items.map(item => (
+                  <NavLink key={item.to} to={item.to} onClick={() => setOpen(false)} style={({ isActive }) => mobileLinkStyle(isActive, true)}>
+                    {item.label}
+                  </NavLink>
+                ))}
+              </div>
+            )
+            : (
+              <NavLink key={entry.to} to={entry.to} end={entry.to === '/'} onClick={() => setOpen(false)} style={({ isActive }) => mobileLinkStyle(isActive, false)}>
+                {entry.label}
+              </NavLink>
+            )))}
         </div>
       )}
     </nav>
@@ -713,7 +792,7 @@ export function Footer() {
               </a>
               <span style={{ color: '#333' }}>·</span>
               <span style={{ color: '#2a2a2a', fontSize: '11px' }}>
-                {lang === 'fr' ? 'Propulsé par Supabase · Saison 2026' : 'Powered by Supabase · Season 2026'}
+                {lang === 'fr' ? 'Saison 2026' : 'Season 2026'}
               </span>
             </div>
           </div>
@@ -725,14 +804,40 @@ export function Footer() {
 }
 
 // ── Page Layout ────────────────────────────────────────────────────────────────
+// Bandeau permanent de la version d'essai (VITE_TRIAL_MODE=true uniquement).
+function TrialBanner() {
+  // Les pages fixent leur titre (useSeo) apres ce composant : on re-prefixe a
+  // chaque changement du <title>.
+  useEffect(() => {
+    const prefix = () => { if (!document.title.startsWith('[ESSAI]')) document.title = `[ESSAI] ${document.title}`; };
+    prefix();
+    const title = document.querySelector('title');
+    if (!title) return;
+    const observer = new MutationObserver(prefix);
+    observer.observe(title, { childList: true, characterData: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <div role="status" style={{
+      position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 200,
+      background: '#f59e0b', color: '#0a0a0a', textAlign: 'center',
+      padding: '7px 12px', fontSize: '12px', fontWeight: 900, letterSpacing: '0.4px',
+      boxShadow: '0 -6px 20px rgba(0,0,0,0.45)',
+    }}>
+      VERSION D'ESSAI · non publiée · aucune écriture ni e-mail · données réelles en lecture seule
+    </div>
+  );
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ minHeight: '100vh', background: '#0a0a0a', color: 'white', fontFamily: 'Inter,sans-serif', minWidth: '360px' }}>
+    <div style={{ minHeight: '100vh', background: '#0a0a0a', color: 'white', fontFamily: 'Inter,sans-serif', minWidth: '360px', paddingBottom: IS_TRIAL_MODE ? '34px' : 0 }}>
       <Navbar />
       <main style={{ paddingTop: '64px' }}>
         {children}
       </main>
       <Footer />
+      {IS_TRIAL_MODE && <TrialBanner />}
     </div>
   );
 }

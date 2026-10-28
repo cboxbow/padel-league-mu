@@ -166,7 +166,7 @@ export function computeTournamentStatus(date: string, supabaseStatus?: string, s
     return diffDays < 21 ? 'open' : 'upcoming';
   }
   if (diffDays < 7)   return 'draw';      // tirage / inscriptions fermées
-  if (diffDays < 21)  return 'open';        // inscriptions ouvertes
+  if (diffDays < 21)  return 'open';        // inscriptions ouvertes (J-21 à J-8)
   return 'upcoming';                         // trop tôt pour s'inscrire
 }
 

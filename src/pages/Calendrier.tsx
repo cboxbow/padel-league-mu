@@ -66,7 +66,7 @@ const CAT_COLORS: Record<string, string> = {
 
 const STATUS_CONFIG: Record<string, { label_fr: string; label_en: string; color: string; bg: string }> = {
   upcoming:  { label_fr: 'À venir',       label_en: 'Upcoming',   color: '#60a5fa', bg: 'rgba(96,165,250,0.15)'  },
-  open:      { label_fr: 'Inscriptions',  label_en: 'Open',       color: '#4ad569', bg: 'rgba(74,213,105,0.15)'  },
+  open:      { label_fr: 'Inscriptions ouvertes', label_en: 'Open', color: '#4ad569', bg: 'rgba(74,213,105,0.15)'  },
   draw:      { label_fr: 'Tirage',        label_en: 'Draw',       color: '#f59e0b', bg: 'rgba(245,158,11,0.15)'  },
   ongoing:   { label_fr: 'En cours',      label_en: 'Ongoing',    color: '#f59e0b', bg: 'rgba(245,158,11,0.15)'  },
   completed: { label_fr: 'Terminé',       label_en: 'Completed',  color: '#a0a0a0', bg: 'rgba(160,160,160,0.15)' },
@@ -652,8 +652,8 @@ export default function Calendrier() {
   const stats = useMemo(() => ({
     upcoming:  filtered.filter(t => t.status === 'upcoming').length,
     open:      filtered.filter(t => t.status === 'open').length,
+    draw:      filtered.filter(t => t.status === 'draw').length,
     completed: filtered.filter(t => t.status === 'completed').length,
-
   }), [filtered]);
 
   const activeCount = [region, division, status].filter(f => f !== 'all').length
@@ -699,7 +699,7 @@ export default function Calendrier() {
               {lang === 'fr' ? '📅 Calendrier des Tournois' : '📅 Tournament Calendar'}
             </h1>
             <p style={{ color: '#606060', fontSize: '14px', margin: '0 0 20px' }}>
-              {lang === 'fr' ? 'Saison 2026 · source Supabase en temps réel' : 'Season 2026 · live Supabase data'}
+              {lang === 'fr' ? 'Saison 2026 · un tableau = une épreuve (ex. M100 Hommes) ; un même tournoi peut compter plusieurs tableaux.' : 'Season 2026 · one draw = one event (e.g. M100 Men); a tournament can have several draws.'}
             </p>
             <button
               onClick={() => navigate(ROUTE_PATHS.SEEDING)}
@@ -712,13 +712,14 @@ export default function Calendrier() {
             {/* Stats rapides */}
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
               {[
-                { label: lang === 'fr' ? 'Total'    : 'Total',     val: total,             color: '#a0a0a0' },
-                { label: lang === 'fr' ? 'À venir'      : 'Upcoming',   val: stats.upcoming,  color: '#60a5fa' },
-                { label: lang === 'fr' ? 'Inscriptions' : 'Open',       val: stats.open,      color: '#4ad569' },
-                { label: lang === 'fr' ? 'Terminés'     : 'Completed',  val: stats.completed, color: '#808080' },
+                { label: lang === 'fr' ? 'Tableaux'          : 'Draws',        val: total,             color: '#a0a0a0', hint: lang === 'fr' ? 'Nombre de tableaux affichés avec les filtres actuels' : 'Draws shown with current filters' },
+                { label: lang === 'fr' ? 'À venir (+ de 21 j)' : 'Upcoming (21+ days)', val: stats.upcoming, color: '#60a5fa', hint: lang === 'fr' ? 'Inscriptions pas encore ouvertes : ouverture 21 jours avant le tournoi' : 'Registration opens 21 days before the tournament' },
+                { label: lang === 'fr' ? 'Inscriptions ouvertes (J-21 à J-8)' : 'Open (D-21 to D-8)', val: stats.open, color: '#4ad569', hint: lang === 'fr' ? 'Inscriptions ouvertes de 21 à 8 jours avant le tournoi' : 'Registration open from 21 to 8 days before the tournament' },
+                { label: lang === 'fr' ? 'Tirage (J-7)'      : 'Draw (D-7)',   val: stats.draw,        color: '#f59e0b', hint: lang === 'fr' ? 'Inscriptions closes, tirage en préparation' : 'Registration closed, draw in progress' },
+                { label: lang === 'fr' ? 'Terminés'          : 'Completed',    val: stats.completed,   color: '#808080', hint: lang === 'fr' ? 'Tableaux joués' : 'Played draws' },
 
-              ].map(({ label, val, color }) => (
-                <div key={label} style={{
+              ].map(({ label, val, color, hint }) => (
+                <div key={label} title={hint} style={{
                   background: 'rgba(255,255,255,0.04)', border: `1px solid ${color}22`,
                   borderRadius: '10px', padding: '7px 14px', display: 'flex', alignItems: 'center', gap: '8px',
                 }}>

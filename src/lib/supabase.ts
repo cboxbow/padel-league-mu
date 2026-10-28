@@ -21,6 +21,36 @@ function normalizeSupabaseUrl(value: string): string {
 const SUPABASE_URL  = normalizeSupabaseUrl(import.meta.env.VITE_SUPABASE_URL ?? '');
 const SUPABASE_KEY  = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() ?? '';
 
+// ── Version d'essai (VITE_TRIAL_MODE=true) ───────────────────────────────────
+// La version d'essai lit les donnees publiques reelles mais ne doit JAMAIS
+// ecrire : toute requete autre que GET/HEAD (insert, update, delete, rpc,
+// connexion par lien magique...) est refusee localement, sans appel reseau.
+export const IS_TRIAL_MODE = import.meta.env.VITE_TRIAL_MODE === 'true';
+export const TRIAL_WRITE_BLOCKED_MESSAGE = "VERSION D'ESSAI : action desactivee (aucune ecriture, aucun e-mail).";
+
+const trialFetch: typeof fetch = (input, init) => {
+  const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase();
+  if (method === 'GET' || method === 'HEAD') return fetch(input, init);
+  return Promise.resolve(new Response(
+    JSON.stringify({ message: TRIAL_WRITE_BLOCKED_MESSAGE, code: 'TRIAL_MODE' }),
+    { status: 403, headers: { 'Content-Type': 'application/json' } },
+  ));
+};
+
+// Filet de securite : les appels fetch() directs vers Supabase (hors client)
+// passent aussi par le meme blocage.
+if (IS_TRIAL_MODE && typeof window !== 'undefined' && SUPABASE_URL) {
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase();
+    if (url.startsWith(SUPABASE_URL) && method !== 'GET' && method !== 'HEAD') {
+      return trialFetch(input, init);
+    }
+    return nativeFetch(input, init);
+  };
+}
+
 // ── Client singleton ──────────────────────────────────────────────────────────
 let _client: SupabaseClient | null = null;
 
@@ -28,6 +58,7 @@ function buildClient(): SupabaseClient | null {
   if (!SUPABASE_URL || !SUPABASE_KEY) return null;
   if (_client) return _client;
   _client = createClient(SUPABASE_URL, SUPABASE_KEY, {
+    ...(IS_TRIAL_MODE ? { global: { fetch: trialFetch } } : {}),
     auth: {
       autoRefreshToken: true,
       persistSession: true,       // session stockée dans localStorage par Supabase lui-même

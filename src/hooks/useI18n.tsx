@@ -7,13 +7,13 @@ const translations = {
   fr: {
     nav: {
       home: 'Accueil', league: 'La Ligue', regions: 'Régions',
-      clubs: 'Clubs', calendar: 'Calendrier', rankings: 'Classements', players: 'Joueurs', results: 'Résultats', history: 'Historique', gallery: 'Galerie', admin: 'Admin', login: 'Se connecter', mySpace: 'Mon espace',
+      clubs: 'Clubs', calendar: 'Calendrier', rankings: 'Classements', players: 'Joueurs', results: 'Résultats', history: 'Historique', gallery: 'Galerie', admin: 'Admin', login: 'Se connecter', mySpace: 'Mon espace', tournaments: 'Tournois', presentation: 'Présentation',
     },
     hero: {
       subtitle: 'AfrAsia Bank Padel League — Saison 2026',
       tagline: 'La compétition officielle de padel à Maurice',
       cta1: 'Découvrir la Ligue', cta2: 'Voir les Tournois',
-      stats: { clubs: 'Clubs affiliés', courts: 'Terrains', tournaments: 'Tournois', regions: 'Régions' },
+      stats: { clubs: 'Clubs affiliés', courts: 'Terrains', tournaments: 'Tableaux programmés en 2026', regions: 'Régions' },
     },
     league: {
       title: 'La Ligue', badge: 'Notre Vision',
@@ -83,13 +83,13 @@ const translations = {
   en: {
     nav: {
       home: 'Home', league: 'The League', regions: 'Regions',
-      clubs: 'Clubs', calendar: 'Calendar', rankings: 'Rankings', players: 'Players', results: 'Results', history: 'History', gallery: 'Gallery', admin: 'Admin', login: 'Sign in', mySpace: 'My space',
+      clubs: 'Clubs', calendar: 'Calendar', rankings: 'Rankings', players: 'Players', results: 'Results', history: 'History', gallery: 'Gallery', admin: 'Admin', login: 'Sign in', mySpace: 'My space', tournaments: 'Tournaments', presentation: 'About the league',
     },
     hero: {
       subtitle: 'AfrAsia Bank Padel League — Season 2026',
       tagline: 'The official padel competition in Mauritius',
       cta1: 'Discover the League', cta2: 'View Tournaments',
-      stats: { clubs: 'Affiliated clubs', courts: 'Courts', tournaments: 'Tournaments', regions: 'Regions' },
+      stats: { clubs: 'Affiliated clubs', courts: 'Courts', tournaments: 'Draws scheduled in 2026', regions: 'Regions' },
     },
     league: {
       title: 'The League', badge: 'Our Vision',

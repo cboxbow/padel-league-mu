@@ -630,10 +630,10 @@ export default function Galerie() {
   const clearFilters = () => { setDivFilter('all'); setCatFilter('all'); setRegFilter('all'); setSearch(''); };
 
   const sourceBadge = {
-    ok:           { label: '🟢 Supabase',     color: '#4ade80' },
-    error:        { label: '🔴 Erreur',        color: '#ef4444' },
-    empty:        { label: '🟡 Vide',          color: '#f59e0b' },
-    unconfigured: { label: '⚪ Non configuré', color: '#555'    },
+    ok:           { label: '● À jour',        color: '#4ade80' },
+    error:        { label: '● Indisponible',  color: '#ef4444' },
+    empty:        { label: '● Aucune photo',  color: '#f59e0b' },
+    unconfigured: { label: '● Indisponible',  color: '#555'    },
     loading:      null,
   }[pageState.kind];
 

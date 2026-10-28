@@ -116,7 +116,8 @@ function normalizeName(value: string) {
 }
 
 function formatNumber(value: number | undefined) {
-  return Math.ceil(Number(value ?? 0) - 1e-9).toLocaleString('fr-FR').replace(/\u202f/g, ' ');
+  // `|| 0` : Math.ceil(0 - 1e-9) vaut -0, affiche "-0" pendant le chargement.
+  return (Math.ceil(Number(value ?? 0) - 1e-9) || 0).toLocaleString('fr-FR').replace(/\u202f/g, ' ');
 }
 
 function tournamentDateValue(tournament: TournamentData) {
@@ -175,8 +176,14 @@ function activeRequestStatus(status?: string | null) {
 // Regle MPL : inscriptions fermees des la phase tirage (7 jours avant le
 // tournoi), puis le jour du tournoi. Meme regle que le calendrier.
 const REGISTRATION_CLOSED_LABEL = 'Inscriptions closes';
+const REGISTRATION_NOT_YET_LABEL = 'Ouverture à J-21';
+
+function registrationBlockedLabel(tournament: TournamentData) {
+  return tournament.status === 'upcoming' ? REGISTRATION_NOT_YET_LABEL : REGISTRATION_CLOSED_LABEL;
+}
 
 function registrationClosedReason(tournament: TournamentData): string | null {
+  if (tournament.status === 'upcoming') return 'Inscriptions pas encore ouvertes : ouverture 21 jours avant le tournoi.';
   if (tournament.status === 'draw') return 'Tirage en preparation : les inscriptions ferment 7 jours avant le tournoi.';
   if (tournament.status === 'ongoing') return 'Tournoi en cours : les inscriptions sont fermees.';
   return null;
@@ -200,8 +207,18 @@ function weekStartKey(value: string) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
+// Statuts d eligibilite individuelle affiches au joueur. Les seuils et les
+// exceptions (individualAccessRules / pairAccessRules) sont inchanges : seuls
+// les libelles sont harmonises. La validation de la PAIRE reste une etape
+// separee (pairEligibilityFor).
+const ELIGIBLE = 'Éligible';
+const NOT_ELIGIBLE = 'Non éligible';
+const INFO_MISSING = 'Informations à compléter';
+const VALIDATION_REQUIRED = 'Validation requise';
+const NO_PROFILE = 'Profil requis';
+
 function eligibilityFor(profile: PlayerProfile | undefined, tournament: TournamentData) {
-  if (!profile) return { label: 'Profil requis', tone: '#a0a0a0', detail: 'Selectionne ton profil pour evaluer les conditions d acces.' };
+  if (!profile) return { label: NO_PROFILE, tone: '#a0a0a0', detail: 'Sélectionne un joueur pour évaluer les conditions d\x27accès.' };
 
   const targetDivision = tournamentDivision(tournament);
   const hasTargetDivision = targetDivision === 'all' || profile.rankings.some(r => r.division === targetDivision);
@@ -213,28 +230,38 @@ function eligibilityFor(profile: PlayerProfile | undefined, tournament: Tourname
     .sort((a, b) => a - b)[0];
 
   if (tournament.status === 'cancelled') {
-    return { label: 'Annule', tone: '#ef4444', detail: 'Tournoi annule selon le calendrier officiel MPL.' };
+    return { label: 'Annulé', tone: '#ef4444', detail: 'Tournoi annulé selon le calendrier officiel MPL.' };
   }
 
   if (tournament.status === 'completed') {
-    return { label: 'Termine', tone: '#a0a0a0', detail: 'Resultats disponibles si publies.' };
+    return { label: 'Terminé', tone: '#a0a0a0', detail: 'Résultats disponibles s\x27ils sont publiés.' };
   }
 
-  const closed = registrationClosedReason(tournament);
+  const closed = tournament.status === 'upcoming' ? null : registrationClosedReason(tournament);
   if (closed) {
     return { label: REGISTRATION_CLOSED_LABEL, tone: '#a0a0a0', detail: closed };
   }
 
+  // Epreuves junior (U11/U13/U15) : l age n est pas public. Sans classement
+  // junior, l eligibilite ne peut pas etre confirmee (et l epreuve n est pas
+  // proposee comme compatible) ; avec un classement junior, la categorie d age
+  // reste a confirmer par l admin.
+  if (targetDivision === 'junior') {
+    return profile.rankings.some(r => r.division === 'junior')
+      ? { label: VALIDATION_REQUIRED, tone: '#f59e0b', detail: 'Épreuve junior : la catégorie d\x27âge (U11, U13, U15) sera confirmée par l\x27admin.' }
+      : { label: INFO_MISSING, tone: '#a0a0a0', detail: 'Épreuve junior : l\x27âge de ce joueur n\x27est pas connu, l\x27éligibilité junior ne peut pas être confirmée.' };
+  }
+
   if (targetDivision === 'mixed') {
-    return { label: 'Paire mixte', tone: '#8b5cf6', detail: 'Ouvert avec partenaire compatible et validation de la paire.' };
+    return { label: ELIGIBLE, tone: '#4ad569', detail: 'Épreuve mixte : la paire (1 homme + 1 dame) sera vérifiée à l\x27étape suivante.' };
   }
 
   if (targetDivision === 'women' && hasMenRanking && !hasWomenRanking) {
-    return { label: 'Non eligible', tone: '#ef4444', detail: 'Un joueur Hommes ne peut pas participer en division Dames.' };
+    return { label: NOT_ELIGIBLE, tone: '#ef4444', detail: 'Un joueur de la division Hommes ne peut pas participer en division Dames.' };
   }
 
   if (!hasTargetDivision) {
-    return { label: 'A valider', tone: '#f59e0b', detail: 'Profil classe dans une autre division, validation admin requise.' };
+    return { label: VALIDATION_REQUIRED, tone: '#f59e0b', detail: 'Joueur classé dans une autre division : validation par l\x27admin requise.' };
   }
 
   if ((targetDivision === 'men' || targetDivision === 'women') && ['M25', 'M50', 'M100', 'M250'].includes(tournament.category)) {
@@ -243,53 +270,60 @@ function eligibilityFor(profile: PlayerProfile | undefined, tournament: Tourname
 
     if (individualLimit && bestRankForDivision && bestRankForDivision < individualLimit) {
       return {
-        label: 'Hors seuil',
+        label: NOT_ELIGIBLE,
         tone: '#ef4444',
-        detail: `Cette categorie est reservee aux joueurs classes #${individualLimit} ou au-dela. Rang actuel: #${bestRankForDivision}.`,
+        detail: `Catégorie réservée aux joueurs classés #${individualLimit} ou au-delà. Rang actuel : #${bestRankForDivision}.`,
       };
     }
 
     if (individualLimit && bestRankForDivision && bestRankForDivision >= individualLimit) {
       return {
-        label: 'Indiv. OK',
+        label: ELIGIBLE,
         tone: '#4ad569',
-        detail: `Rang individuel #${bestRankForDivision} valide. La paire devra respecter le cumul minimum #${pairLimit}.`,
+        detail: `Rang individuel #${bestRankForDivision} valide. La paire devra respecter le cumul minimum #${pairLimit} (contrôle à l'étape suivante).`,
       };
     }
 
     if (pairLimit && !individualLimit) {
       const partnerNeeded = bestRankForDivision ? Math.max(1, pairLimit - bestRankForDivision) : pairLimit;
       return {
-        label: 'Paire requise',
-        tone: '#f59e0b',
+        label: ELIGIBLE,
+        tone: '#4ad569',
         detail: bestRankForDivision
-          ? `Cumul paire minimum #${pairLimit}. Avec ton rang #${bestRankForDivision}, partenaire requis #${partnerNeeded} ou au-dela.`
-          : `Cumul paire minimum #${pairLimit}. Choisis un joueur pour calculer le partenaire requis.`,
+          ? `Pas de seuil individuel. Cumul de la paire minimum #${pairLimit} : avec le rang #${bestRankForDivision}, partenaire classé #${partnerNeeded} ou au-delà.`
+          : `Pas de seuil individuel. Cumul de la paire minimum #${pairLimit}, contrôlé à l'étape suivante.`,
       };
     }
 
     return {
-      label: 'A verifier',
-      tone: '#ef4444',
+      label: INFO_MISSING,
+      tone: '#a0a0a0',
       detail: individualLimit
-        ? `Rang requis: Top ${individualLimit} individuel. Rang actuel #${bestRankForDivision ?? '-'}.`
-        : `Controle paire requis: cumul minimum Top ${pairLimit}.`,
+        ? `Rang requis : #${individualLimit} ou au-delà. Rang de ce joueur non disponible dans cette division.`
+        : `Contrôle de la paire requis : cumul minimum #${pairLimit}.`,
     };
   }
 
   if (['M500', 'M1000'].includes(tournament.category)) {
     return {
-      label: 'Open',
+      label: ELIGIBLE,
       tone: '#4ad569',
-      detail: 'Tournoi ouvert aux licencies. Acceptation selon places disponibles et ordre de classement.',
+      detail: 'Tournoi open, ouvert aux licenciés. Acceptation selon les places disponibles et l\x27ordre de classement.',
     };
   }
 
-  return { label: 'Eligible', tone: '#4ad569', detail: 'Inscription possible selon places disponibles.' };
+  return { label: ELIGIBLE, tone: '#4ad569', detail: 'Inscription possible selon les places disponibles.' };
 }
 
+// Droit de PREPARER une demande (inchange : seuls les cas refuses avant le sont
+// encore ; l admin valide ensuite).
 function canPrepareRegistration(label: string) {
-  return !['Non eligible', 'Hors seuil', 'Termine', 'Annule', 'Profil requis', REGISTRATION_CLOSED_LABEL].includes(label);
+  return ![NOT_ELIGIBLE, 'Terminé', 'Annulé', NO_PROFILE, REGISTRATION_CLOSED_LABEL].includes(label);
+}
+
+// Tournois presentes comme « compatibles » avec le joueur affiche.
+function isCompatible(label: string) {
+  return label === ELIGIBLE || label === VALIDATION_REQUIRED;
 }
 
 function rankingForDivision(profile: PlayerProfile | undefined, division: DivisionKey | 'all') {
@@ -328,7 +362,7 @@ function pairEligibilityFor(
   }
   const closed = tournament.status === 'completed' ? 'Tournoi termine : les inscriptions sont fermees.' : registrationClosedReason(tournament);
   if (closed) {
-    return { label: REGISTRATION_CLOSED_LABEL, tone: '#a0a0a0', detail: closed, allowed: false };
+    return { label: registrationBlockedLabel(tournament), tone: '#a0a0a0', detail: closed, allowed: false };
   }
   if (!partner) {
     return { label: 'Partenaire requis', tone: '#f59e0b', detail: 'Choisis ton partenaire pour confirmer l eligibilite de la paire.', allowed: false };
@@ -592,11 +626,6 @@ export default function EspaceJoueur() {
       .slice(0, 8);
   }, [profiles, query, divisionFilter]);
 
-  const selectedProfile = useMemo(() => {
-    if (selectedKey) return profiles.find(profile => profile.key === selectedKey);
-    return filteredProfiles[0] ?? profiles[0];
-  }, [profiles, filteredProfiles, selectedKey]);
-
   // Cle du profil de classement lie au compte authentifie (email+licence),
   // independante du profil actuellement parcouru via la recherche. Sert a
   // s'assurer qu'on ne prepare jamais une inscription pour un autre joueur
@@ -605,6 +634,14 @@ export default function EspaceJoueur() {
     if (!linkedPlayer) return '';
     return normalizeName(`${linkedPlayer.first_name ?? ''} ${linkedPlayer.last_name ?? ''}`.trim());
   }, [linkedPlayer]);
+
+  // Aucun joueur n'est selectionne arbitrairement : profil choisi dans la
+  // recherche, sinon celui du compte connecte, sinon aucun (etat vide).
+  const selectedProfile = useMemo(() => {
+    if (selectedKey) return profiles.find(profile => profile.key === selectedKey);
+    if (authenticatedProfileKey) return profiles.find(profile => profile.key === authenticatedProfileKey);
+    return undefined;
+  }, [profiles, selectedKey, authenticatedProfileKey]);
   const isViewingOwnProfile = !!accountEmail
     && !!authenticatedProfileKey
     && selectedProfile?.key === authenticatedProfileKey;
@@ -622,7 +659,7 @@ export default function EspaceJoueur() {
   // Inscriptions ouvertes et, si un profil est choisi, accessibles a ce profil.
   const openForYou = useMemo(() => upcomingPool
     .filter(isRegistrationOpen)
-    .filter(t => !selectedProfile || canPrepareRegistration(eligibilityFor(selectedProfile, t).label)),
+    .filter(t => !selectedProfile || isCompatible(eligibilityFor(selectedProfile, t).label)),
   [upcomingPool, selectedProfile]);
 
   // Tournois de la semaine dont les inscriptions sont deja closes (tirage, en
@@ -630,7 +667,7 @@ export default function EspaceJoueur() {
   // club, meme jour et meme categorie forment une seule pastille.
   const closedSoonTournaments = useMemo(() => {
     const groups: { key: string; tournament: TournamentData; name: string; divisions: string[] }[] = [];
-    for (const t of upcomingPool.filter(item => registrationClosedReason(item) !== null)) {
+    for (const t of upcomingPool.filter(item => item.status === 'draw' || item.status === 'ongoing')) {
       const key = `${t.date}|${t.category}|${t.club_name}`;
       const division = /\(Dames\)/i.test(t.name) ? 'D' : /\(Hommes\)/i.test(t.name) ? 'H' : '';
       const existing = groups.find(group => group.key === key);
@@ -665,7 +702,7 @@ export default function EspaceJoueur() {
   const allUpcomingTournaments = useMemo(() => upcomingPool
     .filter(t => upcomingCategoryFilter === 'all' || t.category === upcomingCategoryFilter)
     .filter(t => !onlyOpenFilter || isRegistrationOpen(t))
-    .filter(t => !onlyEligibleFilter || !selectedProfile || canPrepareRegistration(eligibilityFor(selectedProfile, t).label)),
+    .filter(t => !onlyEligibleFilter || !selectedProfile || isCompatible(eligibilityFor(selectedProfile, t).label)),
   [upcomingPool, upcomingCategoryFilter, onlyOpenFilter, onlyEligibleFilter, selectedProfile]);
 
   const upcomingWeeks = useMemo(() => {
@@ -1044,6 +1081,10 @@ export default function EspaceJoueur() {
       setAuthMessage(`Tu consultes le classement de ${selectedProfile.name}, pas ton propre profil. Recherche ton nom pour preparer ta propre inscription.`);
       return;
     }
+    if (tournament.status === 'upcoming') {
+      setAuthMessage('Inscriptions pas encore ouvertes : ouverture 21 jours avant le tournoi.');
+      return;
+    }
     if (!canPrepareRegistration(label)) {
       setAuthMessage('Ce tournoi n est pas disponible pour ce profil.');
       return;
@@ -1172,17 +1213,20 @@ export default function EspaceJoueur() {
       <button
         type="button"
         className={`registration-button${compact ? ' compact' : ''}`}
-        disabled={!accountEmail || !isViewingOwnProfile || !canPrepareRegistration(label) || checkingExistingRequest}
+        disabled={!accountEmail || !isViewingOwnProfile || tournament.status === 'upcoming' || !canPrepareRegistration(label) || checkingExistingRequest}
+        title={tournament.status === 'upcoming' ? registrationClosedReason(tournament) ?? undefined : undefined}
         onClick={() => prepareRegistration(tournament, label)}
       >
         {!accountEmail
           ? 'Connexion requise'
           : !isViewingOwnProfile
-            ? 'Ce n est pas ton profil'
+            ? 'Réservé au joueur connecté'
           : checkingExistingRequest
-            ? 'Controle...'
+            ? 'Contrôle…'
+          : tournament.status === 'upcoming' && canPrepareRegistration(label)
+            ? REGISTRATION_NOT_YET_LABEL
           : canPrepareRegistration(label)
-            ? 'Preparer inscription'
+            ? "Préparer l'inscription"
             : label === REGISTRATION_CLOSED_LABEL
               ? REGISTRATION_CLOSED_LABEL
               : 'Non disponible'}
@@ -1195,28 +1239,26 @@ export default function EspaceJoueur() {
       <section className="player-space">
         <div className="player-hero">
           <div className="hero-copy">
-            <div className="eyebrow"><Sparkles size={14} /> Espace Joueur MPL</div>
-            <h1>Ton espace MPL</h1>
-            <p>Profil joueur, Ranking Top 8, historique et eligibilite tournoi dans un seul espace.</p>
+            <div className="eyebrow"><Sparkles size={14} /> Espace joueurs MPL</div>
+            <h1>Joueurs</h1>
+            <p>Consulte le profil public d'un joueur : classement Top 8, divisions et tournois compatibles. Connecte-toi pour gérer ton propre profil et tes inscriptions.</p>
             <div className="hero-flow">
               <span><i /> Profil</span>
               <span><i /> Top 8</span>
-              <span><i /> Eligibilite</span>
+              <span><i /> Éligibilité</span>
               <span><i /> Inscription</span>
             </div>
           </div>
           <div className="hero-metrics">
             <div>
-              <span className={`source-pill source-${liveSource}`}>
-                {liveSource === 'supabase' ? 'Donnees live' : liveSource === 'csv' ? 'Donnees CSV' : 'Mode local'}
-              </span>
-              <strong>{formatNumber(profiles.length)}</strong>
-              <small>profils detectes</small>
+              <span className="source-pill source-supabase">Joueurs</span>
+              <strong>{loadingRankings ? '…' : formatNumber(profiles.length)}</strong>
+              <small>{loadingRankings ? 'chargement…' : 'joueurs référencés'}</small>
             </div>
             <div>
-              <span className="source-pill source-supabase">Top 8</span>
-              <strong>12M</strong>
-              <small>regle active</small>
+              <span className="source-pill source-supabase">Classement</span>
+              <strong>Top 8</strong>
+              <small>meilleurs résultats sur 12 mois</small>
             </div>
           </div>
         </div>
@@ -1230,7 +1272,8 @@ export default function EspaceJoueur() {
                 setQuery(event.target.value);
                 setSelectedKey('');
               }}
-              placeholder="Rechercher ton nom..."
+              placeholder="Rechercher un joueur..."
+              aria-label="Rechercher un joueur"
             />
           </div>
           {query.trim() && (
@@ -1246,7 +1289,7 @@ export default function EspaceJoueur() {
                   <span>#{profile.bestRank} - {formatNumber(profile.bestPoints)} pts</span>
                 </button>
               )) : (
-                <div className="search-empty">Aucun joueur trouve pour "{query.trim()}".</div>
+                <div className="search-empty">Aucun joueur trouvé pour « {query.trim()} ».</div>
               )}
             </div>
           )}
@@ -1517,6 +1560,16 @@ export default function EspaceJoueur() {
           </div>
         )}
 
+        {!selectedProfile && !loadingRankings && (
+          <div className="player-panel empty-selection" role="status">
+            <Search size={20} />
+            <div>
+              <strong>Recherche et sélectionne un joueur pour consulter son profil.</strong>
+              <span>Tape un nom dans la recherche ci-dessus{accountEmail ? '' : ', ou connecte-toi pour afficher ton propre profil'}.</span>
+            </div>
+          </div>
+        )}
+
         <div className="player-grid player-grid-summary">
           <div className="player-panel player-summary-card">
             <div className="section-title">
@@ -1535,9 +1588,15 @@ export default function EspaceJoueur() {
                   </div>
                 </div>
                 <div className="summary-status">
-                  <span><i /> {accountEmail ? 'Compte connecte' : 'Compte a connecter'}</span>
-                  <span><i /> {linkedPlayer ? 'Licence verifiee' : 'Licence a verifier'}</span>
-                  <span><i /> {selectedProfile.played || 0} tournois joues</span>
+                  {isViewingOwnProfile ? (
+                    <>
+                      <span><i /> Compte connecté</span>
+                      <span><i /> {linkedPlayer?.license_no ? 'Licence vérifiée' : 'Licence à vérifier'}</span>
+                    </>
+                  ) : (
+                    <span><i /> Profil public consulté</span>
+                  )}
+                  <span><i /> {selectedProfile.played ? `${selectedProfile.played} tournoi${selectedProfile.played > 1 ? 's' : ''} joué${selectedProfile.played > 1 ? 's' : ''} sur 12 mois` : 'Aucun tournoi publié sur 12 mois'}</span>
                 </div>
                 <div className="summary-divisions">
                   {selectedProfile.rankings.map(ranking => (
@@ -1555,14 +1614,14 @@ export default function EspaceJoueur() {
                     document.getElementById('tournois-eligibles')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                   }}
                 >
-                  Voir mes tournois compatibles <ArrowRight size={15} />
+                  {isViewingOwnProfile ? 'Voir mes tournois compatibles' : 'Voir les tournois compatibles avec ce joueur'} <ArrowRight size={15} />
                 </a>
                 <p className="summary-help">
-                  Pour changer de profil, utilise la recherche en haut de page.
+                  {isViewingOwnProfile ? 'Ce profil est associé à ton compte.' : 'Pour consulter un autre joueur, utilise la recherche en haut de page.'}
                 </p>
               </>
             ) : (
-              <p className="muted">Recherche ton nom pour charger ton parcours MPL.</p>
+              <p className="muted">Recherche et sélectionne un joueur pour consulter son profil.</p>
             )}
           </div>
 
@@ -1571,7 +1630,7 @@ export default function EspaceJoueur() {
               <>
                 <div className="profile-head">
                   <div>
-                    <span className="eyebrow compact">Datasheet joueur</span>
+                    <span className="eyebrow compact">{isViewingOwnProfile ? 'Mon profil' : 'Profil public'}</span>
                     <h2>{selectedProfile.name}</h2>
                     <p>{selectedProfile.divisions.join(' / ')}</p>
                   </div>
@@ -1583,8 +1642,8 @@ export default function EspaceJoueur() {
                 <div className="stat-grid">
                   <div><b>#{selectedProfile.bestRank}</b><span>Meilleur rang</span></div>
                   <div><b>{formatNumber(selectedProfile.bestPoints)}</b><span>Points Top 8</span></div>
-                  <div><b>{selectedProfile.rankings.length}</b><span>Divisions actives</span></div>
-                  <div><b>{selectedProfile.played || '-'}</b><span>Tournois joues</span></div>
+                  <div><b>{selectedProfile.rankings.length}</b><span>Divisions classées</span></div>
+                  <div><b>{selectedProfile.played || 0}</b><span>Tournois joués (12 mois)</span></div>
                 </div>
 
                 <div className="ranking-strip">
@@ -1598,24 +1657,24 @@ export default function EspaceJoueur() {
                 </div>
               </>
             ) : (
-              <p className="muted">Selectionne un joueur pour afficher son profil.</p>
+              <p className="muted">Recherche et sélectionne un joueur pour consulter son profil.</p>
             )}
           </div>
         </div>
 
         <div id="tournois-eligibles" className="player-panel registration-panel">
           <div className="section-title split">
-            <span><CalendarCheck size={18} /> Tournois a venir et eligibilite</span>
-            <small>
+            <span><CalendarCheck size={18} /> Tournois à venir et éligibilité</span>
+            <small title="Un tableau = une épreuve (ex. M100 Hommes) ; un même tournoi peut compter plusieurs tableaux. Les tableaux à venir incluent ceux en phase de tirage.">
               {tournamentsLoading
-                ? 'Chargement...'
-                : `${openForYou.length} ouverts${selectedProfile ? ' pour toi' : ''} sur ${upcomingPool.length} a venir`}
+                ? 'Chargement…'
+                : `${openForYou.length} tableau${openForYou.length > 1 ? 'x' : ''} ouvert${openForYou.length > 1 ? 's' : ''}${selectedProfile ? (isViewingOwnProfile ? ' compatibles avec ton profil' : ' compatibles avec ce joueur') : ' aux inscriptions (de J-21 à J-8)'} · ${upcomingPool.length} tableaux à venir`}
             </small>
           </div>
           <div className="registration-intro">
-            <span><i /> Les opens restent ouverts aux licencies</span>
-            <span><i /> Les categories M25/M50/M100/M250 appliquent les seuils MPL</span>
-            <span><i /> La paire sera controlee a l etape suivante</span>
+            <span><i /> M500 et M1000 : ouverts aux licenciés</span>
+            <span><i /> M25, M50, M100, M250 : seuils de classement MPL</span>
+            <span><i /> Éligibilité individuelle ici, validation de la paire à l'étape suivante</span>
           </div>
           <div className="upcoming-toggle">
             <button
@@ -1623,14 +1682,14 @@ export default function EspaceJoueur() {
               className={`upcoming-toggle-btn ${!showAllUpcoming ? 'active' : ''}`}
               onClick={() => setShowAllUpcoming(false)}
             >
-              {selectedProfile ? 'Ouverts pour toi' : 'Ouverts aux inscriptions'}
+              {selectedProfile ? (isViewingOwnProfile ? 'Ouverts pour toi' : 'Ouverts pour ce joueur') : 'Demandes possibles'}
             </button>
             <button
               type="button"
               className={`upcoming-toggle-btn ${showAllUpcoming ? 'active' : ''}`}
               onClick={() => setShowAllUpcoming(true)}
             >
-              Voir tous les tournois a venir
+              Voir tous les tournois à venir
             </button>
             {showAllUpcoming && (
               <>
@@ -1639,7 +1698,7 @@ export default function EspaceJoueur() {
                   value={upcomingCategoryFilter}
                   onChange={event => setUpcomingCategoryFilter(event.target.value)}
                 >
-                  <option value="all">Toutes categories</option>
+                  <option value="all">Toutes catégories</option>
                   {upcomingCategories.map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
@@ -1657,10 +1716,10 @@ export default function EspaceJoueur() {
                   className={`upcoming-filter-chip ${onlyEligibleFilter && selectedProfile ? 'active' : ''}`}
                   aria-pressed={onlyEligibleFilter && !!selectedProfile}
                   disabled={!selectedProfile}
-                  title={selectedProfile ? undefined : 'Selectionne ton profil pour filtrer selon ton eligibilite'}
+                  title={selectedProfile ? undefined : 'Sélectionne un joueur pour filtrer selon son éligibilité'}
                   onClick={() => setOnlyEligibleFilter(value => !value)}
                 >
-                  Eligibles pour moi
+                  {isViewingOwnProfile ? 'Compatibles avec mon profil' : 'Compatibles avec ce joueur'}
                 </button>
               </>
             )}
@@ -1708,10 +1767,10 @@ export default function EspaceJoueur() {
               <p className="muted upcoming-empty">
                 {tournamentsLoading
                   ? 'Chargement des tournois...'
-                  : `Aucun tournoi ouvert${selectedProfile ? ' pour ce profil' : ''} pour le moment.`}{' '}
+                  : `Aucun tableau ouvert${selectedProfile ? ' compatible avec ce joueur' : ''} pour le moment.`}{' '}
                 {!tournamentsLoading && (
                   <button type="button" className="link-button" onClick={() => setShowAllUpcoming(true)}>
-                    Voir tous les tournois a venir
+                    Voir tous les tournois à venir
                   </button>
                 )}
               </p>
@@ -1722,7 +1781,7 @@ export default function EspaceJoueur() {
                 <section key={week.key} className="tournament-week">
                   <h4>
                     Semaine du {humanDate(week.key)}
-                    <small>{week.items.length} tournoi{week.items.length > 1 ? 's' : ''}</small>
+                    <small>{week.items.length} tableau{week.items.length > 1 ? 'x' : ''}</small>
                   </h4>
                   {week.items.map(tournament => {
                     const eligibility = eligibilityFor(selectedProfile, tournament);
@@ -1749,32 +1808,26 @@ export default function EspaceJoueur() {
                 </section>
               ))}
               {upcomingWeeks.length === 0 && (
-                <p className="muted upcoming-empty">Aucun tournoi ne correspond a ces filtres.</p>
+                <p className="muted upcoming-empty">Aucun tableau ne correspond à ces filtres.</p>
               )}
             </div>
           )}
         </div>
 
-        <div className="roadmap-grid">
-          <div className="roadmap-card ready">
-            <ShieldCheck size={20} />
-            <strong>Phase 1 active</strong>
-            <span>Profil joueur public, recherche et lecture des donnees live.</span>
-          </div>
-          <div className="roadmap-card">
-            <LockKeyhole size={20} />
-            <strong>Phase 2</strong>
-            <span>Compte joueur securise avec email, licence et verification du profil.</span>
-          </div>
-          <div className="roadmap-card">
-            <Trophy size={20} />
-            <strong>Phase 3</strong>
-            <span>Inscription tournoi avec regles automatiques selon classement, division et places.</span>
-          </div>
-        </div>
       </section>
 
       <style>{`
+        .empty-selection {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          margin-bottom: 18px;
+          border-color: rgba(74,213,105,0.35) !important;
+          color: #4ad569;
+        }
+        .empty-selection div { display: flex; flex-direction: column; gap: 4px; }
+        .empty-selection strong { color: white; font-size: 16px; }
+        .empty-selection span { color: #9ca3af; font-size: 13px; }
         .player-space {
           max-width: 1280px;
           margin: 0 auto;
