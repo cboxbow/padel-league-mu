@@ -622,7 +622,10 @@ function computeRankingRows(inputs, previousRanks, period) {
       const rank = row.points === lastPoints ? lastRank : index + 1;
       lastPoints = row.points;
       lastRank = rank;
-      const rankBefore = previousRanks.get(`${division}|${playerIdentityKey(row)}`) ?? rank;
+      // Meme cle que previousRanks : la fiche joueur (portee par les details,
+      // pas encore par la ligne a ce stade), sinon le nom.
+      const identity = cleanText(row.details[0]?.player_id) || normKey(row.player_name);
+      const rankBefore = previousRanks.get(`${division}|${identity}`) ?? rank;
       computed.push({
         id: newId(),
         player_id: cleanText(row.details[0]?.player_id) || null,
