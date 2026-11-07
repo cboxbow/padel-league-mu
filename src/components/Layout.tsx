@@ -367,7 +367,7 @@ export function Navbar() {
               src="/logos/afrasia-padel-league.png"
               alt="AfrAsia Bank Padel League"
               style={{
-                height: '26px', width: 'auto', flexShrink: 0, objectFit: 'contain',
+                height: '52px', width: 'auto', flexShrink: 0, objectFit: 'contain',
                 filter: 'brightness(1.1)',
                 opacity: 0.9,
               }}
