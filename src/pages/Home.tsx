@@ -41,11 +41,12 @@ function HeroLogo() {
           src="/logos/afrasia-padel-league.png"
           alt="AfrAsia Bank Padel League"
           style={{
-            height: '30px', width: 'auto', objectFit: 'contain',
+            // x2 (etait 30px) ; reduit un peu sur petit ecran pour que le bandeau tienne
+            height: 'clamp(46px, 13vw, 60px)', width: 'auto', objectFit: 'contain',
             filter: 'brightness(1.05)',
           }}
         />
-        <div style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.15)' }} />
+        <div style={{ width: '1px', height: '32px', background: 'rgba(255,255,255,0.15)' }} />
         <span style={{
           color: 'rgba(255,255,255,0.7)',
           fontSize: '11px', fontWeight: 600,
