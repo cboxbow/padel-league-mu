@@ -711,10 +711,10 @@ export function Footer() {
             // Ligne 1 : sponsors premium
             const line1 = [
               { src: '/images/AFRASIA.png',       alt: 'AfrAsia Bank',    h: 84  },
-              { src: '/images/SANPELLEGRINO.png', alt: 'San Pellegrino',  h: 100 },
               { src: '/images/MONT CHOISY.png',   alt: 'Mont Choisy',     h: 80  },
               { src: '/images/HEINEKEN.png',       alt: 'Heineken 0.0',   h: 100 },
               { src: '/images/LEAL.png',           alt: 'Leal Group',      h: 72  },
+              { src: '/images/VARTA.png',          alt: 'Varta',           h: 56  },
             ];
             // Ligne 2 : sponsors secondaires
             const line2 = [
