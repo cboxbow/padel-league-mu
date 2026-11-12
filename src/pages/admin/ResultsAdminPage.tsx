@@ -337,9 +337,9 @@ function isSchemaCacheError(message: string): boolean {
 function computeRollingPeriod(today = new Date()) {
   const end = new Date(today);
   end.setHours(23, 59, 59, 999);
-  const start = new Date(end);
-  start.setFullYear(start.getFullYear() - 1);
-  start.setHours(0, 0, 0, 0);
+  // Meme regle que le fichier Excel des classements : du 1er jour du mois M-11
+  // jusqu'a aujourd'hui (mois en cours + 11 mois precedents).
+  const start = new Date(end.getFullYear(), end.getMonth() - 11, 1, 0, 0, 0, 0);
   return {
     start,
     end,
@@ -1860,7 +1860,7 @@ export default function ResultsAdminPage() {
       setError('Supabase non connecte: impossible de recalculer les classements officiels.');
       return;
     }
-    if (!confirm('Recalculer et publier les classements officiels depuis tous les resultats saisis sur les 12 derniers mois ?')) return;
+    if (!confirm('Recalculer et publier les classements officiels depuis tous les resultats saisis (du 1er jour du mois M-11 a ce jour) ?')) return;
 
     setRecalcBusy(true);
     setRecalcOk(false);

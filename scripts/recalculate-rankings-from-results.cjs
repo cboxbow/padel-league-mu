@@ -323,7 +323,7 @@ function computeRollingPeriod(today = new Date()) {
 
 // RANKING_MONTH=AAAA-MM : regle officielle des classements mensuels (decision
 // du 2026-10-24) - finales du 1er jour du mois M-11 au dernier jour du mois M.
-// Sinon : fenetre glissante de 12 mois au jour pres (classement en direct).
+// Sinon (classement en direct) : du 1er jour du mois M-11 jusqu'a aujourd'hui, comme le fichier Excel.
 function computeFixedMauritiusPeriod() {
   if (process.env.RANKING_MONTH) {
     const m = String(process.env.RANKING_MONTH).match(/^(\d{4})-(\d{2})$/);
@@ -337,9 +337,9 @@ function computeFixedMauritiusPeriod() {
   const todayIso = process.env.RANKING_TODAY || new Date().toLocaleDateString('en-CA', { timeZone: 'Indian/Mauritius' });
   const [year, month, day] = todayIso.split('-').map(Number);
   const end = new Date(year, month - 1, day, 23, 59, 59, 999);
-  const start = new Date(end);
-  start.setFullYear(start.getFullYear() - 1);
-  start.setHours(0, 0, 0, 0);
+  // Meme regle que le fichier Excel des classements (12/11/2026) : du 1er jour du
+  // mois M-11 jusqu'a aujourd'hui (mois en cours + 11 mois precedents).
+  const start = new Date(year, month - 12, 1, 0, 0, 0, 0);
   return {
     start,
     end,
@@ -703,6 +703,20 @@ async function deleteByDivision(supabase, table, division) {
   }
 }
 
+// Supprime les details des anciens lots (tout sauf le lot qui vient d'etre publie).
+async function deleteOldDetails(supabase, divisions, keepBatchId) {
+  for (const division of divisions) {
+    for (;;) {
+      const { data, error } = await supabase.from('official_ranking_details').select('id').eq('division', division).neq('batch_id', keepBatchId).limit(250);
+      if (error) throw new Error(`official_ranking_details: ${error.message}`);
+      const ids = (data ?? []).map((row) => row.id).filter(Boolean);
+      if (!ids.length) break;
+      const { error: deleteError } = await supabase.from('official_ranking_details').delete().in('id', ids);
+      if (deleteError) throw new Error(`official_ranking_details: ${deleteError.message}`);
+    }
+  }
+}
+
 async function insertChunks(supabase, table, payload, chunkSize) {
   // upsert (pas insert) : un chunk renvoye deux fois (retry reseau apres un
   // timeout cote client alors que la requete avait deja abouti cote serveur)
@@ -858,46 +872,11 @@ async function main() {
   const batchId = newId();
   const now = new Date().toISOString();
 
-  console.log('4/5 Publication rankings et official_rankings...');
-  for (const division of divisions) {
-    await deleteByDivision(supabase, 'rankings', division);
-  }
-  await insertChunks(supabase, 'rankings', rows.map((row) => withOptionalFields({
-    id: row.id,
-    player_id: row.player_id,
-    player_name: row.player_name,
-    rank: row.rank,
-    rank_before: row.rank_before,
-    points: row.points,
-    division: row.division,
-    tournaments_played: row.tournaments_played,
-    trend: row.trend,
-    season: row.season,
-    updated_at: now,
-  }, schema.rankingsPlayerId ? new Set(['player_id']) : new Set())), 250);
-
-  for (const division of divisions) {
-    await deleteByDivision(supabase, 'official_rankings', division);
-  }
-  await insertChunks(supabase, 'official_rankings', rows.map((row) => withOptionalFields({
-    id: newId(),
-    player_id: row.player_id,
-    player_name: row.player_name,
-    rank: row.rank,
-    rank_before: row.rank_before,
-    points: row.points,
-    division: row.division,
-    tournaments_played: row.tournaments_played,
-    trend: row.trend,
-    season: row.season,
-    is_current: true,
-    batch_id: batchId,
-  }, schema.officialRankingsPlayerId ? new Set(['player_id']) : new Set())), 250);
-
-  console.log('5/5 Publication details officiels...');
-  for (const division of divisions) {
-    await deleteByDivision(supabase, 'official_ranking_details', division);
-  }
+  // Les details sont publies AVANT le classement : la page joueur lit le dernier lot
+  // de official_rankings puis les details de CE lot. Si le classement passait en
+  // premier, la fiche s'ouvrait vide pendant toute l'ecriture des details.
+  // Les anciens details ne sont supprimes qu'apres la bascule du classement.
+  console.log('4/5 Publication details officiels (avant le classement)...');
   const rawDetails = rows.flatMap((row) => row.details.map((detail) => ({
     id: newId(),
     player_id: row.player_id,
@@ -945,6 +924,44 @@ async function main() {
     }
     await insertChunks(supabase, 'official_ranking_details', leanDetails, 500);
   }
+
+
+  console.log('5/5 Publication rankings et official_rankings...');
+  for (const division of divisions) {
+    await deleteByDivision(supabase, 'rankings', division);
+  }
+  await insertChunks(supabase, 'rankings', rows.map((row) => withOptionalFields({
+    id: row.id,
+    player_id: row.player_id,
+    player_name: row.player_name,
+    rank: row.rank,
+    rank_before: row.rank_before,
+    points: row.points,
+    division: row.division,
+    tournaments_played: row.tournaments_played,
+    trend: row.trend,
+    season: row.season,
+    updated_at: now,
+  }, schema.rankingsPlayerId ? new Set(['player_id']) : new Set())), 250);
+
+  for (const division of divisions) {
+    await deleteByDivision(supabase, 'official_rankings', division);
+  }
+  await insertChunks(supabase, 'official_rankings', rows.map((row) => withOptionalFields({
+    id: newId(),
+    player_id: row.player_id,
+    player_name: row.player_name,
+    rank: row.rank,
+    rank_before: row.rank_before,
+    points: row.points,
+    division: row.division,
+    tournaments_played: row.tournaments_played,
+    trend: row.trend,
+    season: row.season,
+    is_current: true,
+    batch_id: batchId,
+  }, schema.officialRankingsPlayerId ? new Set(['player_id']) : new Set())), 250);
+  await deleteOldDetails(supabase, divisions, batchId);
 
   const kate = rows.find((row) => row.division === 'women' && normKey(row.player_name) === 'KATE FOO KUNE');
   console.log(`OK: ${rows.length} joueurs, ${details.length} details, batch ${batchId}.`);

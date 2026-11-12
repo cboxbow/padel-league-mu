@@ -567,15 +567,6 @@ function isoDateOnly(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function addMonthsToDate(date: Date, months: number): Date {
-  const next = new Date(date);
-  const originalDay = next.getDate();
-  next.setMonth(next.getMonth() + months);
-  if (next.getDate() !== originalDay) next.setDate(0);
-  next.setHours(0, 0, 0, 0);
-  return next;
-}
-
 function rankingWindowRange(calculatedAt?: string) {
   // Date du dernier calcul (heure de Maurice) ; a defaut, aujourd'hui.
   const calcDay = calculatedAt
@@ -583,7 +574,8 @@ function rankingWindowRange(calculatedAt?: string) {
     : '';
   const end = /^\d{4}-\d{2}-\d{2}$/.test(calcDay) ? new Date(`${calcDay}T00:00:00`) : new Date();
   end.setHours(0, 0, 0, 0);
-  const start = addMonthsToDate(end, -12);
+  // Du 1er jour du mois M-11 au jour du dernier calcul (comme le fichier Excel).
+  const start = new Date(end.getFullYear(), end.getMonth() - 11, 1);
   return {
     start: isoDateOnly(start),
     end: isoDateOnly(end),
@@ -792,6 +784,8 @@ function PlayerDetailModal({
   details,
   careerStats,
   loading,
+  loadError,
+  onRetry,
   color,
   divisionKey,
   onClose,
@@ -800,6 +794,8 @@ function PlayerDetailModal({
   details: PlayerRankingDetail[];
   careerStats: PlayerCareerStats | null;
   loading: boolean;
+  loadError?: boolean;
+  onRetry?: () => void;
   color: string;
   divisionKey: PlayerRankingDetail['division_key'];
   onClose: () => void;
@@ -929,7 +925,7 @@ function PlayerDetailModal({
       return Number(b.season ?? 0) - Number(a.season ?? 0) || b.points - a.points;
     });
   const top8Label = playedCount > 8 ? `8/${playedCount}` : String(playedCount);
-  const ruleText = `Période du classement : du ${formatIsoDateFr(windowRange.start)} au ${formatIsoDateFr(windowRange.end)} (12 mois jusqu'au dernier calcul). Les 8 meilleurs résultats comptent ; les autres restent visibles sans compter.`;
+  const ruleText = `Période du classement : du ${formatIsoDateFr(windowRange.start)} au ${formatIsoDateFr(windowRange.end)} (mois en cours + 11 mois précédents, jusqu'au dernier calcul). Les 8 meilleurs résultats comptent ; les autres restent visibles sans compter.`;
 
   useEffect(() => {
     const media = window.matchMedia('(max-width: 720px)');
@@ -1000,6 +996,18 @@ function PlayerDetailModal({
         <div style={{ maxHeight: isMobile ? 'none' : '48vh', overflow: isMobile ? 'visible' : 'auto', padding: isMobile ? '10px 16px 16px' : 0 }}>
           {loading ? (
             <div style={{ padding: '42px', textAlign: 'center', color: '#666' }}>Chargement des détails…</div>
+          ) : loadError && visibleDetails.length === 0 ? (
+            <div style={{ padding: '42px', textAlign: 'center', color: '#9ca3af' }}>
+              <div style={{ marginBottom: '14px' }}>Le chargement des détails a échoué. Vérifiez votre connexion et réessayez.</div>
+              {onRetry && (
+                <button
+                  onClick={onRetry}
+                  style={{ padding: '8px 18px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.18)', background: 'rgba(255,255,255,0.06)', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Réessayer
+                </button>
+              )}
+            </div>
           ) : visibleDetails.length === 0 ? (
             <div style={{ padding: '42px', textAlign: 'center', color: '#666' }}>Aucun détail disponible pour ce filtre.</div>
           ) : isMobile ? (
@@ -1100,6 +1108,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
   const [playerDetails, setPlayerDetails] = useState<PlayerRankingDetail[]>([]);
   const [playerCareerStats, setPlayerCareerStats] = useState<PlayerCareerStats | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState(false);
   // Identifiant du dernier chargement de fiche : un chargement plus ancien
   // (fiche fermee/rouverte ou autre joueur clique entre-temps) ne doit ni
   // ecraser les details, ni couper le "Chargement..." de la fiche ouverte.
@@ -1325,6 +1334,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
     setSelectedPlayer(player);
     setPlayerDetails([]);
     setPlayerCareerStats(null);
+    setDetailsError(false);
 
     if (!isSupabaseConnected()) {
       setDetailsLoading(false);
@@ -1341,12 +1351,15 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
     const loadOfficialDetails = async (): Promise<PlayerRankingDetail[]> => {
       const playerKey = playerCanonicalKey(player.player_name);
       const playerLooseKey = looseNameKey(playerKey);
-      const { data: latestBatchRows } = await sb
+      const { data: latestBatchRows, error: batchError } = await sb
         .from('official_rankings')
         .select('batch_id,created_at')
         .eq('division', divToDb(division))
         .order('created_at', { ascending: false })
         .limit(1);
+      // Une erreur reseau ne doit pas passer pour "aucun detail" : on la remonte
+      // pour que le chargement soit retente (voir withRetry plus bas).
+      if (batchError) throw new Error(batchError.message);
 
       const latestBatchId = String((latestBatchRows as Record<string, unknown>[] | null)?.[0]?.batch_id ?? '');
       const playerTerms = Array.from(new Set([
@@ -1392,6 +1405,7 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
         data = fallback.data;
         error = fallback.error;
       }
+      if (error) throw new Error(error.message);
       const officialRows: Record<string, unknown>[] = [];
       if (!error && data) appendOfficialMatches(data as Record<string, unknown>[], officialRows);
       if (!officialRows.length) {
@@ -1426,18 +1440,33 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
         : [];
     };
 
+    // 3 essais espaces (reseau instable, ou classement en cours de republication).
+    const withRetry = async <T,>(task: () => Promise<T>, attempts = 3): Promise<T> => {
+      let lastError: unknown;
+      for (let attempt = 1; attempt <= attempts; attempt++) {
+        try {
+          return await task();
+        } catch (error) {
+          lastError = error;
+          if (attempt < attempts) await new Promise(resolve => setTimeout(resolve, 700 * attempt));
+        }
+      }
+      throw lastError;
+    };
+
     // Les trois sources sont independantes : on les charge en parallele, et
     // l'echec de l'une n'efface pas les deux autres.
     const [official, historical, current] = await Promise.allSettled([
-      loadOfficialDetails(),
-      loadHistoricalPlayerData(player),
-      loadTournamentResultDetails(player),
+      withRetry(loadOfficialDetails),
+      withRetry(() => loadHistoricalPlayerData(player)),
+      withRetry(() => loadTournamentResultDetails(player)),
     ]);
     if (requestId !== detailsRequestRef.current) return;
 
     for (const result of [official, historical, current]) {
       if (result.status === 'rejected') console.warn('[Classements] chargement fiche joueur:', result.reason);
     }
+    setDetailsError(official.status === 'rejected' || (historical.status === 'rejected' && current.status === 'rejected'));
     const officialDetails = official.status === 'fulfilled' ? official.value : [];
     const historicalData = historical.status === 'fulfilled' ? historical.value : { details: [], stats: null };
     const currentDetails = current.status === 'fulfilled' ? current.value : [];
@@ -1571,6 +1600,8 @@ function RankingTable({ division, color, search, onCountChange }: { division: Di
           details={playerDetails}
           careerStats={playerCareerStats}
           loading={detailsLoading}
+          loadError={detailsError}
+          onRetry={() => openPlayer(selectedPlayer)}
           color={color}
           divisionKey={divKey as PlayerRankingDetail['division_key']}
           onClose={() => setSelectedPlayer(null)}
@@ -1784,8 +1815,8 @@ export default function Classements() {
               </h1>
               <p style={{ color: '#9ca3af', margin: 0, fontSize: '15px', letterSpacing: '0.1px', lineHeight: 1.55, maxWidth: '680px' }}>
                 {lang === 'fr'
-                  ? 'Les 8 meilleurs résultats de chaque joueur sur les 12 derniers mois, recalculés après chaque résultat validé. Ce classement est informatif : les têtes de série utilisent le classement mensuel.'
-                  : 'Live ranking, for information only: best 8 scores over the last 12 months, recalculated after each validated result. It is not used for seeding.'}
+                  ? 'Les 8 meilleurs résultats de chaque joueur sur le mois en cours et les 11 mois précédents, recalculés après chaque résultat validé. Ce classement est informatif : les têtes de série utilisent le classement mensuel.'
+                  : 'Live ranking, for information only: best 8 scores over the current month and the 11 previous months, recalculated after each validated result. It is not used for seeding.'}
               </p>
               <div style={{
                 display: 'flex',
@@ -1814,7 +1845,7 @@ export default function Classements() {
                     : (lang === 'fr' ? 'Dernière mise à jour : chargement…' : 'Last update: loading…')}
                 </span>
                 <span style={{ color: '#777' }}>
-                  {lang === 'fr' ? 'Période : 12 mois glissants jusqu\x27à la date de calcul' : 'Period: rolling 12 months up to the calculation date'}
+                  {lang === 'fr' ? 'Période : du 1er jour du mois M-11 jusqu\x27à la date de calcul' : 'Period: from the 1st day of month M-11 up to the calculation date'}
                 </span>
               </div>
             </div>
@@ -1994,7 +2025,7 @@ export default function Classements() {
           {/* Tableau */}
           <GlassCard style={{ padding: '16px 0' }}>
             <div style={{ padding: '0 16px 12px', color: '#777', fontSize: '12px' }}>
-              Classement en direct : 8 meilleurs résultats sur 12 mois glissants{publishedText ? ` · dernière mise à jour le ${publishedText}` : ''}.
+              Classement en direct : 8 meilleurs résultats du mois en cours et des 11 mois précédents{publishedText ? ` · dernière mise à jour le ${publishedText}` : ''}.
             </div>
             <RankingTable key={activeTab} division={activeTab} color={activeConfig.color} search={search} onCountChange={n => updateCount(activeTab, n)} />
           </GlassCard>
