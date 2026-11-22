@@ -27,6 +27,14 @@
 # public que dans /admin-panel/ (RewriteBase deduit du dossier du .htaccess).
 <IfModule mod_rewrite.c>
   RewriteEngine On
+
+  # Adresse unique pour Google : http:// et www. -> https://padelleague.mu (301).
+  # Limite aux hotes padelleague.mu : sans effet sur un autre domaine du compte.
+  RewriteCond %{HTTPS} off [OR]
+  RewriteCond %{HTTP_HOST} ^www\. [NC]
+  RewriteCond %{HTTP_HOST} ^(www\.)?padelleague\.mu$ [NC]
+  RewriteRule ^ https://padelleague.mu%{REQUEST_URI} [L,R=301]
+
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
   RewriteRule . index.html [L]
