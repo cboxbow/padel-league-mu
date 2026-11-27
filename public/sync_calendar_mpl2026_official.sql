@@ -385,7 +385,7 @@ VALUES
 ('t207f', 'I Padel by RM Hennessy M100 (Dames)', 'c07', 'I Padel by RM Hennessy', '2026-11-15', 'Centre', 'M100', 'women', 'WOMEN', 'upcoming', 32, 2, 'registration'),
 ('t210h', 'Urban Sport Black River M50 (Hommes)', 'c04', 'Urban Sport Black River', '2026-11-21', 'Ouest', 'M50', 'men', 'MEN', 'upcoming', 24, 2, 'registration'),
 ('t210f', 'Urban Sport Black River M50 (Dames)', 'c04', 'Urban Sport Black River', '2026-11-21', 'Ouest', 'M50', 'women', 'WOMEN', 'upcoming', 24, 2, 'registration'),
-('t211', 'Urban Sport Grand Baie M250 (Hommes)', 'c03', 'Urban Sport Grand Baie', '2026-11-21', 'Nord', 'M250', 'men', 'MEN', 'upcoming', 32, 2, 'registration'),
+('t211', 'Urban Sport Grand Baie M100 (Hommes)', 'c03', 'Urban Sport Grand Baie', '2026-11-21', 'Nord', 'M100', 'men', 'MEN', 'upcoming', 32, 2, 'registration'),
 ('t209', 'RM Club Grand Baie Mixed Open', 'c08', 'RM Club Grand Baie', '2026-11-21', 'Nord', 'MIXED', 'mixed', 'MIXED', 'upcoming', 24, 2, 'registration'),
 ('t212h', 'RM Club Tamarin M25 (Hommes)', 'c06', 'RM Club Tamarin', '2026-11-22', 'Ouest', 'M25', 'men', 'MEN', 'upcoming', 16, 2, 'registration'),
 ('t212f', 'RM Club Tamarin M25 (Dames)', 'c06', 'RM Club Tamarin', '2026-11-22', 'Ouest', 'M25', 'women', 'WOMEN', 'upcoming', 16, 2, 'registration'),

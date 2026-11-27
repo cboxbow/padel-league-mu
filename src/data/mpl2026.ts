@@ -400,7 +400,7 @@ export const MPL_TOURNAMENTS: Tournament[] = [
   {id:'t207f',name:'I Padel by RM Hennessy M100 (Dames)',club_id:'c07',club_name:'I Padel by RM Hennessy',date:'2026-11-15',region:'Centre',category:'M100',division:'women',type:'WOMEN',status:'upcoming',max_teams:32},
   {id:'t210h',name:'Urban Sport Black River M50 (Hommes)',club_id:'c04',club_name:'Urban Sport Black River',date:'2026-11-21',region:'Ouest',category:'M50',division:'men',type:'MEN',status:'upcoming',max_teams:24},
   {id:'t210f',name:'Urban Sport Black River M50 (Dames)',club_id:'c04',club_name:'Urban Sport Black River',date:'2026-11-21',region:'Ouest',category:'M50',division:'women',type:'WOMEN',status:'upcoming',max_teams:24},
-  {id:'t211',name:'Urban Sport Grand Baie M250 (Hommes)',club_id:'c03',club_name:'Urban Sport Grand Baie',date:'2026-11-21',region:'Nord',category:'M250',division:'men',type:'MEN',status:'upcoming',max_teams:32},
+  {id:'t211',name:'Urban Sport Grand Baie M100 (Hommes)',club_id:'c03',club_name:'Urban Sport Grand Baie',date:'2026-11-21',region:'Nord',category:'M100',division:'men',type:'MEN',status:'upcoming',max_teams:32},
   {id:'t209',name:'RM Club Grand Baie Mixed Open',club_id:'c08',club_name:'RM Club Grand Baie',date:'2026-11-21',region:'Nord',category:'MIXED',division:'mixed',type:'MIXED',status:'upcoming',max_teams:24},
   {id:'t212h',name:'RM Club Tamarin M25 (Hommes)',club_id:'c06',club_name:'RM Club Tamarin',date:'2026-11-22',region:'Ouest',category:'M25',division:'men',type:'MEN',status:'upcoming',max_teams:16},
   {id:'t212f',name:'RM Club Tamarin M25 (Dames)',club_id:'c06',club_name:'RM Club Tamarin',date:'2026-11-22',region:'Ouest',category:'M25',division:'women',type:'WOMEN',status:'upcoming',max_teams:16},
